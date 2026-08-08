@@ -39,6 +39,9 @@ Thumbs.db
 # Rider
 .idea/
 
+# IDE
+.trae/
+
 # misc
 *.orig
 *.rej
