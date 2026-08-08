@@ -22,7 +22,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private readonly HomePageViewModel _homePage;
     private readonly ChatPageViewModel _chatPage;
-    private readonly SettingsPageViewModel _settingsPage;
 
     public ThemeService ThemeService { get; }
 
@@ -31,7 +30,6 @@ public partial class MainWindowViewModel : ViewModelBase
         ThemeService = themeService;
         _homePage = new HomePageViewModel();
         _chatPage = new ChatPageViewModel();
-        _settingsPage = new SettingsPageViewModel(themeService);
         _currentPage = _homePage;
         _selectedIndex = 0;
         _hasBackgroundImage = themeService.BackgroundImagePath is not null;
@@ -48,7 +46,6 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             0 => _homePage,
             1 => _chatPage,
-            2 => _settingsPage,
             _ => _homePage
         };
     }
