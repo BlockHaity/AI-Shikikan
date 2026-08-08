@@ -75,8 +75,8 @@ public static class ProviderSettingsService
         {
             if (File.Exists(AppPaths.ProvidersPath))
             {
-                var settings = JsonSerializer.Deserialize(
-                    File.ReadAllText(AppPaths.ProvidersPath), AppJsonContext.Default.LlmSettings);
+                var content = File.ReadAllText(AppPaths.ProvidersPath);
+                var settings = TomlSerializer.Deserialize<LlmSettings>(content);
                 if (settings is { Providers.Count: > 0 })
                 {
                     return settings;
@@ -94,6 +94,6 @@ public static class ProviderSettingsService
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
         File.WriteAllText(AppPaths.ProvidersPath,
-            JsonSerializer.Serialize(settings, AppJsonContext.Default.LlmSettings));
+            TomlSerializer.Serialize(settings));
     }
 }

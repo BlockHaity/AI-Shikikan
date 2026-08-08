@@ -58,8 +58,8 @@ public static class AgentConfigService
         {
             if (File.Exists(AppPaths.AgentsPath))
             {
-                var file = JsonSerializer.Deserialize(
-                    File.ReadAllText(AppPaths.AgentsPath), AppJsonContext.Default.AgentConfigFile);
+                var content = File.ReadAllText(AppPaths.AgentsPath);
+                var file = TomlSerializer.Deserialize<AgentConfigFile>(content);
                 if (file is not null)
                 {
                     return file;
@@ -124,7 +124,7 @@ public static class AgentConfigService
     private static void SaveFile(AgentConfigFile file)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.AgentsPath, JsonSerializer.Serialize(file, AppJsonContext.Default.AgentConfigFile));
+        File.WriteAllText(AppPaths.AgentsPath, TomlSerializer.Serialize(file));
         _cache = null;
     }
 }
