@@ -92,7 +92,7 @@ public class CommandService
         table.AddRow("/templates", "列出专家模板");
         table.AddRow("/tools", "列出当前可用工具");
         table.AddRow("/assign", "列出子代理分派状态");
-        table.AddRow("/git [grey]<rc>[/]", "列出待审步骤, rc 查看仓库状态");
+        table.AddRow("/git [grey]<rc|show|merge|drop|revert> <stepId>[/]", "待审步骤列表; rc 仓库状态; 查看 diff/合并/丢弃/回滚");
         table.AddRow("/providers", "查看 Provider 配置与 API Key 状态");
         table.AddRow("/status", "显示系统状态");
         table.AddRow("/quit, /exit", "退出 TUI");
@@ -298,29 +298,56 @@ public class CommandService
     {
         AnsiConsole.WriteLine();
 
-        if (args == "rc")
-        {
-            var git = _runtime.Git;
-            if (!git.IsRepoAvailable)
-            {
-                AnsiConsole.MarkupLine("[red]当前目录不是 git 仓库[/]");
-            }
-            else
-            {
-                var dirty = git.HasUncommittedChanges() ? "[yellow]有未提交变更[/]" : "[green]干净[/]";
-                AnsiConsole.MarkupLine(
-                    $"[green]分支:[/] [bold]{git.CurrentBranch() ?? "?"}[/]  " +
-                    $"[green]最近提交:[/] {git.LastCommitShort() ?? "?"}  {dirty}");
-            }
+        var parts = args.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var sub = parts.Length > 0 ? parts[0] : string.Empty;
+        var rest = parts.Length > 1 ? parts[1] : string.Empty;
 
-            AnsiConsole.WriteLine();
-            return;
+        switch (sub)
+        {
+            case "rc":
+                ShowGitRepoState();
+                return;
+            case "show":
+                RunGitAction("show", rest, step =>
+                {
+                    var diff = _runtime.Git.GetDiff(step);
+                    if (!diff.Succeeded)
+                    {
+                        throw new InvalidOperationException(diff.Stderr.Trim());
+                    }
+
+                    AnsiConsole.MarkupLine(Markup.Escape(diff.Stdout));
+                    return string.Empty;
+                });
+                return;
+            case "merge":
+                RunGitAction("merge", rest, step =>
+                {
+                    var result = _runtime.Git.MergeStep(step);
+                    return result.Stdout.Trim() + result.Stderr.Trim();
+                });
+                return;
+            case "drop":
+                RunGitAction("drop", rest, step =>
+                {
+                    var result = _runtime.Git.DropStep(step);
+                    return result.Stdout.Trim() + result.Stderr.Trim();
+                });
+                return;
+            case "revert":
+                RunGitAction("revert", rest, step =>
+                {
+                    var result = _runtime.Git.RevertStep(step);
+                    return result.Stdout.Trim() + result.Stderr.Trim();
+                });
+                return;
         }
 
         var pending = _runtime.Git.PendingReview();
         if (pending.Count == 0)
         {
             AnsiConsole.MarkupLine("[grey]暂无待审步骤[/]");
+            AnsiConsole.MarkupLine("[grey]用法: /git rc 仓库状态 | /git show|merge|drop|revert <stepId>[/]");
             AnsiConsole.WriteLine();
             return;
         }
@@ -332,7 +359,52 @@ public class CommandService
         }
 
         AnsiConsole.WriteLine($"共 [bold]{pending.Count}[/] 个待审步骤");
+        AnsiConsole.MarkupLine("[grey]用法: /git show|merge|drop|revert <stepId> 查看 diff / 合并 / 丢弃 / 回滚[/]");
         AnsiConsole.WriteLine();
+    }
+
+    private void RunGitAction(string action, string stepId, Func<string, string> execute)
+    {
+        if (string.IsNullOrWhiteSpace(stepId))
+        {
+            AnsiConsole.MarkupLine($"[red]用法: /git {action} <stepId>[/]");
+            return;
+        }
+
+        try
+        {
+            var detail = execute(stepId);
+            AnsiConsole.MarkupLine($"[green]✔ /git {action} {stepId}[/]");
+            if (!string.IsNullOrWhiteSpace(detail))
+            {
+                AnsiConsole.MarkupLine(detail.Length > 120 ? detail[..120] + "..." : detail);
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(ex.Message)}[/]");
+        }
+
+        AnsiConsole.WriteLine();
+    }
+
+    private void ShowGitRepoState()
+    {
+        var git = _runtime.Git;
+        if (!git.IsRepoAvailable)
+        {
+            AnsiConsole.MarkupLine("[red]当前目录不是 git 仓库[/]");
+        }
+        else
+        {
+            var dirty = git.HasUncommittedChanges() ? "[yellow]有未提交变更[/]" : "[green]干净[/]";
+            AnsiConsole.MarkupLine(
+                $"[green]分支:[/] [bold]{git.CurrentBranch() ?? "?"}[/]  " +
+                $"[green]最近提交:[/] {git.LastCommitShort() ?? "?"}  {dirty}");
+        }
+
+        AnsiConsole.WriteLine();
+        return;
     }
 
     private void ShowProviders()
