@@ -220,13 +220,6 @@ public partial class ChatPageViewModel : ViewModelBase
         IsSending = false;
     }
 
-    partial void OnSelectedPersonaChanged(Persona? value)
-    {
-        if (value is not null)
-        {
-            _runtime.SetPersonaText(value.SystemPrompt);
-        }
-    }
 
     private void Assign()
     {
