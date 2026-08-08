@@ -105,7 +105,6 @@
 
         <!-- 图标栏(最右侧) -->
         <Border Grid.Column="2" Width="44" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
-                IsVisible="{Binding IsRightPanelVisible}"
                 Background="{DynamicResource SurfaceContainerLow}">
             <Panel>
                 <StackPanel Margin="2">
