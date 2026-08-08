@@ -29,7 +29,7 @@ public sealed class CommanderRuntime
 
     public IReadOnlyList<AgentRosterEntry> CurrentRosterEntries { get; private set; } = [];
 
-    public static void Boot(string? workspaceRoot = null, string? personaId = null)
+    public static CommanderRuntime Boot(string? workspaceRoot = null, string? personaId = null)
     {
         AppPaths.EnsureDirectoriesExist();
 
@@ -89,6 +89,8 @@ public sealed class CommanderRuntime
             CurrentPersonaText = personaText,
             CurrentRosterEntries = []
         };
+
+        return Instance;
     }
 
     public void SetPersonaText(string? text)

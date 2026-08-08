@@ -36,6 +36,33 @@ public class GitCommandResult
     public bool Succeeded => ExitCode == 0;
 }
 
+/// <summary>porcelain 状态中的单个文件条目。</summary>
+public record GitFileStatus
+{
+    public required string Path { get; init; }
+    public char IndexStatus { get; init; }
+    public char WorkTreeStatus { get; init; }
+    public bool IsUntracked => IndexStatus == '?' && WorkTreeStatus == '?';
+    public bool IsStaged => IndexStatus is not (' ' or '?');
+    public bool HasWorkTreeChange => WorkTreeStatus is not (' ' or '?');
+
+    public string StatusLabel => (IndexStatus, WorkTreeStatus) switch
+    {
+        ('?', _) => "未跟踪",
+        ('A', _) => "新增(已暂存)",
+        ('M', ' ') => "已暂存修改",
+        ('M', _) => "修改",
+        ('D', ' ') => "已暂存删除",
+        ('D', _) => "删除",
+        ('R', _) => "重命名",
+        ('C', _) => "复制",
+        (_, 'M') => "修改",
+        (_, 'D') => "删除",
+        (' ', '?') => "未跟踪",
+        _ => "变更"
+    };
+}
+
 public sealed class GitStepService
 {
     private readonly Dictionary<string, GitStepRecord> _steps = new(StringComparer.OrdinalIgnoreCase);
@@ -107,6 +134,73 @@ public sealed class GitStepService
 
     public IReadOnlyList<GitStepRecord> PendingReview() =>
         AllSteps.Where(s => s.Status is GitStepStatus.Created or GitStepStatus.Running or GitStepStatus.Completed).ToList();
+
+    /// <summary>解析 `git status --porcelain` 为文件状态列表(支持重命名 old -> new)。</summary>
+    public IReadOnlyList<GitFileStatus> GetStatusFiles()
+    {
+        var r = Run("status", "--porcelain=v1");
+        if (!r.Succeeded)
+        {
+            return [];
+        }
+
+        var list = new List<GitFileStatus>();
+        foreach (var line in r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (line.Length < 2)
+            {
+                continue;
+            }
+
+            var path = line.Length > 3 ? line[3..] : string.Empty;
+            var arrow = path.IndexOf(" -> ", StringComparison.Ordinal);
+            if (arrow >= 0)
+            {
+                path = path[(arrow + 4)..];
+            }
+
+            list.Add(new GitFileStatus
+            {
+                Path = path,
+                IndexStatus = line[0],
+                WorkTreeStatus = line[1]
+            });
+        }
+
+        return list;
+    }
+
+    public GitCommandResult StageFile(string path) => Run("add", "--", path);
+
+    public GitCommandResult UnstageFile(string path) => Run("restore", "--staged", "--", path);
+
+    public GitCommandResult StageAll() => Run("add", "-A");
+
+    public GitCommandResult CommitAll(string message)
+    {
+        var msg = string.IsNullOrWhiteSpace(message) ? "wip: GUI 提交" : message.Trim();
+        return Run("commit", "-m", msg);
+    }
+
+    public IReadOnlyList<string> GetLocalBranches()
+    {
+        var r = Run("branch", "--format=%(refname:short)");
+        if (!r.Succeeded)
+        {
+            return [];
+        }
+
+        return r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(s => s.Trim())
+            .Where(s => s.Length > 0)
+            .ToList();
+    }
+
+    public GitCommandResult SwitchBranch(string branch) => Run("switch", branch);
+
+    public GitCommandResult Pull() => Run("pull");
+
+    public GitCommandResult Push() => Run("push");
 
     /// <summary>为一步创建独立分支作为检查点。</summary>
     public GitStepRecord BeginStep(string label)

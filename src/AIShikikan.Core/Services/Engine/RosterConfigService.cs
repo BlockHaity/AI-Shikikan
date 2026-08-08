@@ -84,14 +84,45 @@ public static class RosterConfigService
         }
     }
 
-    public static void ToggleEnabled(string sessionId, string agentId)
+    public static void SetEnabled(string sessionId, string agentId, bool enabled)
     {
         var config = Load(sessionId);
         var entry = config.Entries.Find(e => e.AgentId == agentId);
-        if (entry is not null)
+        if (entry is null)
         {
-            entry.Enabled = !entry.Enabled;
-            Save(sessionId, config);
+            config.Entries.Add(new AgentRosterEntry
+            {
+                AgentId = agentId,
+                Display = string.Empty,
+                Description = string.Empty,
+                Enabled = enabled
+            });
         }
+        else
+        {
+            entry.Enabled = enabled;
+        }
+
+        Save(sessionId, config);
+    }
+
+    /// <summary>删除仅用于开关状态的会话条目(未自定义描述/专家时)。返回是否删除了条目。</summary>
+    public static bool RemoveIfNoOverride(string sessionId, string agentId)
+    {
+        var config = Load(sessionId);
+        var entry = config.Entries.Find(e => e.AgentId == agentId);
+        if (entry is null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(entry.Description) || !string.IsNullOrWhiteSpace(entry.PersonaId))
+        {
+            return false;
+        }
+
+        config.Entries.RemoveAll(e => e.AgentId == agentId);
+        Save(sessionId, config);
+        return true;
     }
 }
