@@ -211,51 +211,45 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
     [RelayCommand(CanExecute = nameof(CanAssign))]
-    private async Task Assign()
+    private void Assign()
     {
         if (SelectedAgent is null || string.IsNullOrWhiteSpace(AssignTaskText)) return;
 
-        var assignment = _runtime.Assignments.Create(
-            SelectedAgent, AssignTaskText.Trim(), mode: IsAsyncAssign ? "async" : "sync");
-
+        var agent = SelectedAgent;
+        var taskText = AssignTaskText.Trim();
+        var sessionId = CurrentSession?.Id;
         IsAssigning = true;
-        try
-        {
-            var personaText = AgentExecutor.ResolvePersonaText(
-                SelectedAgent, _runtime.Personas, _runtime.Templates, null, null);
-            var finalPrompt = AgentExecutor.BuildFinalPrompt(assignment.Task, personaText);
 
-            if (assignment.Mode == "async")
+        AppShell.Instance.Dispatch(agent, taskText, IsAsyncAssign ? "async" : "sync",
+            onFinished: (assignment, run) =>
             {
-                _runtime.Assignments.StartAsync(assignment, finalPrompt, null);
-            }
-            else
-            {
-                await _runtime.Assignments.RunSyncAsync(assignment, finalPrompt, null);
-                if (CurrentSession is not null && !string.IsNullOrWhiteSpace(assignment.OutputTail))
+                Dispatcher.UIThread.Post(() =>
                 {
-                    _chatService.AddMessage(CurrentSession.Id, MessageRole.Assistant,
-                        $"**子代理 {assignment.AgentName} 完成**\n\n{assignment.OutputTail}");
-                    Messages = CurrentSession.Messages;
-                }
-            }
+                    IsAssigning = false;
+                    AssignTaskText = string.Empty;
+                    RefreshAssignments();
+                    AppendAssignmentResult(sessionId, assignment, run);
+                });
+            });
+    }
 
-            AssignTaskText = string.Empty;
-        }
-        catch (Exception ex)
+    private void AppendAssignmentResult(string? sessionId, Assignment assignment, CliAgentRunResult? run)
+    {
+        if (sessionId is null) return;
+
+        if (assignment.Status == SubagentStatus.Completed
+            && !string.IsNullOrWhiteSpace(assignment.OutputTail))
         {
-            if (CurrentSession is not null)
-            {
-                _chatService.AddMessage(CurrentSession.Id, MessageRole.Assistant,
-                    $"⚠ 子代理 {assignment.AgentName} 失败: {ex.Message}");
-                Messages = CurrentSession.Messages;
-            }
+            _chatService.AddMessage(sessionId, MessageRole.Assistant,
+                $"**子代理 {assignment.AgentName} 完成**\n\n{assignment.OutputTail}");
         }
-        finally
+        else if (assignment.Status is SubagentStatus.Failed or SubagentStatus.TimedOut)
         {
-            IsAssigning = false;
-            RefreshAssignments();
+            _chatService.AddMessage(sessionId, MessageRole.Assistant,
+                $"⚠ 子代理 {assignment.AgentName} {assignment.Status}: {assignment.Error ?? run?.Output ?? "未知错误"}");
         }
+
+        Messages = CurrentSession?.Messages ?? [];
     }
 
     private bool CanAssign() => SelectedAgent is not null
@@ -265,13 +259,13 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void CancelAssignment(string assignmentId)
     {
-        _runtime.Assignments.Cancel(assignmentId);
+        AppShell.Instance.CancelDispatch(assignmentId);
         RefreshAssignments();
     }
 
     private void RefreshAssignments()
     {
-        Assignments = _runtime.Assignments.All.ToList();
+        Assignments = AppShell.Instance.ProcessList.ToList();
     }
 
     private void OnShellDataChanged()
