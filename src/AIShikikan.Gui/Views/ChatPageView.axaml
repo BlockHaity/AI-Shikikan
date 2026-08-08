@@ -153,8 +153,7 @@
                                                 <StackPanel Spacing="4">
                                                     <TextBlock Text="{x:Static res:Strings.Chat_BindPersona}" Classes="secTitle"/>
                                                      <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).Personas}"
-                                                               SelectedValuePath="Id"
-                                                               SelectedValue="{Binding PersonaId, Mode=TwoWay}"
+                                                               SelectedItem="{Binding SelectedPersonaItem, Mode=TwoWay}"
                                                                HorizontalAlignment="Stretch">
                                                         <ComboBox.ItemTemplate>
                                                             <DataTemplate>
