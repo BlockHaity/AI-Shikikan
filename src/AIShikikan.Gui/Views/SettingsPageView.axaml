@@ -80,10 +80,10 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding SelectedProvider is not null}">
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}">
                             <Button Classes="FilledTonal" Content="{x:Static res:Strings.Settings_Activate}"
                                     Command="{Binding SetActiveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
-                                    IsEnabled="{Binding SelectedProvider is not null}"/>
+                                    IsEnabled="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}"/>
                             <Button Classes="Text" Content="{x:Static res:Strings.Settings_Remove}"
                                     Command="{Binding RemoveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
                                     Margin="8,0,0,0"/>

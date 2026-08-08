@@ -64,4 +64,24 @@ public static class Strings
     public static string Chat_GitRevert => Get(nameof(Chat_GitRevert));
     public static string Chat_GitDiff => Get(nameof(Chat_GitDiff));
     public static string App_Title => Get(nameof(App_Title));
+    public static string Chat_TogglePanel => Get(nameof(Chat_TogglePanel));
+    public static string Chat_ToggleRoster => Get(nameof(Chat_ToggleRoster));
+    public static string Chat_CommanderPersona => Get(nameof(Chat_CommanderPersona));
+    public static string Chat_EntryDesc => Get(nameof(Chat_EntryDesc));
+    public static string Chat_BindPersona => Get(nameof(Chat_BindPersona));
+    public static string Chat_SaveEntry => Get(nameof(Chat_SaveEntry));
+    public static string Chat_QuickAssign => Get(nameof(Chat_QuickAssign));
+    public static string Settings_Providers => Get(nameof(Settings_Providers));
+    public static string Settings_ProviderAdd => Get(nameof(Settings_ProviderAdd));
+    public static string Settings_ProviderName => Get(nameof(Settings_ProviderName));
+    public static string Settings_ProviderBaseUrl => Get(nameof(Settings_ProviderBaseUrl));
+    public static string Settings_ProviderApiKey => Get(nameof(Settings_ProviderApiKey));
+    public static string Settings_ProviderModel => Get(nameof(Settings_ProviderModel));
+    public static string Settings_ProviderKind => Get(nameof(Settings_ProviderKind));
+    public static string Settings_Activate => Get(nameof(Settings_Activate));
+    public static string Settings_Remove => Get(nameof(Settings_Remove));
+    public static string Settings_Add => Get(nameof(Settings_Add));
+    public static string Settings_Agents => Get(nameof(Settings_Agents));
+    public static string Settings_AgentName => Get(nameof(Settings_AgentName));
+    public static string Settings_AgentExecutable => Get(nameof(Settings_AgentExecutable));
 }

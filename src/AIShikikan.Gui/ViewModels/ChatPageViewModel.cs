@@ -28,7 +28,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private bool _isRightPanelVisible = true;
 
     [ObservableProperty]
-    private string _rightPanelColDefs = "* 280";
+    private string _rightPanelWidth = "280";
 
     [ObservableProperty]
     private IReadOnlyList<ChatSession> _sessions = [];
@@ -68,16 +68,11 @@ public partial class ChatPageViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _useCommanderPersonaForAgents;
-
     [ObservableProperty]
     private IReadOnlyList<AgentRosterEntry> _rosterEntries = [];
 
     [ObservableProperty]
-    private AgentRosterEntry? _selectedRosterEntry;
-
-    [ObservableProperty]
-    private bool _rosterEnabled = true;
-
+    private Persona? _selectedPersona;
     [ObservableProperty]
     private IReadOnlyList<Assignment> _assignments = [];
 
@@ -378,7 +373,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private void ToggleRightPanel()
     {
         IsRightPanelVisible = !IsRightPanelVisible;
-        RightPanelColDefs = IsRightPanelVisible ? "* 280" : "*";
+        RightPanelWidth = IsRightPanelVisible ? "280" : "0";
     }
 
     [RelayCommand]
