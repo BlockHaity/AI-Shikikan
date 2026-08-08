@@ -35,7 +35,15 @@ public class AgentRosterEntry : INotifyPropertyChanged
     public string? PersonaId
     {
         get => _personaId;
-        set { _personaId = value; OnPropertyChanged(); }
+        set
+        {
+            _personaId = value;
+            OnPropertyChanged();
+            if (!string.IsNullOrEmpty(value))
+            {
+                // 这里设置 DisplayName 会在 ViewModel 中更新
+            }
+        }
     }
 
     public bool Enabled
