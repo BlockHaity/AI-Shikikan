@@ -1,4 +1,5 @@
 using System.Text;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Personas;
@@ -30,7 +31,9 @@ public static class RosterBuilder
 
     public static string Build(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        string rules, GitStepService? git = null, bool enabled = true)
+        string rules, GitStepService? git = null,
+        IReadOnlyList<AgentRosterEntry>? rosterEntries = null,
+        bool enabled = true)
     {
         if (!enabled)
         {
@@ -39,7 +42,9 @@ public static class RosterBuilder
 
         var template = LoadTemplate() ?? DefaultTemplate;
 
-        var agentsText = BuildAgentsSection(agents);
+        var agentsText = rosterEntries is { Count: > 0 }
+            ? BuildAgentsSectionFromRoster(rosterEntries, agents, personas)
+            : BuildAgentsSection(agents);
         var personasText = personas.Count == 0
             ? "(无)"
             : string.Join("\n", personas.Select(p =>
@@ -61,30 +66,42 @@ public static class RosterBuilder
             .Replace("{git}", gitText);
     }
 
-    private static string LoadTemplate()
+    private static string BuildAgentsSectionFromRoster(
+        IReadOnlyList<AgentRosterEntry> rosterEntries,
+        IReadOnlyList<CliAgentDefinition> agents,
+        IReadOnlyList<Persona> personas)
     {
-        try
+        var sb = new StringBuilder();
+        var agentMap = new Dictionary<string, CliAgentDefinition>(StringComparer.OrdinalIgnoreCase);
+        foreach (var a in agents) agentMap[a.Id] = a;
+
+        var personaMap = new Dictionary<string, Persona>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in personas) personaMap[p.Id] = p;
+
+        foreach (var entry in rosterEntries.Where(e => e.Enabled))
         {
-            return File.Exists(AppPaths.RosterTemplatePath)
-                ? File.ReadAllText(AppPaths.RosterTemplatePath)
-                : null;
+            if (!agentMap.TryGetValue(entry.AgentId, out var agent)) continue;
+
+            var parts = new List<string> { entry.DisplayText };
+            if (!string.IsNullOrWhiteSpace(entry.Description))
+            {
+                parts.Add(entry.Description);
+            }
+            if (agent.Description.Length > 0) parts.Add(agent.Description);
+            if (agent.Expertise.Count > 0) parts.Add($"专长: {string.Join("/", agent.Expertise)}");
+            if (entry.PersonaId is { Length: > 0 } && personaMap.TryGetValue(entry.PersonaId, out var persona))
+            {
+                parts.Add($"推荐专家: {persona.Display}");
+            }
+            parts.Add($"模式: {agent.DefaultMode}, 并发: {agent.MaxConcurrent}");
+
+            sb.AppendLine($"- run_{agent.Id}: {string.Join(" | ", parts)}");
         }
-        catch
-        {
-            return null;
-        }
+
+        return sb.ToString().TrimEnd();
     }
 
-    public static void WriteDefaultTemplate()
-    {
-        Directory.CreateDirectory(AppPaths.ConfigDir);
-        if (!File.Exists(AppPaths.RosterTemplatePath))
-        {
-            File.WriteAllText(AppPaths.RosterTemplatePath, DefaultTemplate);
-        }
-    }
-
-    public static string BuildAgentsSection(IReadOnlyList<CliAgentDefinition> agents)
+    private static string BuildAgentsSection(IReadOnlyList<CliAgentDefinition> agents)
     {
         var sb = new StringBuilder();
         foreach (var agent in agents)
@@ -122,5 +139,28 @@ public static class RosterBuilder
 
         return $"分支: {branch} | {dirty} | 最近提交: {last}" +
                (pending.Count > 0 ? $"\n待合并步骤: {string.Join(", ", pending.Select(p => $"{p.StepId}({p.Label})"))} " : "");
+    }
+
+    private static string LoadTemplate()
+    {
+        try
+        {
+            return File.Exists(AppPaths.RosterTemplatePath)
+                ? File.ReadAllText(AppPaths.RosterTemplatePath)
+                : null;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public static void WriteDefaultTemplate()
+    {
+        Directory.CreateDirectory(AppPaths.ConfigDir);
+        if (!File.Exists(AppPaths.RosterTemplatePath))
+        {
+            File.WriteAllText(AppPaths.RosterTemplatePath, DefaultTemplate);
+        }
     }
 }

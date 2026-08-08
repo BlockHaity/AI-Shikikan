@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
@@ -36,7 +37,8 @@ public sealed class AppShell
 
     private AppShell()
     {
-        Runtime = CommanderRuntime.Boot(Directory.GetCurrentDirectory());
+        CommanderRuntime.Boot(Directory.GetCurrentDirectory());
+        Runtime = CommanderRuntime.Instance;
         ReloadPersonas();
         ReloadTemplates();
         ReloadAgents();
@@ -47,12 +49,14 @@ public sealed class AppShell
     /// <summary>子代理分派(与 REST API 同一提示词构建路径): sync 后台执行, async 立即返回。</summary>
     public void Dispatch(CliAgentDefinition agent, string task, string mode = "sync",
         string? personaId = null, string? templateId = null, string? workingDirectory = null,
-        Action<Assignment, CliAgentRunResult?>? onFinished = null)
+        Action<Assignment, CliAgentRunResult?>? onFinished = null,
+        bool useCommanderPersona = false)
     {
         var assignment = Runtime.Assignments.Create(
             agent, task, templateId, personaId, mode, workingDirectory);
         var personaText = AgentExecutor.ResolvePersonaText(
-            agent, Runtime.Personas, Runtime.Templates, personaId, templateId);
+            agent, Runtime.Personas, Runtime.Templates, personaId, templateId,
+            Runtime.CurrentPersonaText, useCommanderPersona);
         var finalPrompt = AgentExecutor.BuildFinalPrompt(assignment.Task, personaText);
 
         if (mode == "async")

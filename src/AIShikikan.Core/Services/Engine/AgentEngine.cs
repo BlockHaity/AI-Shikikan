@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Llm;
@@ -50,6 +51,7 @@ public sealed class AgentEngine
     private string? _personaText;
     private readonly EngineOptions _options;
     private readonly List<ChatTurnMessage> _conversation = [];
+    private IReadOnlyList<AgentRosterEntry>? _rosterEntries;
 
     public AgentEngine(
         LlmService llm,
@@ -61,7 +63,8 @@ public sealed class AgentEngine
         IReadOnlyList<CliAgentDefinition> agents,
         string workspaceRoot,
         string? personaText = null,
-        EngineOptions? options = null)
+        EngineOptions? options = null,
+        IReadOnlyList<AgentRosterEntry>? rosterEntries = null)
     {
         _llm = llm;
         _registry = registry;
@@ -73,6 +76,7 @@ public sealed class AgentEngine
         _agents = agents;
         _workspaceRoot = workspaceRoot;
         _personaText = personaText;
+        _rosterEntries = rosterEntries;
         _options = options ?? new EngineOptions();
     }
 
@@ -84,9 +88,16 @@ public sealed class AgentEngine
 
     public string? PersonaText => _personaText;
 
+    public IReadOnlyList<AgentRosterEntry>? RosterEntries => _rosterEntries;
+
     public void SetPersonaText(string? text)
     {
         _personaText = string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    public void SetRosterEntries(IReadOnlyList<AgentRosterEntry>? entries)
+    {
+        _rosterEntries = entries;
     }
 
     public void ClearConversation() => _conversation.Clear();
@@ -100,7 +111,7 @@ public sealed class AgentEngine
             var provider = _llm.GetProvider(_options.ProviderId);
             if (provider is null)
             {
-                var msg = "未配置 Provider。请新建 providers.json(见 ConfigDir) 或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
+                var msg = "未配置 Provider。请新建 providers.toml(见 ConfigDir) 或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
                 OnEvent?.Invoke(new EngineDone(null, msg));
                 return msg;
             }
@@ -250,7 +261,9 @@ public sealed class AgentEngine
         if (configFile.RosterEnabled)
         {
             var roster = RosterBuilder.Build(_agents, _personas, _templates,
-                configFile.Rules, _git, enabled: true);
+                configFile.Rules, _git,
+                rosterEntries: _rosterEntries,
+                enabled: true);
             if (!string.IsNullOrWhiteSpace(roster))
             {
                 parts.Add(roster);

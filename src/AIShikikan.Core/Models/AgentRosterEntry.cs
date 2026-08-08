@@ -1,33 +1,69 @@
 using System.ComponentModel;
-using CommunityToolkit.Mvvm.ComponentModel;
+using System.Runtime.CompilerServices;
 
 namespace AIShikikan.Core.Models;
 
 /// <summary>Agent 编目条目: 指挥官可调用的子 Agent 配置, session 级别。</summary>
-public partial class AgentRosterEntry : ObservableObject
+public class AgentRosterEntry : INotifyPropertyChanged
 {
-    [ObservableProperty]
     private string _agentId = string.Empty;
-
-    [ObservableProperty]
     private string _display = string.Empty;
-
-    [ObservableProperty]
     private string _description = string.Empty;
-
-    [ObservableProperty]
     private string? _personaId;
-
-    [ObservableProperty]
     private bool _enabled = true;
-
-    [ObservableProperty]
     private bool _isExpanded = false;
+    private string _personaDisplayName = string.Empty;
 
-    [ObservableProperty]
-    private bool _isCollapsed => !IsExpanded;
+    public string AgentId
+    {
+        get => _agentId;
+        set { _agentId = value; OnPropertyChanged(); }
+    }
+
+    public string Display
+    {
+        get => _display;
+        set { _display = value; OnPropertyChanged(); }
+    }
+
+    public string Description
+    {
+        get => _description;
+        set { _description = value; OnPropertyChanged(); }
+    }
+
+    public string? PersonaId
+    {
+        get => _personaId;
+        set { _personaId = value; OnPropertyChanged(); }
+    }
+
+    public bool Enabled
+    {
+        get => _enabled;
+        set { _enabled = value; OnPropertyChanged(); }
+    }
+
+    public bool IsExpanded
+    {
+        get => _isExpanded;
+        set { _isExpanded = value; OnPropertyChanged(); }
+    }
+
+    public bool IsCollapsed => !_isExpanded;
+
+    public string PersonaDisplayName
+    {
+        get => _personaDisplayName;
+        set { _personaDisplayName = value; OnPropertyChanged(); }
+    }
 
     public string DisplayText => string.IsNullOrEmpty(Display) ? AgentId : Display;
 
-    public string PersonaDisplayName { get; set; } = string.Empty;
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    {
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
 }

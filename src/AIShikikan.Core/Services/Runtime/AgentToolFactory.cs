@@ -1,12 +1,13 @@
 using System.Text;
 using System.Text.Json;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
-using AIShikikan.Core.Services.Tools.Builtin;
 using AIShikikan.Core.Services.Tools;
+using AIShikikan.Core.Services.Tools.Builtin;
 
 namespace AIShikikan.Core.Services.Runtime;
 
@@ -52,7 +53,9 @@ public static class AgentExecutor
         IReadOnlyList<Persona> personas,
         IReadOnlyList<AgentTemplate> templates,
         string? personaId,
-        string? templateId)
+        string? templateId,
+        string? commanderPersonaText = null,
+        bool useCommanderPersona = false)
     {
         if (!string.IsNullOrWhiteSpace(personaId))
         {
@@ -61,6 +64,11 @@ public static class AgentExecutor
             {
                 return $"{persona.Display}\n{persona.SystemPrompt}";
             }
+        }
+
+        if (useCommanderPersona && !string.IsNullOrWhiteSpace(commanderPersonaText))
+        {
+            return commanderPersonaText;
         }
 
         if (!string.IsNullOrWhiteSpace(templateId))
@@ -250,7 +258,10 @@ public class AgentExecutionTool : ITool
         var mode = Get(args, "mode") ?? _agent.DefaultMode;
         var workDir = Get(args, "workingDirectory");
 
-        var personaText = AgentExecutor.ResolvePersonaText(_agent, _personas, _templates, personaId, templateId);
+        var personaText = AgentExecutor.ResolvePersonaText(
+            _agent, _personas, _templates, personaId, templateId,
+            CommanderRuntime.Instance?.CurrentPersonaText,
+            false);
         return AgentExecutor.ExecuteAsync(
             _agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveMode(_agent, mode),
@@ -321,7 +332,10 @@ public class AssignTaskTool : ITool
                 $"找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}"));
         }
 
-        var personaText = AgentExecutor.ResolvePersonaText(agent, _personas, _templates, personaId, templateId);
+        var personaText = AgentExecutor.ResolvePersonaText(
+            agent, _personas, _templates, personaId, templateId,
+            CommanderRuntime.Instance?.CurrentPersonaText,
+            false);
         return AgentExecutor.ExecuteAsync(
             agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveMode(agent, mode),

@@ -1,3 +1,4 @@
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
@@ -12,6 +13,8 @@ namespace AIShikikan.Core.Services;
 /// <summary>应用启动外观: 初始化配置目录、示例文件、所有服务与工具集, 供 CLI / GUI 复用。</summary>
 public sealed class CommanderRuntime
 {
+    public static CommanderRuntime Instance { get; private set; } = null!;
+
     public required string WorkspaceRoot { get; init; }
     public required LlmService Llm { get; init; }
     public required GitStepService Git { get; init; }
@@ -22,7 +25,11 @@ public sealed class CommanderRuntime
     public required IReadOnlyList<AgentTemplate> Templates { get; init; }
     public required IReadOnlyList<CliAgentDefinition> Agents { get; init; }
 
-    public static CommanderRuntime Boot(string? workspaceRoot = null, string? personaId = null)
+    public string? CurrentPersonaText { get; private set; }
+
+    public IReadOnlyList<AgentRosterEntry> CurrentRosterEntries { get; private set; } = [];
+
+    public static void Boot(string? workspaceRoot = null, string? personaId = null)
     {
         AppPaths.EnsureDirectoriesExist();
 
@@ -68,7 +75,7 @@ public sealed class CommanderRuntime
             workspaceRoot: root,
             personaText: personaText);
 
-        return new CommanderRuntime
+        Instance = new CommanderRuntime
         {
             WorkspaceRoot = root,
             Llm = llm,
@@ -78,7 +85,21 @@ public sealed class CommanderRuntime
             Engine = engine,
             Personas = personasList,
             Templates = templatesList,
-            Agents = agentsList
+            Agents = agentsList,
+            CurrentPersonaText = personaText,
+            CurrentRosterEntries = []
         };
+    }
+
+    public void SetPersonaText(string? text)
+    {
+        CurrentPersonaText = text;
+        Engine.SetPersonaText(text);
+    }
+
+    public void SetRosterEntries(IReadOnlyList<AgentRosterEntry> entries)
+    {
+        CurrentRosterEntries = entries;
+        Engine.SetRosterEntries(entries);
     }
 }
