@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -21,6 +22,13 @@ public partial class ChatPageViewModel : ViewModelBase
     private readonly ChatService _chatService;
     private readonly CommanderRuntime _runtime;
     private readonly StringBuilder _toolLog = new();
+    private string? _currentSessionId;
+
+    [ObservableProperty]
+    private bool _isRightPanelVisible = true;
+
+    [ObservableProperty]
+    private string _rightPanelColDefs = "* 280";
 
     [ObservableProperty]
     private IReadOnlyList<ChatSession> _sessions = [];
@@ -59,6 +67,18 @@ public partial class ChatPageViewModel : ViewModelBase
     private bool _isAssigning;
 
     [ObservableProperty]
+    private bool _useCommanderPersonaForAgents;
+
+    [ObservableProperty]
+    private IReadOnlyList<AgentRosterEntry> _rosterEntries = [];
+
+    [ObservableProperty]
+    private AgentRosterEntry? _selectedRosterEntry;
+
+    [ObservableProperty]
+    private bool _rosterEnabled = true;
+
+    [ObservableProperty]
     private IReadOnlyList<Assignment> _assignments = [];
 
     [ObservableProperty]
@@ -83,11 +103,14 @@ public partial class ChatPageViewModel : ViewModelBase
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
         Messages = CurrentSession?.Messages ?? [];
+        _currentSessionId = CurrentSession?.Id;
 
         _chatService.CurrentSessionChanged += (_, session) =>
         {
             CurrentSession = session;
             Messages = session?.Messages ?? [];
+            _currentSessionId = session?.Id;
+            RefreshRosterEntries();
         };
         _chatService.MessageAdded += (_, _) =>
         {
@@ -108,6 +131,8 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.CreateSession();
         Sessions = _chatService.Sessions;
         Messages = CurrentSession?.Messages ?? [];
+        _currentSessionId = CurrentSession?.Id;
+        RefreshRosterEntries();
     }
 
     [RelayCommand]
@@ -116,6 +141,8 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.DeleteSession(sessionId);
         Sessions = _chatService.Sessions;
         Messages = CurrentSession?.Messages ?? [];
+        _currentSessionId = CurrentSession?.Id;
+        RefreshRosterEntries();
     }
 
     [RelayCommand]
@@ -206,7 +233,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         if (value is not null)
         {
-            _runtime.Engine.SetPersonaText(value.SystemPrompt);
+            _runtime.SetPersonaText(value.SystemPrompt);
         }
     }
 
@@ -221,6 +248,7 @@ public partial class ChatPageViewModel : ViewModelBase
         IsAssigning = true;
 
         AppShell.Instance.Dispatch(agent, taskText, IsAsyncAssign ? "async" : "sync",
+            useCommanderPersona: UseCommanderPersonaForAgents,
             onFinished: (assignment, run) =>
             {
                 Dispatcher.UIThread.Post(() =>
@@ -291,6 +319,131 @@ public partial class ChatPageViewModel : ViewModelBase
 
         RefreshAssignments();
         RefreshGit();
+        RefreshRosterEntries();
+    }
+
+    private void RefreshRosterEntries()
+    {
+        var sessionId = _currentSessionId;
+        if (string.IsNullOrEmpty(sessionId))
+        {
+            RosterEntries = [];
+            return;
+        }
+
+        var config = RosterConfigService.Load(sessionId);
+        var entries = new List<AgentRosterEntry>();
+        var personaMap = new Dictionary<string, Persona>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in Personas) personaMap[p.Id] = p;
+
+        foreach (var agent in Agents)
+        {
+            var existing = config.Entries.FirstOrDefault(e => e.AgentId == agent.Id);
+            if (existing is not null)
+            {
+                var entry = new AgentRosterEntry
+                {
+                    AgentId = existing.AgentId,
+                    Display = existing.Display,
+                    Description = existing.Description,
+                    PersonaId = existing.PersonaId,
+                    Enabled = existing.Enabled,
+                    IsExpanded = existing.IsExpanded
+                };
+                if (!string.IsNullOrEmpty(existing.PersonaId) && personaMap.TryGetValue(existing.PersonaId, out var persona))
+                {
+                    entry.PersonaDisplayName = persona.Display;
+                }
+                entries.Add(entry);
+            }
+            else
+            {
+                entries.Add(new AgentRosterEntry
+                {
+                    AgentId = agent.Id,
+                    Display = agent.Display,
+                    Description = agent.Description,
+                    PersonaId = agent.RecommendedPersonaId,
+                    Enabled = true,
+                    IsExpanded = false
+                });
+            }
+        }
+
+        RosterEntries = entries;
+        _runtime.SetRosterEntries(entries.Where(e => e.Enabled).ToList());
+    }
+
+    [RelayCommand]
+    private void ToggleRightPanel()
+    {
+        IsRightPanelVisible = !IsRightPanelVisible;
+        RightPanelColDefs = IsRightPanelVisible ? "* 280" : "*";
+    }
+
+    [RelayCommand]
+    private void ToggleRoster()
+    {
+        RosterEnabled = !RosterEnabled;
+        if (RosterEnabled)
+        {
+            _runtime.SetRosterEntries(RosterEntries.Where(e => e.Enabled).ToList());
+        }
+        else
+        {
+            _runtime.SetRosterEntries([]);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleEntryExpanded(AgentRosterEntry entry)
+    {
+        entry.IsExpanded = !entry.IsExpanded;
+    }
+
+    [RelayCommand]
+    private void SaveEntry(AgentRosterEntry entry)
+    {
+        var sessionId = _currentSessionId;
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        var personaId = entry.PersonaId;
+        RosterConfigService.UpdatePersona(sessionId, entry.AgentId, personaId);
+        RosterConfigService.AddEntry(sessionId, entry.AgentId, entry.Display, entry.Description, personaId);
+        _runtime.SetRosterEntries(RosterEntries.Where(e => e.Enabled).ToList());
+    }
+
+    [RelayCommand]
+    private void DeleteEntry(AgentRosterEntry entry)
+    {
+        var sessionId = _currentSessionId;
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        RosterConfigService.RemoveEntry(sessionId, entry.AgentId);
+        RefreshRosterEntries();
+    }
+
+    [RelayCommand]
+    private void ToggleEntryEnabled(AgentRosterEntry entry)
+    {
+        var sessionId = _currentSessionId;
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        RosterConfigService.ToggleEnabled(sessionId, entry.AgentId);
+        _runtime.SetRosterEntries(RosterEntries.Where(e => e.Enabled).ToList());
+    }
+
+    [RelayCommand]
+    private void AddEntry(string agentId)
+    {
+        var sessionId = _currentSessionId;
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        var agent = Agents.FirstOrDefault(a => a.Id == agentId);
+        if (agent is null) return;
+
+        RosterConfigService.AddEntry(sessionId, agentId, agent.Display, agent.Description, agent.RecommendedPersonaId);
+        RefreshRosterEntries();
     }
 
     [RelayCommand]

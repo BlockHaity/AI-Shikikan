@@ -67,4 +67,24 @@
   <data name="Chat_GitRevert" xml:space="preserve"><value>Revert</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
+  <data name="Chat_TogglePanel" xml:space="preserve"><value>Toggle Panel</value></data>
+  <data name="Chat_ToggleRoster" xml:space="preserve"><value>Toggle Roster</value></data>
+  <data name="Chat_CommanderPersona" xml:space="preserve"><value>Pass persona to sub-agents</value></data>
+  <data name="Chat_EntryDesc" xml:space="preserve"><value>Describe this agent's purpose...</value></data>
+  <data name="Chat_BindPersona" xml:space="preserve"><value>Bind Persona</value></data>
+  <data name="Chat_SaveEntry" xml:space="preserve"><value>Save</value></data>
+  <data name="Chat_QuickAssign" xml:space="preserve"><value>Quick Assign</value></data>
+  <data name="Settings_Providers" xml:space="preserve"><value>LLM Providers</value></data>
+  <data name="Settings_ProviderAdd" xml:space="preserve"><value>Add Provider</value></data>
+  <data name="Settings_ProviderName" xml:space="preserve"><value>Name</value></data>
+  <data name="Settings_ProviderBaseUrl" xml:space="preserve"><value>Base URL</value></data>
+  <data name="Settings_ProviderApiKey" xml:space="preserve"><value>API Key</value></data>
+  <data name="Settings_ProviderModel" xml:space="preserve"><value>Default Model</value></data>
+  <data name="Settings_ProviderKind" xml:space="preserve"><value>Type</value></data>
+  <data name="Settings_Activate" xml:space="preserve"><value>Set Active</value></data>
+  <data name="Settings_Remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Settings_Add" xml:space="preserve"><value>Add</value></data>
+  <data name="Settings_Agents" xml:space="preserve"><value>Agent Programs</value></data>
+  <data name="Settings_AgentName" xml:space="preserve"><value>Name</value></data>
+  <data name="Settings_AgentExecutable" xml:space="preserve"><value>Executable</value></data>
 </root>

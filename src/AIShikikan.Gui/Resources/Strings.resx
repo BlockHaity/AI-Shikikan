@@ -67,4 +67,24 @@
   <data name="Chat_GitRevert" xml:space="preserve"><value>回滚</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
+  <data name="Chat_TogglePanel" xml:space="preserve"><value>收起侧栏</value></data>
+  <data name="Chat_ToggleRoster" xml:space="preserve"><value>启用/禁用编目</value></data>
+  <data name="Chat_CommanderPersona" xml:space="preserve"><value>注入专家到子代理</value></data>
+  <data name="Chat_EntryDesc" xml:space="preserve"><value>描述此 Agent 的用途...</value></data>
+  <data name="Chat_BindPersona" xml:space="preserve"><value>绑定专家</value></data>
+  <data name="Chat_SaveEntry" xml:space="preserve"><value>保存</value></data>
+  <data name="Chat_QuickAssign" xml:space="preserve"><value>快速分配</value></data>
+  <data name="Settings_Providers" xml:space="preserve"><value>LLM 提供商</value></data>
+  <data name="Settings_ProviderAdd" xml:space="preserve"><value>添加提供商</value></data>
+  <data name="Settings_ProviderName" xml:space="preserve"><value>名称</value></data>
+  <data name="Settings_ProviderBaseUrl" xml:space="preserve"><value>基础 URL</value></data>
+  <data name="Settings_ProviderApiKey" xml:space="preserve"><value>API Key</value></data>
+  <data name="Settings_ProviderModel" xml:space="preserve"><value>默认模型</value></data>
+  <data name="Settings_ProviderKind" xml:space="preserve"><value>类型</value></data>
+  <data name="Settings_Activate" xml:space="preserve"><value>设为激活</value></data>
+  <data name="Settings_Remove" xml:space="preserve"><value>删除</value></data>
+  <data name="Settings_Add" xml:space="preserve"><value>添加</value></data>
+  <data name="Settings_Agents" xml:space="preserve"><value>Agent 程序</value></data>
+  <data name="Settings_AgentName" xml:space="preserve"><value>名称</value></data>
+  <data name="Settings_AgentExecutable" xml:space="preserve"><value>可执行文件</value></data>
 </root>

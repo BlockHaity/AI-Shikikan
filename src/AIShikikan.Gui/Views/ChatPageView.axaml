@@ -18,9 +18,15 @@
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
         </Style>
+        <Style Selector="Border.agentEntry">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
     </UserControl.Styles>
 
-    <Grid ColumnDefinitions="*,330">
+    <Grid ColumnDefinitions="{Binding RightPanelColDefs}">
 
         <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
 
@@ -68,11 +74,18 @@
 
         </Grid>
 
-        <Border Grid.Column="1" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0">
+        <Border x:Name="RightPanel" Grid.Column="1" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
+                IsVisible="{Binding IsRightPanelVisible}">
             <ScrollViewer>
                 <StackPanel Margin="12" Spacing="14">
 
-                    <TextBlock Text="{x:Static res:Strings.Chat_PanelTitle}" Classes="TitleMedium" />
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+                        <TextBlock Text="{x:Static res:Strings.Chat_PanelTitle}" Classes="TitleMedium" />
+                        <Button Classes="Icon" Command="{Binding ToggleRightPanelCommand}"
+                                ToolTip.Tip="{x:Static res:Strings.Chat_TogglePanel}">
+                            <PathIcon Data="{StaticResource IconCaretLeft}" Width="16" Height="16" />
+                        </Button>
+                    </Grid>
 
                     <StackPanel Spacing="4">
                         <TextBlock Text="{x:Static res:Strings.Chat_Expert}" Classes="secTitle" />
@@ -89,29 +102,104 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
+                        <ToggleSwitch IsChecked="{Binding UseCommanderPersonaForAgents}"
+                                      Content="{x:Static res:Strings.Chat_CommanderPersona}"
+                                      Margin="0,4,0,0"/>
                     </StackPanel>
 
                     <StackPanel Spacing="4">
-                        <TextBlock Text="{x:Static res:Strings.Chat_Assign}" Classes="secTitle" />
-                        <TextBlock Text="{x:Static res:Strings.Chat_AssignDesc}" Classes="secDesc" TextWrapping="Wrap" />
-                        <ComboBox ItemsSource="{Binding Agents}"
-                                  SelectedItem="{Binding SelectedAgent}"
-                                  HorizontalAlignment="Stretch">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
-                        <TextBox Text="{Binding AssignTaskText}" Watermark="{x:Static res:Strings.Chat_AssignTaskWatermark}"
-                                 AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
                         <Grid ColumnDefinitions="*,Auto">
-                            <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"
-                                          HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                            <Button Grid.Column="1" Classes="Filled"
-                                    Content="{x:Static res:Strings.Chat_StartAssign}"
-                                    Command="{Binding AssignCommand}" IsEnabled="{Binding !IsAssigning}"/>
+                            <TextBlock Text="{x:Static res:Strings.Chat_Assign}" Classes="secTitle" />
+                            <ToggleSwitch IsChecked="{Binding RosterEnabled}"
+                                          ToolTip.Tip="{x:Static res:Strings.Chat_ToggleRoster}"
+                                          VerticalAlignment="Center"/>
                         </Grid>
+                        <TextBlock Text="{x:Static res:Strings.Chat_AssignDesc}" Classes="secDesc" TextWrapping="Wrap" />
+
+                        <ItemsControl ItemsSource="{Binding RosterEntries}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border Classes="agentEntry"
+                                            IsVisible="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).RosterEnabled}">
+                                        <StackPanel>
+                                            <!-- 头部 -->
+                                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="8,4">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <Button Classes="Icon" Width="20" Height="20"
+                                                            Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).ToggleEntryExpandedCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            Padding="0">
+                                                        <PathIcon Data="{Binding IsExpanded, Converter={StaticResource CollapsedToIconConverter}}"
+                                                                  Width="14" Height="14" />
+                                                    </Button>
+                                                    <TextBlock Text="{Binding DisplayText}" Classes="BodyMedium"
+                                                               VerticalAlignment="Center"/>
+                                                </StackPanel>
+                                                <ToggleSwitch IsChecked="{Binding Enabled}"
+                                                              Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).ToggleEntryEnabledCommand}"
+                                                              CommandParameter="{Binding}"
+                                                              VerticalAlignment="Center"/>
+                                                <Button Classes="Text" Content="✕"
+                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).DeleteEntryCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        VerticalAlignment="Center"/>
+                                            </Grid>
+
+                                            <!-- 展开内容 -->
+                                            <StackPanel IsVisible="{Binding IsExpanded}" Margin="8,0,8,8" Spacing="8">
+                                                <TextBox Text="{Binding Description}" Watermark="{x:Static res:Strings.Chat_EntryDesc}"
+                                                         AcceptsReturn="True" MinHeight="50" TextWrapping="Wrap"
+                                                         FontSize="12"/>
+                                                <StackPanel Spacing="4">
+                                                    <TextBlock Text="{x:Static res:Strings.Chat_BindPersona}" Classes="secTitle"/>
+                                                    <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).Personas}"
+                                                              SelectedValuePath="Id"
+                                                              SelectedValue="{Binding PersonaId}"
+                                                              HorizontalAlignment="Stretch">
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+                                                    <TextBlock IsVisible="{Binding !IsNullOrEmpty(PersonaId)}"
+                                                               Classes="BodySmall"
+                                                               Foreground="{DynamicResource OnSurfaceVariant}"
+                                                               Text="{Binding PersonaDisplayName}"/>
+                                                </StackPanel>
+                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_SaveEntry}"
+                                                        HorizontalAlignment="Right"
+                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).SaveEntryCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- 快速分配区 -->
+                        <StackPanel Spacing="4" Margin="0,8,0,0">
+                            <TextBlock Text="{x:Static res:Strings.Chat_QuickAssign}" Classes="secTitle"/>
+                            <ComboBox ItemsSource="{Binding Agents}"
+                                      SelectedItem="{Binding SelectedAgent}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBox Text="{Binding AssignTaskText}" Watermark="{x:Static res:Strings.Chat_AssignTaskWatermark}"
+                                     AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"
+                                              HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                <Button Grid.Column="1" Classes="Filled"
+                                        Content="{x:Static res:Strings.Chat_StartAssign}"
+                                        Command="{Binding AssignCommand}" IsEnabled="{Binding !IsAssigning}"/>
+                            </Grid>
+                        </StackPanel>
                     </StackPanel>
 
                     <StackPanel Spacing="4">
