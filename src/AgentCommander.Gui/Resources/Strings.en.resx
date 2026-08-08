@@ -49,5 +49,22 @@
   <data name="Chat_Send" xml:space="preserve"><value>Send</value></data>
   <data name="Chat_NoSessions" xml:space="preserve"><value>No Sessions</value></data>
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>New Session</value></data>
+  <data name="Chat_ClearSession" xml:space="preserve"><value>Clear Session</value></data>
+  <data name="Chat_PanelTitle" xml:space="preserve"><value>Session Command Panel</value></data>
+  <data name="Chat_Expert" xml:space="preserve"><value>Dialogue Expert</value></data>
+  <data name="Chat_ExpertDesc" xml:space="preserve"><value>Choose the main Agent persona for this conversation (import in Settings)</value></data>
+  <data name="Chat_Assign" xml:space="preserve"><value>Manual Sub-Agent Assign</value></data>
+  <data name="Chat_AssignDesc" xml:space="preserve"><value>Pick an Agent and a task to run a sub-agent (sync waits, async runs in background)</value></data>
+  <data name="Chat_AssignTaskWatermark" xml:space="preserve"><value>Task description...</value></data>
+  <data name="Chat_AsyncMode" xml:space="preserve"><value>Async</value></data>
+  <data name="Chat_StartAssign" xml:space="preserve"><value>Start</value></data>
+  <data name="Chat_Assignments" xml:space="preserve"><value>Assignments</value></data>
+  <data name="Chat_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Chat_Git" xml:space="preserve"><value>Git Steps</value></data>
+  <data name="Chat_Refresh" xml:space="preserve"><value>Refresh</value></data>
+  <data name="Chat_GitMerge" xml:space="preserve"><value>Merge</value></data>
+  <data name="Chat_GitDrop" xml:space="preserve"><value>Drop</value></data>
+  <data name="Chat_GitRevert" xml:space="preserve"><value>Revert</value></data>
+  <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="App_Title" xml:space="preserve"><value>Agent Commander</value></data>
 </root>

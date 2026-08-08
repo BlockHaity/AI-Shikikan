@@ -49,5 +49,22 @@
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
   <data name="Chat_NoSessions" xml:space="preserve"><value>暂无会话</value></data>
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>新会话</value></data>
+  <data name="Chat_ClearSession" xml:space="preserve"><value>清空会话</value></data>
+  <data name="Chat_PanelTitle" xml:space="preserve"><value>会话指挥面板</value></data>
+  <data name="Chat_Expert" xml:space="preserve"><value>对话专家</value></data>
+  <data name="Chat_ExpertDesc" xml:space="preserve"><value>选择当前对话使用的主 Agent 人格(在设置页导入)</value></data>
+  <data name="Chat_Assign" xml:space="preserve"><value>手动分配子代理</value></data>
+  <data name="Chat_AssignDesc" xml:space="preserve"><value>选择 Agent 与任务, 启动一次子代理执行(同步等待结果, 异步后台执行)</value></data>
+  <data name="Chat_AssignTaskWatermark" xml:space="preserve"><value>任务描述...</value></data>
+  <data name="Chat_AsyncMode" xml:space="preserve"><value>异步执行</value></data>
+  <data name="Chat_StartAssign" xml:space="preserve"><value>启动</value></data>
+  <data name="Chat_Assignments" xml:space="preserve"><value>子代理分派</value></data>
+  <data name="Chat_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_Git" xml:space="preserve"><value>Git 步骤</value></data>
+  <data name="Chat_Refresh" xml:space="preserve"><value>刷新</value></data>
+  <data name="Chat_GitMerge" xml:space="preserve"><value>合并</value></data>
+  <data name="Chat_GitDrop" xml:space="preserve"><value>丢弃</value></data>
+  <data name="Chat_GitRevert" xml:space="preserve"><value>回滚</value></data>
+  <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="App_Title" xml:space="preserve"><value>Agent Commander</value></data>
 </root>

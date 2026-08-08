@@ -45,7 +45,7 @@ public static class AgentToolFactory
     }
 }
 
-internal static class AgentExecutor
+public static class AgentExecutor
 {
     public static string ResolvePersonaText(
         CliAgentDefinition def,

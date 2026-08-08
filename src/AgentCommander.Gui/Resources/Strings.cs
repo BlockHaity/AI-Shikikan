@@ -46,5 +46,22 @@ public static class Strings
     public static string Chat_Send => Get(nameof(Chat_Send));
     public static string Chat_NoSessions => Get(nameof(Chat_NoSessions));
     public static string Chat_DefaultTitle => Get(nameof(Chat_DefaultTitle));
+    public static string Chat_ClearSession => Get(nameof(Chat_ClearSession));
+    public static string Chat_PanelTitle => Get(nameof(Chat_PanelTitle));
+    public static string Chat_Expert => Get(nameof(Chat_Expert));
+    public static string Chat_ExpertDesc => Get(nameof(Chat_ExpertDesc));
+    public static string Chat_Assign => Get(nameof(Chat_Assign));
+    public static string Chat_AssignDesc => Get(nameof(Chat_AssignDesc));
+    public static string Chat_AssignTaskWatermark => Get(nameof(Chat_AssignTaskWatermark));
+    public static string Chat_AsyncMode => Get(nameof(Chat_AsyncMode));
+    public static string Chat_StartAssign => Get(nameof(Chat_StartAssign));
+    public static string Chat_Assignments => Get(nameof(Chat_Assignments));
+    public static string Chat_Cancel => Get(nameof(Chat_Cancel));
+    public static string Chat_Git => Get(nameof(Chat_Git));
+    public static string Chat_Refresh => Get(nameof(Chat_Refresh));
+    public static string Chat_GitMerge => Get(nameof(Chat_GitMerge));
+    public static string Chat_GitDrop => Get(nameof(Chat_GitDrop));
+    public static string Chat_GitRevert => Get(nameof(Chat_GitRevert));
+    public static string Chat_GitDiff => Get(nameof(Chat_GitDiff));
     public static string App_Title => Get(nameof(App_Title));
 }
