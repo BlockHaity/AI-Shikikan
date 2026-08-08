@@ -12,7 +12,6 @@ sealed class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-            .With(new Win32PlatformOptions { IconUri = "avares://AIShikikan.Gui/Assets/logo.jpg" })
 #if DEBUG
             .WithDeveloperTools()
 #endif
