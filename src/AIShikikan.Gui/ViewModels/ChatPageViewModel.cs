@@ -77,9 +77,6 @@ public partial class ChatPageViewModel : ViewModelBase
     private bool _rosterEnabled = true;
 
     [ObservableProperty]
-    private Persona? _selectedPersona;
-
-    [ObservableProperty]
     private IReadOnlyList<Assignment> _assignments = [];
 
     [ObservableProperty]
