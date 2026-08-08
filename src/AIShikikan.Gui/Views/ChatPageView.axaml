@@ -1,33 +1,41 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:v="using:AIShikikan.Gui.Views"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:theme="using:CCSWE.Avalonia.Material"
              xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="AIShikikan.Gui.Views.ChatPageView"
              x:DataType="vm:ChatPageViewModel">
 
+    <UserControl.Resources>
+        <StreamGeometry x:Key="IconChevronRight">M9.29,6.71a1,1,0,0,0,0,1.41L13.17,12l-3.88,3.88a1,1,0,1,0,1.41,1.41l4.59-4.59a1,1,0,0,0,0-1.41L10.7,6.71A1,1,0,0,0,9.29,6.71Z</StreamGeometry>
+        <StreamGeometry x:Key="IconChevronDown">M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6l-6-6L7.41,8.59Z</StreamGeometry>
+        <StreamGeometry x:Key="IconCaretRight">M8.59,7.41L10,6l6,6l-6,6l-1.41-1.41L13.17,12L8.59,7.41Z</StreamGeometry>
+        <StreamGeometry x:Key="IconCaretLeft">M15.41,7.41L14,6l-6,6l6,6l1.41-1.41L10.83,12L15.41,7.41Z</StreamGeometry>
+        <StreamGeometry x:Key="IconSmartToySmall">M22,9v6c0,1.1-0.9,2-2,2h-1v2c0,1.1-0.9,2-2,2H7c-1.1,0-2-0.9-2-2v-2H4c-1.1,0-2-0.9-2-2V9c0-1.1,0.9-2,2-2h1V5c0-1.1,0.9-2,2-2h10c1.1,0,2,0.9,2,2v2h1C21.1,7,22,7.9,22,9zM8,13h6v-2H8V13zM18,11h-2v2h2V11zM19,7h-2v2h2V7zM20,9h-2v2h2V9z</StreamGeometry>
+        <StreamGeometry x:Key="IconSourceTree">M22,6c0-1.66,1.34-3,3-3s3,1.34,3,3s-1.34,3-3,3c-0.42,0-0.81-0.09-1.17-0.24l-3.83,5.11c0.52,0.93,0.82,2.01,0.82,3.13h2c1.1,0,2,0.9,2,2s-0.9,2-2,2h-2c-1.1,0-2-0.9-2-2v-8.12l-3.1,0.31c0.06,0.26,0.1,0.53,0.1,0.81v2.83c1.16,0.41,2,1.52,2,2.82c0,1.66-1.34,3-3,3s-3-1.34-3-3c0-1.3,0.84-2.4,2-2.81V19.1c0-0.42,0.04-0.84,0.12-1.24c-1.09-0.22-1.92-1.2-1.92-2.36v-1.87c-1.16-0.41-2-1.52-2-2.81c0-1.66,1.34-3,3-3s3,1.34,3,3c0,1.3-0.84,2.4-2,2.81v1.87c0,0.28,0.22,0.5,0.5,0.5h4.16L18.83,7.83C18.32,7.6,18,6.84,18,6c0-1.66,1.34-3,3-3S22,4.34,22,6z</StreamGeometry>
+    </UserControl.Resources>
+
     <UserControl.Styles>
-        <Style Selector="TextBlock.secTitle">
-            <Setter Property="FontSize" Value="14"/>
-            <Setter Property="FontWeight" Value="SemiBold"/>
-        </Style>
-        <Style Selector="TextBlock.secDesc">
-            <Setter Property="FontSize" Value="12"/>
+        <Style Selector="Button.railBtn">
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
+            <Setter Property="CornerRadius" Value="10"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
         </Style>
-        <Style Selector="Border.agentEntry">
-            <Setter Property="CornerRadius" Value="6"/>
-            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Margin" Value="0,2"/>
+        <Style Selector="Button.railBtn.active">
+            <Setter Property="Background" Value="{DynamicResource SecondaryContainer}"/>
+            <Setter Property="Foreground" Value="{DynamicResource OnSecondaryContainer}"/>
         </Style>
     </UserControl.Styles>
 
-    <Grid ColumnDefinitions="*,280" IsVisible="{Binding IsRightPanelVisible}">
+    <Grid ColumnDefinitions="*,Auto,Auto">
 
+        <!-- 聊天区 -->
         <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
 
             <Border Grid.Row="0" Padding="16,8" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1">
@@ -51,8 +59,8 @@
                                 <StackPanel Spacing="4">
                                     <TextBlock Classes="LabelSmall"
                                                Text="{Binding RoleLabel}"
-                                               Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    <TextBlock Classes="BodyMedium" Text="{Binding Content}" TextWrapping="Wrap" />
+                                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    <TextBlock Classes="BodyMedium" Text="{Binding Content}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -65,207 +73,64 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
                              Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
-                             KeyDown="OnInputKeyDown" />
+                             KeyDown="OnInputKeyDown"/>
                     <Button Grid.Column="1" Classes="Filled" Margin="8,0,0,0"
                             Content="{x:Static res:Strings.Chat_Send}"
-                            Command="{Binding SendMessageCommand}" IsEnabled="{Binding !IsSending}" />
+                            Command="{Binding SendMessageCommand}" IsEnabled="{Binding !IsSending}"/>
                 </Grid>
             </Border>
 
         </Grid>
 
-        <Border x:Name="RightPanel" Grid.Column="1" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
+        <!-- 右侧工具面板 -->
+        <Border Grid.Column="1" Width="300" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
                 IsVisible="{Binding IsRightPanelVisible}">
-            <ScrollViewer>
-                <StackPanel Margin="12" Spacing="14">
+            <Panel>
+                <ContentControl Content="{Binding AgentPanel}" IsVisible="{Binding IsAssignmentMode}">
+                    <ContentControl.ContentTemplate>
+                        <DataTemplate x:DataType="vm:AgentPanelViewModel">
+                            <v:AgentPanelView/>
+                        </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                </ContentControl>
+                <ContentControl Content="{Binding GitPanel}" IsVisible="{Binding IsGitMode}">
+                    <ContentControl.ContentTemplate>
+                        <DataTemplate x:DataType="vm:GitPanelViewModel">
+                            <v:GitPanelView/>
+                        </DataTemplate>
+                    </ContentControl.ContentTemplate>
+                </ContentControl>
+            </Panel>
+        </Border>
 
-                    <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,8">
-                        <TextBlock Text="{x:Static res:Strings.Chat_PanelTitle}" Classes="TitleMedium" />
-                        <Button Classes="Icon" Command="{Binding ToggleRightPanelCommand}"
-                                ToolTip.Tip="{x:Static res:Strings.Chat_TogglePanel}">
-                            <PathIcon Data="{StaticResource IconCaretLeft}" Width="16" Height="16" />
-                        </Button>
-                    </Grid>
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="{x:Static res:Strings.Chat_Expert}" Classes="secTitle" />
-                        <TextBlock Text="{x:Static res:Strings.Chat_ExpertDesc}" Classes="secDesc" TextWrapping="Wrap" />
-                        <ListBox ItemsSource="{Binding Personas}" SelectedItem="{Binding SelectedPersona}"
-                                 MaxHeight="150">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
-                                        <TextBlock Text="{Binding Kind}" Classes="LabelSmall"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                        <ToggleSwitch IsChecked="{Binding UseCommanderPersonaForAgents}"
-                                      Content="{x:Static res:Strings.Chat_CommanderPersona}"
-                                      Margin="0,4,0,0"/>
-                    </StackPanel>
-
-                    <StackPanel Spacing="4">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="{x:Static res:Strings.Chat_Assign}" Classes="secTitle" />
-                            <ToggleSwitch IsChecked="{Binding RosterEnabled}"
-                                          ToolTip.Tip="{x:Static res:Strings.Chat_ToggleRoster}"
-                                          VerticalAlignment="Center"/>
-                        </Grid>
-                        <TextBlock Text="{x:Static res:Strings.Chat_AssignDesc}" Classes="secDesc" TextWrapping="Wrap" />
-
-                        <ItemsControl ItemsSource="{Binding RosterEntries}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Classes="agentEntry"
-                                            IsVisible="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).RosterEnabled}">
-                                        <StackPanel>
-                                            <!-- 头部 -->
-                                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="8,4">
-                                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                                    <Button Classes="Icon" Width="20" Height="20"
-                                                            Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).ToggleEntryExpandedCommand}"
-                                                            CommandParameter="{Binding}"
-                                                            Padding="0">
-                                                        <PathIcon Data="{Binding IsExpanded, Converter={StaticResource CollapsedToIconConverter}}"
-                                                                  Width="14" Height="14" />
-                                                    </Button>
-                                                    <TextBlock Text="{Binding DisplayText}" Classes="BodyMedium"
-                                                               VerticalAlignment="Center"/>
-                                                </StackPanel>
-                                                <ToggleSwitch IsChecked="{Binding Enabled}"
-                                                              Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).ToggleEntryEnabledCommand}"
-                                                              CommandParameter="{Binding}"
-                                                              VerticalAlignment="Center"/>
-                                                <Button Classes="Text" Content="✕"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).DeleteEntryCommand}"
-                                                        CommandParameter="{Binding}"
-                                                        VerticalAlignment="Center"/>
-                                            </Grid>
-
-                                            <!-- 展开内容 -->
-                                            <StackPanel IsVisible="{Binding IsExpanded}" Margin="8,0,8,8" Spacing="8">
-                                                <TextBox Text="{Binding Description}" Watermark="{x:Static res:Strings.Chat_EntryDesc}"
-                                                         AcceptsReturn="True" MinHeight="50" TextWrapping="Wrap"
-                                                         FontSize="12"/>
-                                                <StackPanel Spacing="4">
-                                                    <TextBlock Text="{x:Static res:Strings.Chat_BindPersona}" Classes="secTitle"/>
-                                                     <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).Personas}"
-                                                               SelectedItem="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).SelectedPersonaItem, Mode=TwoWay}"
-                                                               HorizontalAlignment="Stretch">
-                                                        <ComboBox.ItemTemplate>
-                                                            <DataTemplate>
-                                                                <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
-                                                            </DataTemplate>
-                                                        </ComboBox.ItemTemplate>
-                                                    </ComboBox>
-                                                    <TextBlock IsVisible="{Binding PersonaId, Converter={StaticResource StringNotNullOrEmptyConverter}}"
-                                                               Classes="BodySmall"
-                                                               Foreground="{DynamicResource OnSurfaceVariant}"
-                                                               Text="{Binding PersonaDisplayName}"/>
-                                                </StackPanel>
-                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_SaveEntry}"
-                                                        HorizontalAlignment="Right"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).SaveEntryCommand}"
-                                                        CommandParameter="{Binding}"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <!-- 快速分配区 -->
-                        <StackPanel Spacing="4" Margin="0,8,0,0">
-                            <TextBlock Text="{x:Static res:Strings.Chat_QuickAssign}" Classes="secTitle"/>
-                            <ComboBox ItemsSource="{Binding Agents}"
-                                      SelectedItem="{Binding SelectedAgent}"
-                                      HorizontalAlignment="Stretch">
-                                <ComboBox.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
-                                    </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                            </ComboBox>
-                            <TextBox Text="{Binding AssignTaskText}" Watermark="{x:Static res:Strings.Chat_AssignTaskWatermark}"
-                                     AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"
-                                              HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                                <Button Grid.Column="1" Classes="Filled"
-                                        Content="{x:Static res:Strings.Chat_StartAssign}"
-                                        Command="{Binding AssignCommand}" IsEnabled="{Binding !IsAssigning}"/>
-                            </Grid>
-                        </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="{x:Static res:Strings.Chat_Assignments}" Classes="secTitle" />
-                        <ListBox ItemsSource="{Binding Assignments}" MaxHeight="160">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <TextBlock Text="{Binding AssignmentId}" Classes="LabelSmall"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                        <TextBlock Text="{Binding Display}" Classes="BodySmall" TextTrimming="CharacterEllipsis"/>
-                                        <Button Classes="Text" Content="✕" ToolTip.Tip="{x:Static res:Strings.Chat_Cancel}"
-                                                Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).CancelAssignmentCommand}"
-                                                CommandParameter="{Binding AssignmentId}"/>
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </StackPanel>
-
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="{x:Static res:Strings.Chat_Git}" Classes="secTitle" />
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Button Classes="FilledTonal" Content="{x:Static res:Strings.Chat_Refresh}"
-                                    Command="{Binding RefreshGitCommand}"/>
-                        </StackPanel>
-                        <TextBlock Text="{Binding GitStateText}" Classes="BodySmall" TextWrapping="Wrap" />
-
-                        <ItemsControl ItemsSource="{Binding GitSteps}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Margin="0,2" Padding="8,6" CornerRadius="6"
-                                            BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1">
-                                        <StackPanel Spacing="4">
-                                            <TextBlock Classes="BodySmall"
-                                                       Text="{Binding StepId}" Foreground="{DynamicResource Primary}"/>
-                                            <TextBlock Classes="BodySmall" Text="{Binding Label}" TextWrapping="Wrap"/>
-                                            <TextBlock Classes="LabelSmall"
-                                                       Foreground="{DynamicResource OnSurfaceVariant}"
-                                                       Text="{Binding StepBranch} → {Binding BaseBranch}"/>
-                                            <StackPanel Orientation="Horizontal" Spacing="6">
-                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitMerge}"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).MergeStepCommand}"
-                                                        CommandParameter="{Binding StepId}"/>
-                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDrop}"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).DropStepCommand}"
-                                                        CommandParameter="{Binding StepId}"/>
-                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitRevert}"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).RevertStepCommand}"
-                                                        CommandParameter="{Binding StepId}"/>
-                                                <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDiff}"
-                                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).ShowGitDiffCommand}"
-                                                        CommandParameter="{Binding StepId}"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-
-                        <TextBox Text="{Binding GitDiffText}" IsReadOnly="True" AcceptsReturn="True"
-                                 FontFamily="monospace" FontSize="12" MinHeight="80" MaxHeight="220"
-                                 IsVisible="{Binding HasGitDiff}"/>
-                    </StackPanel>
-
+        <!-- 图标栏(最右侧) -->
+        <Border Grid.Column="2" Width="44" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
+                IsVisible="{Binding IsRightPanelVisible}"
+                Background="{DynamicResource SurfaceContainerLow}">
+            <Panel>
+                <StackPanel Margin="2">
+                    <Button Classes="railBtn" Classes.active="{Binding IsAssignmentMode}"
+                            Command="{Binding OpenAssignmentPanelCommand}"
+                            ToolTip.Tip="{x:Static res:Strings.Panel_AssignToolTip}">
+                        <PathIcon Data="{StaticResource IconSmartToySmall}" Width="22" Height="22"/>
+                    </Button>
+                    <Button Classes="railBtn" Classes.active="{Binding IsGitMode}"
+                            Command="{Binding OpenGitPanelCommand}"
+                            ToolTip.Tip="{x:Static res:Strings.Panel_GitToolTip}">
+                        <PathIcon Data="{StaticResource IconSourceTree}" Width="22" Height="22"/>
+                    </Button>
                 </StackPanel>
-            </ScrollViewer>
+                <Button Classes="railBtn" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                        Command="{Binding ToggleRightPanelCommand}"
+                        ToolTip.Tip="{x:Static res:Strings.Panel_ToggleTip}">
+                    <Panel>
+                        <PathIcon Data="{StaticResource IconCaretRight}" Width="18" Height="18"
+                                  IsVisible="{Binding !IsRightPanelVisible}"/>
+                        <PathIcon Data="{StaticResource IconCaretLeft}" Width="18" Height="18"
+                                  IsVisible="{Binding IsRightPanelVisible}"/>
+                    </Panel>
+                </Button>
+            </Panel>
         </Border>
 
     </Grid>

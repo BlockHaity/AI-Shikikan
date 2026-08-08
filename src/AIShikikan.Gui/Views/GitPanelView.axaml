@@ -1,0 +1,158 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:core="using:AIShikikan.Core.Services.Git"
+             xmlns:local="using:AIShikikan.Gui.Views"
+             xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Class="AIShikikan.Gui.Views.GitPanelView"
+             x:DataType="vm:GitPanelViewModel">
+
+    <UserControl.Resources>
+        <local:StagedToActionConverter x:Key="StagedToActionConverter"/>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.secTitle">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.gitRow">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
+        <Style Selector="TextBlock.filePath">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="monospace"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="12" Spacing="10">
+
+            <!-- 仓库状态 -->
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Panel_GitTool}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Classes="FilledTonal" Content="{x:Static res:Strings.Chat_Refresh}"
+                        Command="{Binding RefreshCommand}"/>
+            </Grid>
+            <TextBlock Text="{Binding StateText}" FontSize="12"
+                       Foreground="{DynamicResource OnSurfaceVariant}"
+                       TextTrimming="CharacterEllipsis"/>
+
+            <TextBlock Text="{x:Static res:Strings.GitPanel_NotRepo}" FontSize="12" Opacity="0.7"
+                       IsVisible="{Binding !IsRepoAvailable}"/>
+
+            <StackPanel IsVisible="{Binding IsRepoAvailable}" Spacing="10">
+
+                <!-- 更改 -->
+                <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{x:Static res:Strings.GitPanel_Changes}" Classes="secTitle"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Classes="Text" Content="{x:Static res:Strings.GitPanel_StageAll}"
+                                Command="{Binding StageAllCommand}"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding StatusFiles}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="core:GitFileStatus">
+                                <Border Classes="gitRow">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,4">
+                                        <TextBlock Text="{Binding StatusLabel}" FontSize="10"
+                                                   Foreground="{DynamicResource Primary}" VerticalAlignment="Center"
+                                                   Margin="0,0,6,0"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Path}" Classes="filePath"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="2" Classes="Text"
+                                                Content="{Binding IsStaged, Converter={StaticResource StagedToActionConverter}}"
+                                                Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).ToggleStageCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_NoChanges}" FontSize="12" Opacity="0.6"
+                               IsVisible="{Binding !HasChanges}"/>
+
+                    <TextBox Text="{Binding CommitMessage}"
+                             Watermark="{x:Static res:Strings.GitPanel_CommitMessage}" FontSize="12"/>
+                    <Button Classes="Filled" HorizontalAlignment="Stretch"
+                            Content="{x:Static res:Strings.GitPanel_Commit}" Command="{Binding CommitCommand}"/>
+                </StackPanel>
+
+                <!-- 分支 -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_Branches}" Classes="secTitle"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <ComboBox ItemsSource="{Binding Branches}" SelectedItem="{Binding SelectedBranch}"
+                                  HorizontalAlignment="Stretch"/>
+                        <Button Grid.Column="1" Classes="FilledTonal" Margin="8,0,0,0"
+                                Content="{x:Static res:Strings.GitPanel_Switch}"
+                                Command="{Binding SwitchBranchCommand}"
+                                CommandParameter="{Binding SelectedBranch}"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,*">
+                        <Button Classes="FilledTonal" Content="{x:Static res:Strings.GitPanel_Pull}"
+                                Command="{Binding PullCommand}" Margin="0,0,4,0"/>
+                        <Button Grid.Column="1" Classes="Outlined" Content="{x:Static res:Strings.GitPanel_Push}"
+                                Command="{Binding PushCommand}" Margin="4,0,0,0"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 步骤检查点 -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_Steps}" Classes="secTitle"/>
+                    <ItemsControl ItemsSource="{Binding Steps}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="core:GitStepRecord">
+                                <Border Margin="0,2" Padding="8,6" CornerRadius="6"
+                                        BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding StepId}" FontSize="12"
+                                                   Foreground="{DynamicResource Primary}"/>
+                                        <TextBlock Text="{Binding Label}" FontSize="12" TextWrapping="Wrap"/>
+                                        <TextBlock FontSize="11"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                                   Text="{Binding StepBranch} → {Binding BaseBranch}"/>
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitMerge}"
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).MergeStepCommand}"
+                                                    CommandParameter="{Binding StepId}"/>
+                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDrop}"
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).DropStepCommand}"
+                                                    CommandParameter="{Binding StepId}"/>
+                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitRevert}"
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).RevertStepCommand}"
+                                                    CommandParameter="{Binding StepId}"/>
+                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDiff}"
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).ShowGitDiffCommand}"
+                                                    CommandParameter="{Binding StepId}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- Diff / 结果 -->
+                <TextBlock Text="{x:Static res:Strings.GitPanel_DiffTitle}" Classes="secTitle"
+                           IsVisible="{Binding HasDiff}"/>
+                <TextBox Text="{Binding DiffText}" IsReadOnly="True" AcceptsReturn="True"
+                         FontFamily="monospace" FontSize="11" MinHeight="60" MaxHeight="180"
+                         IsVisible="{Binding HasDiff}"/>
+                <TextBlock Text="{Binding ResultText}" FontSize="12" TextWrapping="Wrap"
+                           Foreground="{DynamicResource OnSurfaceVariant}"/>
+
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

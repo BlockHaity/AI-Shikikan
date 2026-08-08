@@ -1,0 +1,206 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:corePersona="using:AIShikikan.Core.Services.Personas"
+             xmlns:coreAgents="using:AIShikikan.Core.Services.Agents"
+             xmlns:coreAssign="using:AIShikikan.Core.Services.Engine"
+             xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Class="AIShikikan.Gui.Views.AgentPanelView"
+             x:DataType="vm:AgentPanelViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.secTitle">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.badge">
+            <Setter Property="Background" Value="{DynamicResource PrimaryContainer}"/>
+            <Setter Property="Padding" Value="4,1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+        </Style>
+        <Style Selector="Border.badge TextBlock">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+        </Style>
+        <Style Selector="Border.agentEntry">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,2"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="12" Spacing="12">
+
+            <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Panel_AssignTool}"/>
+
+            <!-- 对话专家 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.SubAgent_CommanderTitle}" Classes="secTitle"/>
+                <TextBlock Text="{x:Static res:Strings.SubAgent_CommanderDesc}" FontSize="12"
+                           Foreground="{DynamicResource OnSurfaceVariant}" TextWrapping="Wrap"/>
+                <ComboBox ItemsSource="{Binding Personas}" SelectedItem="{Binding CommanderPersona}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="corePersona:Persona">
+                            <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <ToggleSwitch IsChecked="{Binding UseCommanderPersonaForAgents}"
+                              Content="{x:Static res:Strings.SubAgent_UseCommanderPersona}"
+                              Margin="0,4,0,0"/>
+            </StackPanel>
+
+            <!-- 子Agent -->
+            <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="{x:Static res:Strings.SubAgent_Title}" Classes="secTitle"/>
+                        <TextBlock Text="{x:Static res:Strings.SubAgent_RosterSwitch}" Classes="badge"
+                                   IsVisible="{Binding RosterEnabled}"/>
+                    </StackPanel>
+                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding RosterEnabled}"
+                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <Button Grid.Column="2" Classes="FilledTonal" Content="＋"
+                            Command="{Binding ToggleAddFormCommand}"
+                            ToolTip.Tip="{x:Static res:Strings.SubAgent_Add}"/>
+                </Grid>
+
+                <!-- 添加表单 -->
+                <StackPanel IsVisible="{Binding AddFormVisible}" Spacing="4">
+                    <TextBox Text="{Binding NewAgentName}"
+                             Watermark="{x:Static res:Strings.SubAgent_AddName}" FontSize="12"/>
+                    <TextBox Text="{Binding NewAgentExecutable}"
+                             Watermark="{x:Static res:Strings.SubAgent_AddExec}" FontSize="12"/>
+                    <TextBox Text="{Binding NewAgentDescription}"
+                             Watermark="{x:Static res:Strings.SubAgent_AddDesc}" FontSize="12"
+                             AcceptsReturn="True" MinHeight="48" TextWrapping="Wrap"/>
+                    <TextBlock Text="{x:Static res:Strings.SubAgent_AddHint}" FontSize="11" Opacity="0.6"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Button Grid.Column="1" Classes="Filled" Content="{x:Static res:Strings.SubAgent_Add}"
+                                Command="{Binding AddAgentCommand}"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 列表 -->
+                <ItemsControl ItemsSource="{Binding SubAgents}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SubAgentItemViewModel">
+                            <Border Classes="agentEntry">
+                                <StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="8,4">
+                                        <Button Classes="Icon" Width="20" Height="20" Padding="0"
+                                                Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryExpandedCommand}"
+                                                CommandParameter="{Binding}">
+                                            <Panel>
+                                                <PathIcon Data="{StaticResource IconChevronRight}" Width="14" Height="14"
+                                                          IsVisible="{Binding !IsExpanded}"/>
+                                                <PathIcon Data="{StaticResource IconChevronDown}" Width="14" Height="14"
+                                                          IsVisible="{Binding IsExpanded}"/>
+                                            </Panel>
+                                        </Button>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Display}" Classes="BodyMedium"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <Border Classes="badge" IsVisible="{Binding HasSessionOverride}">
+                                                            <TextBlock Text="{x:Static res:Strings.SubAgent_SessionOverride}"/>
+                                                        </Border>
+                                        </StackPanel>
+                                        <ToggleSwitch Grid.Column="2" IsChecked="{Binding Enabled}"
+                                                      Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryEnabledCommand}"
+                                                      CommandParameter="{Binding}"
+                                                      VerticalAlignment="Center" Margin="4,0"/>
+                                        <Button Grid.Column="3" Classes="Text" Content="✕"
+                                                ToolTip.Tip="{x:Static res:Strings.SubAgent_RemoveTip}"
+                                                Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).RemoveAgentCommand}"
+                                                CommandParameter="{Binding}"
+                                                VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <StackPanel IsVisible="{Binding IsExpanded}" Margin="8,0,8,8" Spacing="6">
+                                        <TextBox Text="{Binding Description}"
+                                                 Watermark="{x:Static res:Strings.SubAgent_DescPlaceholder}"
+                                                 AcceptsReturn="True" MinHeight="56" TextWrapping="Wrap" FontSize="12"/>
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="{x:Static res:Strings.SubAgent_Expert}" Classes="secTitle"/>
+                                            <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).PersonaOptions}"
+                                                      SelectedItem="{Binding SelectedOption}"
+                                                      HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:PersonaOption">
+                                                        <TextBlock Text="{Binding Label}" Classes="BodyMedium"/>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <Button Content="{x:Static res:Strings.SubAgent_Save}"
+                                                    Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).SaveEntryCommand}"
+                                                    CommandParameter="{Binding}" Classes="FilledTonal"/>
+                                            <Button Grid.Column="1" Content="{x:Static res:Strings.SubAgent_ToGlobal}"
+                                                    IsVisible="{Binding HasSessionOverride}"
+                                                    Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).MoveToGlobalCommand}"
+                                                    CommandParameter="{Binding}" Classes="Text" Margin="8,0,0,0"/>
+                                        </Grid>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{x:Static res:Strings.SubAgent_NoAgents}" FontSize="12" Opacity="0.6"
+                           IsVisible="{Binding HasNoAgents}"/>
+            </StackPanel>
+
+            <!-- 快速分配 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.Chat_QuickAssign}" Classes="secTitle"/>
+                <ComboBox ItemsSource="{Binding Agents}" SelectedItem="{Binding SelectedAgent}"
+                          HorizontalAlignment="Stretch">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="coreAgents:CliAgentDefinition">
+                            <TextBlock Text="{Binding Display}" Classes="BodyMedium"/>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <TextBox Text="{Binding AssignTaskText}"
+                         Watermark="{x:Static res:Strings.Chat_AssignTaskWatermark}"
+                         AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
+                <Grid ColumnDefinitions="*,Auto">
+                    <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"
+                                  HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="Filled"
+                            Content="{x:Static res:Strings.Chat_StartAssign}"
+                            Command="{Binding AssignCommand}" IsEnabled="{Binding !IsAssigning}"/>
+                </Grid>
+            </StackPanel>
+
+            <!-- 分派列表 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.Chat_Assignments}" Classes="secTitle"/>
+                <ItemsControl ItemsSource="{Binding Assignments}" MaxHeight="160">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="coreAssign:Assignment">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding AssignmentId}" FontSize="11"
+                                           Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                <TextBlock Text="{Binding Display}" FontSize="12"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                                <Button Classes="Text" Content="✕" ToolTip.Tip="{x:Static res:Strings.Chat_Cancel}"
+                                        Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).CancelAssignmentCommand}"
+                                        CommandParameter="{Binding AssignmentId}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>
