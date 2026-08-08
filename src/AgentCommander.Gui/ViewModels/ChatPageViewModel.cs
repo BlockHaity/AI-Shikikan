@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using AgentCommander.Core.Models;
@@ -34,7 +33,7 @@ public partial class ChatPageViewModel : ViewModelBase
     public ChatPageViewModel()
     {
         _chatService = new ChatService();
-        _runtime = CommanderRuntime.Boot(Directory.GetCurrentDirectory());
+        _runtime = AppShell.Instance.Runtime;
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
         Messages = CurrentSession?.Messages ?? [];
