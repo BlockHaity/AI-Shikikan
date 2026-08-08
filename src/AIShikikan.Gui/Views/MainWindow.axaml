@@ -11,6 +11,9 @@
         Width="1024" Height="768"
         WindowStartupLocation="CenterScreen"
         Title="{Binding Title}">
+    <Window.Icon>
+        <BitmapImage Source="avares://AIShikikan.Gui/Assets/logo.jpg" />
+    </Window.Icon>
 
     <Design.DataContext>
         <vm:MainWindowViewModel/>
