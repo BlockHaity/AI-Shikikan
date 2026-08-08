@@ -1,24 +1,25 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
+using Azure.AI.OpenAI;
+using OpenAI;
+using OpenAI.Chat;
+using System.ClientModel;
 
 namespace AgentCommander.Core.Services.Llm;
 
 public class OpenAiChatCompletionsClient : IChatCompletionsClient
 {
     private readonly string _providerId;
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(10) };
+    private readonly bool _isAzure;
+    private readonly Uri _baseUrl;
+    private readonly ApiKeyCredential _credential;
 
     public OpenAiChatCompletionsClient(ProviderConfig config)
     {
         _providerId = config.Id;
-        var baseUrl = config.BaseUrl.TrimEnd('/');
-        _http.BaseAddress = new Uri(baseUrl);
-        if (!string.IsNullOrEmpty(config.ApiKey))
-        {
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", config.ApiKey);
-        }
+        _isAzure = config.BaseUrl.Contains("azure.com", StringComparison.OrdinalIgnoreCase);
+        _baseUrl = new Uri(_isAzure ? config.BaseUrl.TrimEnd('/') : (config.BaseUrl.TrimEnd('/') + "/"));
+        _credential = new ApiKeyCredential(config.ApiKey);
     }
 
     public string ProviderId => _providerId;
@@ -26,42 +27,12 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
     public async Task<ChatCompletionResult> CompleteAsync(ChatRequest request, CancellationToken ct = default)
     {
         ChatCompletionResult? final = null;
-        var text = new StringBuilder();
-        var toolCalls = new List<ToolCallData>();
         string? error = null;
 
         await foreach (var e in StreamAsync(request, ct))
         {
-            switch (e.Kind)
-            {
-                case StreamEventKind.TextDelta:
-                    text.Append(e.Text);
-                    break;
-                case StreamEventKind.ToolCallStarted:
-                    toolCalls.Add(e.ToolCall!);
-                    break;
-                case StreamEventKind.ToolCallCompleted:
-                    if (e.ToolCall is { } call)
-                    {
-                        var idx = toolCalls.FindIndex(t => t.Id == call.Id);
-                        if (idx >= 0)
-                        {
-                            toolCalls[idx] = call;
-                        }
-                        else
-                        {
-                            toolCalls.Add(call);
-                        }
-                    }
-
-                    break;
-                case StreamEventKind.Done when e.Final is not null:
-                    final = e.Final;
-                    break;
-                case StreamEventKind.Error:
-                    error = e.Error;
-                    break;
-            }
+            if (e.Kind == StreamEventKind.Done && e.Final is not null) final = e.Final;
+            if (e.Kind == StreamEventKind.Error) error = e.Error;
         }
 
         if (final is not null)
@@ -71,108 +42,125 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
 
         return error is not null
             ? new ChatCompletionResult { IsError = true, Error = error }
-            : (text.Length > 0 || toolCalls.Count > 0
-                ? new ChatCompletionResult { Content = text.Length > 0 ? string.Concat(text) : null, ToolCalls = toolCalls.Count > 0 ? toolCalls : null }
-                : new ChatCompletionResult { IsError = true, Error = "未收到任何模型输出，请检查网络与配置" });
+            : new ChatCompletionResult { IsError = true, Error = "未收到任何模型输出，请检查网络与配置" };
     }
 
     public async IAsyncEnumerable<ChatStreamEvent> StreamAsync(
         ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        var body = BuildBody(request, stream: true);
-        using var payloadContent = new StringContent(body, Encoding.UTF8, "application/json");
-        using var req = new HttpRequestMessage(HttpMethod.Post, string.Empty) { Content = payloadContent };
-
-        using var response = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-        using var resp = await LlmJson.ReadResponseAsync(response, ct);
-
-        var stream = await response.Content.ReadAsStreamAsync(ct);
-
-        var text = new StringBuilder();
-        var toolCallsById = new Dictionary<int, ToolCallData>();
-        var usage = new ChatUsage();
-
-        await foreach (var data in SseParser.ReadDataAsync(stream, ct))
+        string? error = null;
+        var enumerator = EmitAsync(request, ct).GetAsyncEnumerator(ct);
+        try
         {
-            if (data == "[DONE]")
+            while (true)
             {
-                break;
-            }
-
-            using var json = JsonDocument.Parse(data);
-            var root = json.RootElement;
-
-            if (root.TryGetProperty("error", out var err))
-            {
-                var msg = err.TryGetProperty("message", out var m) ? m.GetString() : "未知错误";
-                yield return new ChatStreamEvent { Kind = StreamEventKind.Error, Error = msg };
-                yield break;
-            }
-
-            if (root.TryGetProperty("usage", out var usageEl))
-            {
-                if (usageEl.TryGetProperty("prompt_tokens", out var p)) usage.InputTokens = p.GetInt32();
-                if (usageEl.TryGetProperty("completion_tokens", out var co)) usage.OutputTokens = co.GetInt32();
-            }
-
-            if (!root.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-            {
-                continue;
-            }
-
-            var choice = choices[0];
-            if (!choice.TryGetProperty("delta", out var delta) || delta.ValueKind != JsonValueKind.Object)
-            {
-                continue;
-            }
-
-            if (delta.TryGetProperty("content", out var c) && c.ValueKind == JsonValueKind.String)
-            {
-                var chunk = c.GetString();
-                if (!string.IsNullOrEmpty(chunk))
+                bool more;
+                try
                 {
-                    text.Append(chunk);
-                    yield return new ChatStreamEvent { Kind = StreamEventKind.TextDelta, Text = chunk };
+                    more = await enumerator.MoveNextAsync();
                 }
-            }
-
-            if (delta.TryGetProperty("tool_calls", out var toolCalls) && toolCalls.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var call in toolCalls.EnumerateArray())
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    var index = call.TryGetProperty("index", out var i) ? i.GetInt32() : 0;
-                    if (!toolCallsById.TryGetValue(index, out var existing))
-                    {
-                        existing = new ToolCallData();
-                        toolCallsById[index] = existing;
-                        yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallStarted, ToolCall = existing };
-                    }
-
-                    if (call.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String && existing.Id.Length == 0)
-                    {
-                        existing.Id = id.GetString() ?? string.Empty;
-                    }
-
-                    if (call.TryGetProperty("function", out var fn) && fn.ValueKind == JsonValueKind.Object)
-                    {
-                        if (fn.TryGetProperty("name", out var name) && name.ValueKind == JsonValueKind.String)
-                        {
-                            existing.Name += name.GetString();
-                        }
-
-                        if (fn.TryGetProperty("arguments", out var args) && args.ValueKind == JsonValueKind.String)
-                        {
-                            existing.Arguments += args.GetString();
-                        }
-                    }
+                    error = $"{ex.GetType().Name}: {ex.Message}";
+                    break;
                 }
+
+                if (!more)
+                {
+                    break;
+                }
+
+                yield return enumerator.Current;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+
+        if (error is not null)
+        {
+            yield return new ChatStreamEvent { Kind = StreamEventKind.Error, Error = error };
+        }
+    }
+
+    private async IAsyncEnumerable<ChatStreamEvent> EmitAsync(
+        ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var messages = BuildMessages(request);
+        var options = new ChatCompletionOptions
+        {
+            MaxOutputTokenCount = request.MaxTokens,
+            Temperature = (float)request.Temperature,
+            ToolChoice = ChatToolChoice.CreateAutoChoice()
+        };
+
+        if (request.Tools is { Count: > 0 })
+        {
+            foreach (var t in request.Tools)
+            {
+                options.Tools.Add(ChatTool.CreateFunctionTool(
+                    t.Name, t.Description,
+                    t.Parameters.ValueKind == JsonValueKind.Object
+                        ? BinaryData.FromString(t.Parameters.GetRawText())
+                        : BinaryData.FromString("{}"),
+                    null));
             }
         }
 
-        var completed = toolCallsById.Values.Where(t => t.Name.Length > 0).ToList();
-        foreach (var call in completed)
+        var text = new StringBuilder();
+        var toolCalls = new Dictionary<int, ToolCallData>();
+        var usage = new ChatUsage();
+        string finishReason = string.Empty;
+
+        var chat = CreateChatClient(request.Model);
+        await foreach (var update in chat.CompleteChatStreamingAsync(messages, options, ct))
         {
-            yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallCompleted, ToolCall = call };
+            if (update.ContentUpdate is { Count: > 0 })
+            {
+                foreach (var part in update.ContentUpdate)
+                {
+                    if (part.Kind == ChatMessageContentPartKind.Text && !string.IsNullOrEmpty(part.Text))
+                    {
+                        text.Append(part.Text);
+                        yield return new ChatStreamEvent { Kind = StreamEventKind.TextDelta, Text = part.Text };
+                    }
+                }
+            }
+
+            foreach (var tc in update.ToolCallUpdates)
+            {
+                if (!toolCalls.TryGetValue(tc.Index, out var existing))
+                {
+                    existing = new ToolCallData();
+                    toolCalls[tc.Index] = existing;
+                    yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallStarted, ToolCall = existing };
+                }
+
+                if (!string.IsNullOrEmpty(tc.ToolCallId)) existing.Id = tc.ToolCallId;
+                if (!string.IsNullOrEmpty(tc.FunctionName)) existing.Name += tc.FunctionName;
+                if (tc.FunctionArgumentsUpdate is { } args)
+                {
+                    existing.Arguments += args.ToString();
+                }
+            }
+
+            if (update.Usage is { } u)
+            {
+                usage.InputTokens = u.InputTokenCount;
+                usage.OutputTokens = u.OutputTokenCount;
+            }
+
+            if (update.FinishReason is { } fr && string.IsNullOrEmpty(finishReason))
+            {
+                finishReason = fr switch
+                {
+                    ChatFinishReason.ToolCalls => "tool_calls",
+                    ChatFinishReason.Length => "length",
+                    ChatFinishReason.ContentFilter => "content_filter",
+                    _ => "stop"
+                };
+            }
         }
 
         yield return new ChatStreamEvent
@@ -181,90 +169,58 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
             Final = new ChatCompletionResult
             {
                 Content = text.Length > 0 ? text.ToString() : null,
-                ToolCalls = completed.Count > 0 ? completed : null,
-                Usage = usage
+                ToolCalls = toolCalls.Values.Where(t => t.Name.Length > 0).ToList(),
+                Usage = usage,
+                FinishReason = finishReason
             }
         };
     }
 
-    private static void JAdd(JsonArray array, JsonNode? node) => array.Add(node);
+    private ChatClient CreateChatClient(string model) => _isAzure
+        ? new AzureOpenAIClient(_baseUrl, _credential).GetChatClient(model)
+        : new OpenAIClient(_credential, new OpenAIClientOptions { Endpoint = _baseUrl }).GetChatClient(model);
 
-    private static string BuildBody(ChatRequest request, bool stream)
+    private static List<ChatMessage> BuildMessages(ChatRequest request)
     {
-        var messages = new JsonArray();
+        var list = new List<ChatMessage>();
         if (!string.IsNullOrEmpty(request.System))
         {
-            JAdd(messages, new JsonObject { ["role"] = "system", ["content"] = request.System });
+            list.Add(ChatMessage.CreateSystemMessage(request.System));
         }
 
         foreach (var m in request.Messages)
         {
-            var obj = new JsonObject
+            switch (m.Role)
             {
-                ["role"] = ToApiRole(m.Role),
-                ["content"] = m.Content
-            };
+                case ChatMsgRole.System:
+                    list.Add(ChatMessage.CreateSystemMessage(m.Content));
+                    break;
 
-            if (m.ToolCalls is { Count: > 0 })
-            {
-                var calls = new JsonArray();
-                foreach (var call in m.ToolCalls)
-                {
-                    JAdd(calls, LlmJson.BuildOpenAiToolCall(call));
-                }
+                case ChatMsgRole.User:
+                    list.Add(ChatMessage.CreateUserMessage(m.Content));
+                    break;
 
-                obj["tool_calls"] = calls;
+                case ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 }:
+                    var calls = new List<ChatToolCall>(m.ToolCalls.Count);
+                    foreach (var call in m.ToolCalls)
+                    {
+                        calls.Add(ChatToolCall.CreateFunctionToolCall(
+                            call.Id, call.Name, BinaryData.FromString(LlmJson.ToNode(call.Arguments)?.ToJsonString() ?? "{}")));
+                    }
+
+                    list.Add(ChatMessage.CreateAssistantMessage(calls));
+                    break;
+
+                case ChatMsgRole.Assistant:
+                    list.Add(ChatMessage.CreateAssistantMessage(m.Content));
+                    break;
+
+                case ChatMsgRole.Tool:
+                    list.Add(ChatMessage.CreateToolMessage(m.ToolCallId ?? string.Empty, m.Content));
+                    break;
             }
-
-            if (m.Role == ChatMsgRole.Tool)
-            {
-                obj["tool_call_id"] = m.ToolCallId;
-            }
-
-            JAdd(messages, obj);
         }
 
-        var body = new JsonObject
-        {
-            ["model"] = request.Model,
-            ["messages"] = messages,
-            ["temperature"] = request.Temperature,
-            ["stream"] = stream
-        };
-
-        if (request.Tools is { Count: > 0 })
-        {
-            var tools = new JsonArray();
-            foreach (var t in request.Tools)
-            {
-                var fn = new JsonObject
-                {
-                    ["name"] = t.Name,
-                    ["description"] = t.Description
-                };
-
-                if (t.Parameters.ValueKind == JsonValueKind.Object)
-                {
-                    fn["parameters"] = JsonNode.Parse(t.Parameters.GetRawText());
-                }
-
-                JAdd(tools, new JsonObject { ["type"] = "function", ["function"] = fn });
-            }
-
-            body["tools"] = tools;
-            body["tool_choice"] = "auto";
-        }
-
-        body["max_completion_tokens"] = request.MaxTokens;
-        return body.ToJsonString();
+        return list;
     }
-
-    private static string ToApiRole(ChatMsgRole role) => role switch
-    {
-        ChatMsgRole.System => "system",
-        ChatMsgRole.User => "user",
-        ChatMsgRole.Assistant => "assistant",
-        ChatMsgRole.Tool => "tool",
-        _ => "user"
-    };
 }

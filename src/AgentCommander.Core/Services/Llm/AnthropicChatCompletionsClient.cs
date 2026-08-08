@@ -1,26 +1,30 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Anthropic.SDK;
+using Anthropic.SDK.Messaging;
+using CommonTool = Anthropic.SDK.Common.Tool;
+using Message = Anthropic.SDK.Messaging.Message;
 
 namespace AgentCommander.Core.Services.Llm;
 
 public class AnthropicChatCompletionsClient : IChatCompletionsClient
 {
-    private const string ApiVersion = "2023-06-01";
-
     private readonly string _providerId;
-    private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(10) };
+    private readonly AnthropicClient _client;
 
     public AnthropicChatCompletionsClient(ProviderConfig config)
     {
         _providerId = config.Id;
+
         var baseUrl = config.BaseUrl.TrimEnd('/');
-        _http.BaseAddress = new Uri(baseUrl);
-        _http.DefaultRequestHeaders.Add("anthropic-version", ApiVersion);
-        if (!string.IsNullOrEmpty(config.ApiKey))
+        _client = new AnthropicClient(
+            new APIAuthentication(config.ApiKey),
+            new HttpClient { Timeout = TimeSpan.FromMinutes(10) });
+
+        if (!baseUrl.Equals("https://api.anthropic.com", StringComparison.OrdinalIgnoreCase))
         {
-            _http.DefaultRequestHeaders.Add("x-api-key", config.ApiKey);
+            _client.ApiUrlFormat = $"{baseUrl}/{{0}}/{{1}}";
         }
     }
 
@@ -30,246 +34,247 @@ public class AnthropicChatCompletionsClient : IChatCompletionsClient
     {
         ChatCompletionResult? final = null;
         string? error = null;
+
         await foreach (var e in StreamAsync(request, ct))
         {
             if (e.Kind == StreamEventKind.Done && e.Final is not null) final = e.Final;
             if (e.Kind == StreamEventKind.Error) error = e.Error;
         }
 
-        if (final is not null) return final;
+        if (final is not null)
+        {
+            return final;
+        }
+
         return error is not null
             ? new ChatCompletionResult { IsError = true, Error = error }
-            : new ChatCompletionResult { IsError = true, Error = "未收到任何模型输出" };
+            : new ChatCompletionResult { IsError = true, Error = "未收到任何模型输出，请检查网络与配置" };
     }
 
     public async IAsyncEnumerable<ChatStreamEvent> StreamAsync(
         ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        var body = BuildBody(request, stream: true);
-        using var payloadContent = new StringContent(body, Encoding.UTF8, "application/json");
-        using var req = new HttpRequestMessage(HttpMethod.Post, string.Empty) { Content = payloadContent };
+        string? error = null;
+        var enumerator = EmitAsync(request, ct).GetAsyncEnumerator(ct);
+        try
+        {
+            while (true)
+            {
+                bool more;
+                try
+                {
+                    more = await enumerator.MoveNextAsync();
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    error = $"{ex.GetType().Name}: {ex.Message}";
+                    break;
+                }
 
-        using var response = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-        using var resp = await LlmJson.ReadResponseAsync(response, ct);
+                if (!more)
+                {
+                    break;
+                }
 
-        var stream = await response.Content.ReadAsStreamAsync(ct);
+                yield return enumerator.Current;
+            }
+        }
+        finally
+        {
+            await enumerator.DisposeAsync();
+        }
+
+        if (error is not null)
+        {
+            yield return new ChatStreamEvent { Kind = StreamEventKind.Error, Error = error };
+        }
+    }
+
+    private async IAsyncEnumerable<ChatStreamEvent> EmitAsync(
+        ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var parameters = new MessageParameters
+        {
+            Model = request.Model,
+            Messages = BuildMessages(request),
+            MaxTokens = request.MaxTokens,
+            Temperature = (decimal)request.Temperature,
+            Stream = true,
+            Tools = BuildTools(request.Tools),
+            ToolChoice = request.Tools is { Count: > 0 } ? new ToolChoice { Type = ToolChoiceType.Auto } : null
+        };
+
+        if (!string.IsNullOrEmpty(request.System))
+        {
+            parameters.System = [new SystemMessage(request.System)];
+        }
 
         var text = new StringBuilder();
-        var toolArgs = new StringBuilder();
-        ToolCallData? activeTool = null;
+        var toolCalls = new Dictionary<string, ToolCallData>();
+        var emittedToolIds = new HashSet<string>();
         var usage = new ChatUsage();
         string stopReason = string.Empty;
 
-        await foreach (var data in SseParser.ReadDataAsync(stream, ct))
+        await foreach (var message in _client.Messages.StreamClaudeMessageAsync(parameters, ct))
         {
-            using var json = JsonDocument.Parse(data);
-            var root = json.RootElement;
-
-            if (root.TryGetProperty("error", out var err))
+            if (message.ContentBlock is { Type: "tool_use" })
             {
-                var msg = err.TryGetProperty("message", out var m) ? m.GetString() : "未知错误";
-                yield return new ChatStreamEvent { Kind = StreamEventKind.Error, Error = msg };
-                yield break;
+                var started = new ToolCallData
+                {
+                    Id = message.ContentBlock.Id ?? string.Empty,
+                    Name = message.ContentBlock.Name ?? string.Empty
+                };
+                toolCalls[started.Id] = started;
+                yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallStarted, ToolCall = started };
             }
 
-            var type = root.TryGetProperty("type", out var t) ? t.GetString() : string.Empty;
-            switch (type)
+            if (!string.IsNullOrEmpty(message.Delta?.Text))
             {
-                case "message_start":
-                    if (root.TryGetProperty("message", out var msg) &&
-                        msg.TryGetProperty("usage", out var usage0))
+                text.Append(message.Delta.Text);
+                yield return new ChatStreamEvent { Kind = StreamEventKind.TextDelta, Text = message.Delta.Text };
+            }
+
+            if (message.ToolCalls is { Count: > 0 })
+            {
+                foreach (var f in message.ToolCalls)
+                {
+                    if (f.Id is null || !emittedToolIds.Add(f.Id))
                     {
-                        if (usage0.TryGetProperty("input_tokens", out var it)) usage.InputTokens = it.GetInt32();
+                        continue;
                     }
 
-                    break;
-
-                case "content_block_start":
-                    if (root.TryGetProperty("content_block", out var block))
+                    var completed = new ToolCallData
                     {
-                        var blockType = block.TryGetProperty("type", out var bt) ? bt.GetString() : string.Empty;
-                        if (blockType == "tool_use")
-                        {
-                            activeTool = new ToolCallData
-                            {
-                                Id = block.TryGetProperty("id", out var id) ? id.GetString() ?? string.Empty : string.Empty,
-                                Name = block.TryGetProperty("name", out var nm) ? nm.GetString() ?? string.Empty : string.Empty
-                            };
-                            toolArgs.Clear();
-                            yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallStarted, ToolCall = activeTool };
-                        }
-                    }
-
-                    break;
-
-                case "content_block_delta":
-                    if (root.TryGetProperty("delta", out var delta))
-                    {
-                        var deltaType = delta.TryGetProperty("type", out var dt) ? dt.GetString() : string.Empty;
-                        switch (deltaType)
-                        {
-                            case "text_delta":
-                                var chunk = delta.TryGetProperty("text", out var txt) ? txt.GetString() : null;
-                                if (!string.IsNullOrEmpty(chunk))
-                                {
-                                    text.Append(chunk);
-                                    yield return new ChatStreamEvent { Kind = StreamEventKind.TextDelta, Text = chunk };
-                                }
-
-                                break;
-
-                            case "input_json_delta":
-                                if (activeTool is not null &&
-                                    delta.TryGetProperty("partial_json", out var pj) && pj.ValueKind == JsonValueKind.String)
-                                {
-                                    toolArgs.Append(pj.GetString());
-                                }
-
-                                break;
-                        }
-                    }
-
-                    break;
-
-                case "content_block_stop":
-                    if (activeTool is not null)
-                    {
-                        activeTool.Arguments = toolArgs.ToString();
-                        yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallCompleted, ToolCall = activeTool };
-                        activeTool = null;
-                    }
-
-                    break;
-
-                case "message_delta":
-                    if (root.TryGetProperty("delta", out var mdelta) &&
-                        mdelta.TryGetProperty("stop_reason", out var sr))
-                    {
-                        stopReason = sr.GetString() ?? string.Empty;
-                    }
-
-                    if (root.TryGetProperty("usage", out var musage) &&
-                        musage.TryGetProperty("output_tokens", out var ot))
-                    {
-                        usage.OutputTokens = ot.GetInt32();
-                    }
-
-                    break;
-
-                case "message_stop":
-                    yield return new ChatStreamEvent
-                    {
-                        Kind = StreamEventKind.Done,
-                        Final = new ChatCompletionResult
-                        {
-                            Content = text.Length > 0 ? text.ToString() : null,
-                            Usage = usage,
-                            FinishReason = stopReason
-                        }
+                        Id = f.Id,
+                        Name = f.Name ?? string.Empty,
+                        Arguments = f.Arguments?.ToJsonString() ?? string.Empty
                     };
-                    yield break;
+                    toolCalls[completed.Id] = completed;
+                    yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallCompleted, ToolCall = completed };
+                }
+            }
+            else if (message.Delta?.StopReason == "tool_use")
+            {
+                foreach (var pending in toolCalls.Values.Where(t => !emittedToolIds.Contains(t.Id)))
+                {
+                    emittedToolIds.Add(pending.Id);
+                    yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallCompleted, ToolCall = pending };
+                }
+            }
+
+            if (message.StreamStartMessage?.Usage is { } start)
+            {
+                usage.InputTokens = start.InputTokens;
+            }
+
+            if (message.Usage is { } u)
+            {
+                usage.OutputTokens = u.OutputTokens;
+            }
+
+            var deltaStopReason = message.Delta?.StopReason;
+            if (!string.IsNullOrEmpty(deltaStopReason))
+            {
+                stopReason = deltaStopReason;
+            }
+            else if (!string.IsNullOrEmpty(message.StopReason))
+            {
+                stopReason = message.StopReason;
+            }
+
+            if (message.Type is "message_delta")
+            {
+                yield return new ChatStreamEvent
+                {
+                    Kind = StreamEventKind.Done,
+                    Final = new ChatCompletionResult
+                    {
+                        Content = text.Length > 0 ? text.ToString() : null,
+                        ToolCalls = toolCalls.Count > 0 ? toolCalls.Values.ToList() : null,
+                        Usage = usage,
+                        FinishReason = stopReason
+                    }
+                };
+                yield break;
             }
         }
     }
 
-    private static void JAdd(JsonArray array, JsonNode? node) => array.Add(node);
-
-    private static string BuildBody(ChatRequest request, bool stream)
+    private static List<CommonTool>? BuildTools(List<ToolSpec>? specs)
     {
-        var messages = new JsonArray();
+        if (specs is not { Count: > 0 })
+        {
+            return null;
+        }
 
+        var tools = new List<CommonTool>(specs.Count);
+        foreach (var t in specs)
+        {
+            var parameters = t.Parameters.ValueKind == JsonValueKind.Object
+                ? JsonNode.Parse(t.Parameters.GetRawText())
+                : new JsonObject();
+            tools.Add(new CommonTool(new Anthropic.SDK.Common.Function(t.Name, t.Description, parameters)));
+        }
+
+        return tools;
+    }
+
+    private static List<Message> BuildMessages(ChatRequest request)
+    {
+        var list = new List<Message>();
         foreach (var m in request.Messages)
         {
             switch (m.Role)
             {
                 case ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 }:
-                {
-                    var blocks = new JsonArray();
-                    JAdd(blocks, new JsonObject
+                    var blocks = new List<ContentBase>();
+                    if (!string.IsNullOrEmpty(m.Content))
                     {
-                        ["type"] = "text",
-                        ["text"] = m.Content
-                    });
-                    foreach (var call in m.ToolCalls)
-                    {
-                        JAdd(blocks, LlmJson.BuildAnthropicToolUse(call));
+                        blocks.Add(new TextContent { Text = m.Content });
                     }
 
-                    JAdd(messages, new JsonObject
+                    foreach (var call in m.ToolCalls)
                     {
-                        ["role"] = "assistant",
-                        ["content"] = blocks
-                    });
+                        blocks.Add(new ToolUseContent
+                        {
+                            Id = call.Id,
+                            Name = call.Name,
+                            Input = LlmJson.ToNode(call.Arguments)
+                        });
+                    }
+
+                    list.Add(new Message { Role = RoleType.Assistant, Content = blocks });
                     break;
-                }
 
                 case ChatMsgRole.Tool:
-                {
-                    var content = new JsonArray();
-                    JAdd(content, new JsonObject
+                    list.Add(new Message
                     {
-                        ["type"] = "tool_result",
-                        ["tool_use_id"] = m.ToolCallId,
-                        ["content"] = m.Content
-                    });
-                    JAdd(messages, new JsonObject
-                    {
-                        ["role"] = "user",
-                        ["content"] = content
+                        Role = RoleType.User,
+                        Content =
+                        [
+                            new ToolResultContent
+                            {
+                                ToolUseId = m.ToolCallId ?? string.Empty,
+                                Content = [new TextContent { Text = m.Content }]
+                            }
+                        ]
                     });
                     break;
-                }
+
+                case ChatMsgRole.System:
+                    list.Add(new Message { Role = RoleType.User, Content = [new TextContent { Text = m.Content }] });
+                    break;
 
                 default:
-                {
-                    var content = new JsonArray();
-                    JAdd(content, new JsonObject { ["type"] = "text", ["text"] = m.Content });
-                    JAdd(messages, new JsonObject
+                    list.Add(new Message
                     {
-                        ["role"] = m.Role == ChatMsgRole.Assistant ? "assistant" : "user",
-                        ["content"] = content
+                        Role = m.Role == ChatMsgRole.Assistant ? RoleType.Assistant : RoleType.User,
+                        Content = [new TextContent { Text = m.Content }]
                     });
                     break;
-                }
             }
         }
 
-        var body = new JsonObject
-        {
-            ["model"] = request.Model,
-            ["messages"] = messages,
-            ["max_tokens"] = request.MaxTokens,
-            ["temperature"] = request.Temperature,
-            ["stream"] = stream
-        };
-
-        if (!string.IsNullOrEmpty(request.System))
-        {
-            body["system"] = request.System;
-        }
-
-        if (request.Tools is { Count: > 0 })
-        {
-            var tools = new JsonArray();
-            foreach (var t in request.Tools)
-            {
-                var tool = new JsonObject
-                {
-                    ["name"] = t.Name,
-                    ["description"] = t.Description
-                };
-
-                if (t.Parameters.ValueKind == JsonValueKind.Object)
-                {
-                    tool["input_schema"] = JsonNode.Parse(t.Parameters.GetRawText());
-                }
-
-                JAdd(tools, tool);
-            }
-
-            body["tools"] = tools;
-        }
-
-        return body.ToJsonString();
+        return list;
     }
 }
