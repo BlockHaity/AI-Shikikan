@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services.Personas;
 
@@ -8,7 +9,7 @@ public class Persona
     public string Id { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
 
-    [JsonConverter(typeof(JsonStringEnumConverter))]
+    [JsonConverter(typeof(JsonStringEnumConverter<PersonaKind>))]
     public PersonaKind Kind { get; set; } = PersonaKind.Expert;
 
     public string Description { get; set; } = string.Empty;
@@ -26,13 +27,6 @@ public enum PersonaKind
 
 public static class PersonaService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReadCommentHandling = JsonCommentHandling.Skip
-    };
-
     public static IReadOnlyList<Persona> LoadAll()
     {
         var list = new List<Persona>();
@@ -41,7 +35,7 @@ public static class PersonaService
         {
             try
             {
-                var persona = JsonSerializer.Deserialize<Persona>(File.ReadAllText(file), JsonOptions);
+                var persona = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.Persona);
                 if (persona is not null && !string.IsNullOrWhiteSpace(persona.Name))
                 {
                     if (string.IsNullOrEmpty(persona.Id))
@@ -69,7 +63,7 @@ public static class PersonaService
     {
         Directory.CreateDirectory(AppPaths.PersonasDir);
         var file = Path.Combine(AppPaths.PersonasDir, $"{persona.Id}.json");
-        File.WriteAllText(file, JsonSerializer.Serialize(persona, JsonOptions));
+        File.WriteAllText(file, JsonSerializer.Serialize(persona, AppJsonContext.Default.Persona));
     }
 
     public static void WriteSampleFiles()

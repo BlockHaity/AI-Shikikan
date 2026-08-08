@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services.Llm;
 
@@ -68,20 +69,14 @@ public static class ProviderDefaults
 
 public static class ProviderSettingsService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     public static LlmSettings Load()
     {
         try
         {
             if (File.Exists(AppPaths.ProvidersPath))
             {
-                var settings = JsonSerializer.Deserialize<LlmSettings>(
-                    File.ReadAllText(AppPaths.ProvidersPath), JsonOptions);
+                var settings = JsonSerializer.Deserialize(
+                    File.ReadAllText(AppPaths.ProvidersPath), AppJsonContext.Default.LlmSettings);
                 if (settings is { Providers.Count: > 0 })
                 {
                     return settings;
@@ -99,6 +94,6 @@ public static class ProviderSettingsService
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
         File.WriteAllText(AppPaths.ProvidersPath,
-            JsonSerializer.Serialize(settings, JsonOptions));
+            JsonSerializer.Serialize(settings, AppJsonContext.Default.LlmSettings));
     }
 }

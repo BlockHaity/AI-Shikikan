@@ -1,6 +1,6 @@
 using System.IO;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services;
 
@@ -59,7 +59,7 @@ public class ThemeService
         {
             if (!File.Exists(ConfigPath)) return;
             var json = File.ReadAllText(ConfigPath);
-            _prefs = JsonSerializer.Deserialize<Preferences>(json) ?? new Preferences();
+            _prefs = JsonSerializer.Deserialize(json, AppJsonContext.Default.Preferences) ?? new Preferences();
         }
         catch
         {
@@ -72,11 +72,7 @@ public class ThemeService
         try
         {
             Directory.CreateDirectory(ConfigDir);
-            var json = JsonSerializer.Serialize(_prefs, new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            });
+            var json = JsonSerializer.Serialize(_prefs, AppJsonContext.Default.Preferences);
             File.WriteAllText(ConfigPath, json);
         }
         catch
@@ -84,7 +80,7 @@ public class ThemeService
         }
     }
 
-    private class Preferences
+    public class Preferences
     {
         public bool IsDarkTheme { get; set; } = true;
         public string Language { get; set; } = "zh-CN";

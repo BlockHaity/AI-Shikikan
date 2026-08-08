@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services.Agents;
 
@@ -15,13 +16,6 @@ public class AgentConfigFile
 
 public static class AgentConfigService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReadCommentHandling = JsonCommentHandling.Skip
-    };
-
     private static readonly object Sync = new();
     private static IReadOnlyList<CliAgentDefinition>? _cache;
 
@@ -64,8 +58,8 @@ public static class AgentConfigService
         {
             if (File.Exists(AppPaths.AgentsPath))
             {
-                var file = JsonSerializer.Deserialize<AgentConfigFile>(
-                    File.ReadAllText(AppPaths.AgentsPath), JsonOptions);
+                var file = JsonSerializer.Deserialize(
+                    File.ReadAllText(AppPaths.AgentsPath), AppJsonContext.Default.AgentConfigFile);
                 if (file is not null)
                 {
                     return file;
@@ -130,7 +124,7 @@ public static class AgentConfigService
     private static void SaveFile(AgentConfigFile file)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.AgentsPath, JsonSerializer.Serialize(file, JsonOptions));
+        File.WriteAllText(AppPaths.AgentsPath, JsonSerializer.Serialize(file, AppJsonContext.Default.AgentConfigFile));
         _cache = null;
     }
 }

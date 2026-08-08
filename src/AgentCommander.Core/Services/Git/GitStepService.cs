@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services.Git;
 
@@ -37,12 +38,6 @@ public class GitCommandResult
 
 public sealed class GitStepService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly Dictionary<string, GitStepRecord> _steps = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
@@ -57,7 +52,7 @@ public sealed class GitStepService
         {
             try
             {
-                var record = JsonSerializer.Deserialize<GitStepRecord>(File.ReadAllText(file), JsonOptions);
+                var record = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.GitStepRecord);
                 if (record is not null)
                 {
                     _steps[record.StepId] = record;
@@ -348,7 +343,7 @@ public sealed class GitStepService
             _steps[record.StepId] = record;
             Directory.CreateDirectory(AppPaths.StepsDir);
             var file = Path.Combine(AppPaths.StepsDir, $"{record.StepId}.json");
-            File.WriteAllText(file, JsonSerializer.Serialize(record, JsonOptions));
+            File.WriteAllText(file, JsonSerializer.Serialize(record, AppJsonContext.Default.GitStepRecord));
         }
     }
 }

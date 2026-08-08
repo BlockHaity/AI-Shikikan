@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentCommander.Core.Serialization;
 using AgentCommander.Core.Services.Agents;
 using AgentCommander.Core.Services.Git;
 
@@ -43,12 +44,6 @@ public class Assignment
 /// <summary>分派管理: 记录、异步后台执行、与 Git 步骤生命周期绑定、持久化。</summary>
 public sealed class AssignmentManager
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
-
     private readonly Dictionary<string, Assignment> _assignments = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, CancellationTokenSource> _cancellations = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
@@ -61,7 +56,7 @@ public sealed class AssignmentManager
         {
             try
             {
-                var a = JsonSerializer.Deserialize<Assignment>(File.ReadAllText(file), JsonOptions);
+                var a = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.Assignment);
                 if (a is not null)
                 {
                     _assignments[a.AssignmentId] = a;
@@ -288,6 +283,6 @@ public sealed class AssignmentManager
         Directory.CreateDirectory(AppPaths.AssignmentsDir);
         File.WriteAllText(
             Path.Combine(AppPaths.AssignmentsDir, $"{assignment.AssignmentId}.json"),
-            JsonSerializer.Serialize(assignment, JsonOptions));
+            JsonSerializer.Serialize(assignment, AppJsonContext.Default.Assignment));
     }
 }

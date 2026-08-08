@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services.Templates;
 
@@ -23,13 +24,6 @@ public class AgentTemplate
 
 public static class AgentTemplateService
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        ReadCommentHandling = JsonCommentHandling.Skip
-    };
-
     public static IReadOnlyList<AgentTemplate> LoadAll()
     {
         var list = new List<AgentTemplate>();
@@ -38,7 +32,7 @@ public static class AgentTemplateService
         {
             try
             {
-                var t = JsonSerializer.Deserialize<AgentTemplate>(File.ReadAllText(file), JsonOptions);
+                var t = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.AgentTemplate);
                 if (t is not null && !string.IsNullOrEmpty(t.Id))
                 {
                     if (string.IsNullOrEmpty(t.Name))
@@ -176,6 +170,6 @@ public static class AgentTemplateService
     {
         Directory.CreateDirectory(AppPaths.TemplatesDir);
         var file = Path.Combine(AppPaths.TemplatesDir, $"{template.Id}.json");
-        File.WriteAllText(file, JsonSerializer.Serialize(template, JsonOptions));
+        File.WriteAllText(file, JsonSerializer.Serialize(template, AppJsonContext.Default.AgentTemplate));
     }
 }

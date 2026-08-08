@@ -1,18 +1,13 @@
 using System.IO;
 using System.Text.Json;
 using AgentCommander.Core.Models;
+using AgentCommander.Core.Serialization;
 
 namespace AgentCommander.Core.Services;
 
 public class ChatService
 {
     private static readonly string SessionsDir = AppPaths.SessionsDir;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        WriteIndented = true,
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-    };
 
     private readonly List<ChatSession> _sessions = [];
     private ChatSession? _currentSession;
@@ -124,7 +119,7 @@ public class ChatService
                 try
                 {
                     var json = File.ReadAllText(file);
-                    var session = JsonSerializer.Deserialize<ChatSession>(json, JsonOptions);
+                    var session = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatSession);
                     if (session is not null)
                     {
                         _sessions.Add(session);
@@ -148,7 +143,7 @@ public class ChatService
         try
         {
             Directory.CreateDirectory(SessionsDir);
-            var json = JsonSerializer.Serialize(session, JsonOptions);
+            var json = JsonSerializer.Serialize(session, AppJsonContext.Default.ChatSession);
             var path = Path.Combine(SessionsDir, $"{session.Id}.json");
             File.WriteAllText(path, json);
         }
