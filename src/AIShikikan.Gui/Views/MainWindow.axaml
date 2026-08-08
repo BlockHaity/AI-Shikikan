@@ -11,8 +11,9 @@
         Width="1024" Height="768"
         WindowStartupLocation="CenterScreen"
         Title="{Binding Title}">
+
     <Window.Icon>
-        <BitmapImage Source="avares://AIShikikan.Gui/Assets/logo.jpg" />
+        <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="16" Height="16" />
     </Window.Icon>
 
     <Design.DataContext>
