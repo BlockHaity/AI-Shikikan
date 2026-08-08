@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AgentCommander.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:theme="using:CCSWE.Avalonia.Material"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AgentCommander.Gui.Views.SettingsPageView"
+             x:DataType="vm:SettingsPageViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24" Spacing="24">
+            <TextBlock Classes="DisplaySmall" Text="设置" />
+
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel Margin="24" Spacing="16">
+                    <TextBlock Classes="TitleMedium" Text="外观" />
+                    <theme:Divider />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="BodyLarge" Text="深色主题" VerticalAlignment="Center" />
+                        <ToggleSwitch Grid.Column="1" IsChecked="True" />
+                    </Grid>
+                </StackPanel>
+            </theme:Card>
+
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel Margin="24" Spacing="16">
+                    <TextBlock Classes="TitleMedium" Text="关于" />
+                    <theme:Divider />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto">
+                        <TextBlock Classes="BodyLarge" Text="应用名称" Grid.Row="0" Grid.Column="0"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                        <TextBlock Classes="BodyLarge" Text="{Binding AppName}" Grid.Row="0" Grid.Column="1" />
+                        <TextBlock Classes="BodyLarge" Text="版本" Grid.Row="1" Grid.Column="0"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                        <TextBlock Classes="BodyLarge" Text="{Binding AppVersion}" Grid.Row="1" Grid.Column="1" />
+                        <TextBlock Classes="BodyLarge" Text="字体" Grid.Row="2" Grid.Column="0"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                        <TextBlock Classes="BodyLarge" Text="{Binding FontInfo}" Grid.Row="2" Grid.Column="1" />
+                    </Grid>
+                </StackPanel>
+            </theme:Card>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

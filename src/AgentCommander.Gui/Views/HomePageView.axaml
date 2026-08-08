@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AgentCommander.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:theme="using:CCSWE.Avalonia.Material"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AgentCommander.Gui.Views.HomePageView"
+             x:DataType="vm:HomePageViewModel">
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24" Spacing="24">
+            <TextBlock Classes="DisplaySmall" Text="{Binding WelcomeText}" />
+            <TextBlock Classes="BodyLarge" Text="{Binding DescriptionText}"
+                       Foreground="{DynamicResource OnSurfaceVariant}" />
+            <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
+                       Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
+
+            <theme:Card Classes="Elevated" MaxWidth="600">
+                <StackPanel Margin="24" Spacing="12">
+                    <TextBlock Classes="TitleMedium" Text="快速开始" />
+                    <TextBlock Classes="BodyMedium"
+                               Text="Agent Commander 帮助你管理和指挥多个 AI Agent，提供统一的交互界面和工具链。"
+                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                </StackPanel>
+            </theme:Card>
+
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Classes="FilledTonal" Content="查看 Agent" />
+                <Button Classes="Outlined" Content="阅读文档" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>
