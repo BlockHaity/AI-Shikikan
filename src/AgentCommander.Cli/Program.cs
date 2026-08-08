@@ -1,3 +1,4 @@
+using AgentCommander.Cli.Api;
 using AgentCommander.Cli.Tui;
 using AgentCommander.Core;
 using AgentCommander.Core.Services;
@@ -16,12 +17,60 @@ if (args.Length > 0 && args[0] == "doctor")
     return RunDoctor();
 }
 
+if (args.Length > 0 && args[0] == "api")
+{
+    return await RunApiAsync(args);
+}
+
 var personaId = args.Length > 1 && args[0] == "--persona" ? args[1] : null;
 
 var app = new TuiApp(personaId);
 await app.RunAsync();
 
 return 0;
+
+static async Task<int> RunApiAsync(string[] args)
+{
+    var port = 8090;
+    var host = "localhost";
+    var workdir = Environment.CurrentDirectory;
+
+    for (var i = 1; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "--port" when i + 1 < args.Length && int.TryParse(args[i + 1], out var p):
+                port = p;
+                i++;
+                break;
+            case "--host" when i + 1 < args.Length:
+                host = args[++i];
+                break;
+            case "--workdir" when i + 1 < args.Length:
+                workdir = Path.GetFullPath(args[++i]);
+                break;
+        }
+    }
+
+    var runtime = CommanderRuntime.Boot(workdir);
+    var server = new ApiServer(runtime, port, host);
+    server.Start();
+
+    AnsiConsole.Write(new FigletText("Agent Commander").Color(Color.Cyan));
+    AnsiConsole.MarkupLine($"[grey]REST API 已启动:[/] [cyan]{server.BaseUrl}[/]");
+    AnsiConsole.MarkupLine($"[grey]工作目录:[/] {Markup.Escape(workdir)}");
+    AnsiConsole.MarkupLine($"[grey]Ctrl+C 停止[/]");
+    AnsiConsole.WriteLine();
+
+    Console.CancelKeyPress += (_, e) =>
+    {
+        e.Cancel = true;
+        _ = server.StopAsync();
+    };
+
+    await Task.Delay(Timeout.Infinite);
+    return 0;
+}
 
 static int RunDoctor()
 {

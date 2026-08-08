@@ -72,9 +72,18 @@ public sealed class AssignmentManager
 
     public event Action<Assignment>? AssignmentChanged;
 
-    public IReadOnlyList<Assignment> All => _assignments.Values
-        .OrderByDescending(a => a.CreatedAt)
-        .ToList();
+    public IReadOnlyList<Assignment> All
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _assignments.Values
+                    .OrderByDescending(a => a.CreatedAt)
+                    .ToList();
+            }
+        }
+    }
 
     public Assignment? Get(string assignmentId) =>
         _assignments.TryGetValue(assignmentId, out var a) ? a : null;
