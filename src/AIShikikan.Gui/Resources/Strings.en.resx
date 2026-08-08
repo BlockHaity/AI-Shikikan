@@ -23,6 +23,7 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <data name="Nav_Home" xml:space="preserve"><value>Home</value></data>
   <data name="Nav_Chat" xml:space="preserve"><value>Chat</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
   <data name="Home_Welcome" xml:space="preserve"><value>Welcome to AI-Shikikan</value></data>
   <data name="Home_Description" xml:space="preserve"><value>A powerful Agent management &amp; command tool</value></data>
   <data name="Home_QuickStart" xml:space="preserve"><value>Quick Start</value></data>
@@ -48,7 +49,6 @@
   <data name="Chat_GitRevert" xml:space="preserve"><value>Revert</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="Chat_QuickAssign" xml:space="preserve"><value>Quick Assign</value></data>
-  <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
   <data name="Chat_TogglePanel" xml:space="preserve"><value>Collapse panel</value></data>
   <data name="Panel_AssignTool" xml:space="preserve"><value>Assignment</value></data>
   <data name="Panel_GitTool" xml:space="preserve"><value>Source Control</value></data>
@@ -86,7 +86,33 @@
   <data name="GitPanel_Push" xml:space="preserve"><value>Push</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>Step checkpoints</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>Not a git repository</value></data>
-   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
-   <data name="GitPanel_Graph" xml:space="preserve"><value>Git graph</value></data>
-   <data name="GitPanel_NoGraph" xml:space="preserve"><value>No graph</value></data>
+  <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+  <data name="GitPanel_Graph" xml:space="preserve"><value>Git graph</value></data>
+  <data name="GitPanel_NoGraph" xml:space="preserve"><value>No graph</value></data>
+  <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>Settings</value></data>
+  <data name="Settings_Appearance" xml:space="preserve"><value>Appearance</value></data>
+  <data name="Settings_DarkTheme" xml:space="preserve"><value>Dark theme</value></data>
+  <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>Language change takes effect after restart</value></data>
+  <data name="Settings_About" xml:space="preserve"><value>About</value></data>
+  <data name="Settings_AppName" xml:space="preserve"><value>App name</value></data>
+  <data name="Settings_Version" xml:space="preserve"><value>Version</value></data>
+  <data name="Settings_Font" xml:space="preserve"><value>Font</value></data>
+  <data name="Settings_Background" xml:space="preserve"><value>Background</value></data>
+  <data name="Settings_SelectBg" xml:space="preserve"><value>Select image</value></data>
+  <data name="Settings_ClearBg" xml:space="preserve"><value>Clear background</value></data>
+  <data name="Settings_Providers" xml:space="preserve"><value>LLM Providers</value></data>
+  <data name="Settings_ProviderAdd" xml:space="preserve"><value>Add Provider</value></data>
+  <data name="Settings_ProviderName" xml:space="preserve"><value>Name</value></data>
+  <data name="Settings_ProviderBaseUrl" xml:space="preserve"><value>Base URL</value></data>
+  <data name="Settings_ProviderApiKey" xml:space="preserve"><value>API Key</value></data>
+  <data name="Settings_ProviderModel" xml:space="preserve"><value>Default Model</value></data>
+  <data name="Settings_ProviderKind" xml:space="preserve"><value>Type</value></data>
+  <data name="Settings_Activate" xml:space="preserve"><value>Set Active</value></data>
+  <data name="Settings_Remove" xml:space="preserve"><value>Remove</value></data>
+  <data name="Settings_Add" xml:space="preserve"><value>Add</value></data>
+  <data name="Settings_Agents" xml:space="preserve"><value>Agent Programs</value></data>
+  <data name="Settings_AgentName" xml:space="preserve"><value>Name</value></data>
+  <data name="Settings_AgentExecutable" xml:space="preserve"><value>Executable</value></data>
 </root>

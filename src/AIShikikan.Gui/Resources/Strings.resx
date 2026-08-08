@@ -23,6 +23,7 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
   <data name="Nav_Home" xml:space="preserve"><value>首页</value></data>
   <data name="Nav_Chat" xml:space="preserve"><value>聊天</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>设置</value></data>
   <data name="Home_Welcome" xml:space="preserve"><value>欢迎使用 AI-Shikikan</value></data>
   <data name="Home_Description" xml:space="preserve"><value>一个强大的 Agent 管理与指挥工具</value></data>
   <data name="Home_QuickStart" xml:space="preserve"><value>快速开始</value></data>
@@ -48,7 +49,6 @@
   <data name="Chat_GitRevert" xml:space="preserve"><value>回滚</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="Chat_QuickAssign" xml:space="preserve"><value>快速分配</value></data>
-  <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
   <data name="Chat_TogglePanel" xml:space="preserve"><value>收起侧栏</value></data>
   <data name="Panel_AssignTool" xml:space="preserve"><value>分配工具</value></data>
   <data name="Panel_GitTool" xml:space="preserve"><value>源代码管理</value></data>
@@ -59,20 +59,20 @@
   <data name="SubAgent_Add" xml:space="preserve"><value>添加子Agent</value></data>
   <data name="SubAgent_AddName" xml:space="preserve"><value>名称</value></data>
   <data name="SubAgent_AddExec" xml:space="preserve"><value>可执行文件</value></data>
-  <data name="SubAgent_AddDesc" xml:space="preserve"><value>描述(可选)</value></data>
-  <data name="SubAgent_AddHint" xml:space="preserve"><value>内置: claude / codex / gemini / opencode / reasonix</value></data>
-  <data name="SubAgent_DescPlaceholder" xml:space="preserve"><value>描述此子Agent的用途, 引导指挥官AI判断何时调用它...</value></data>
-  <data name="SubAgent_Expert" xml:space="preserve"><value>使用专家</value></data>
-  <data name="SubAgent_None" xml:space="preserve"><value>(无)</value></data>
+  <data name="SubAgent_AddDesc" xml:space="preserve"><value>描述</value></data>
+  <data name="SubAgent_AddHint" xml:space="preserve"><value>创建后将在左侧聊天栏的"子代理分派"中可见</value></data>
+  <data name="SubAgent_DescPlaceholder" xml:space="preserve"><value>描述此 Agent 的用途...</value></data>
+  <data name="SubAgent_Expert" xml:space="preserve"><value>绑定专家</value></data>
+  <data name="SubAgent_None" xml:space="preserve"><value>无专家</value></data>
   <data name="SubAgent_Save" xml:space="preserve"><value>保存</value></data>
-  <data name="SubAgent_RemoveTip" xml:space="preserve"><value>删除(内置Agent将恢复默认)</value></data>
+  <data name="SubAgent_RemoveTip" xml:space="preserve"><value>从本会话移除, 仍保留全局配置</value></data>
   <data name="SubAgent_SessionOverride" xml:space="preserve"><value>会话覆盖</value></data>
-  <data name="SubAgent_ToGlobal" xml:space="preserve"><value>改全局</value></data>
-  <data name="SubAgent_NoAgents" xml:space="preserve"><value>暂无子Agent, 点击上方添加</value></data>
-  <data name="SubAgent_RosterSwitch" xml:space="preserve"><value>启用 Roster 注入</value></data>
-  <data name="SubAgent_CommanderTitle" xml:space="preserve"><value>对话专家</value></data>
-  <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>选择主对话使用的指挥官人格</value></data>
-  <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>注入专家到子代理</value></data>
+  <data name="SubAgent_ToGlobal" xml:space="preserve"><value>添加到全局</value></data>
+  <data name="SubAgent_NoAgents" xml:space="preserve"><value>暂无子 Agent</value></data>
+  <data name="SubAgent_RosterSwitch" xml:space="preserve"><value>编目模式</value></data>
+  <data name="SubAgent_CommanderTitle" xml:space="preserve"><value>注入专家到子代理</value></data>
+  <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>子代理执行时将携带当前专家人设</value></data>
+  <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>同步专家到子代理</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>更改</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>暂存</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>撤销暂存</value></data>
@@ -86,7 +86,33 @@
   <data name="GitPanel_Push" xml:space="preserve"><value>推送</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>步骤检查点</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库</value></data>
-   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
-   <data name="GitPanel_Graph" xml:space="preserve"><value>提交图谱</value></data>
-   <data name="GitPanel_NoGraph" xml:space="preserve"><value>暂无图谱</value></data>
+  <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+  <data name="GitPanel_Graph" xml:space="preserve"><value>提交图谱</value></data>
+  <data name="GitPanel_NoGraph" xml:space="preserve"><value>暂无图谱</value></data>
+  <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>设置</value></data>
+  <data name="Settings_Appearance" xml:space="preserve"><value>外观</value></data>
+  <data name="Settings_DarkTheme" xml:space="preserve"><value>深色主题</value></data>
+  <data name="Settings_Language" xml:space="preserve"><value>语言</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>语言更改将在重启程序后生效</value></data>
+  <data name="Settings_About" xml:space="preserve"><value>关于</value></data>
+  <data name="Settings_AppName" xml:space="preserve"><value>应用名称</value></data>
+  <data name="Settings_Version" xml:space="preserve"><value>版本</value></data>
+  <data name="Settings_Font" xml:space="preserve"><value>字体</value></data>
+  <data name="Settings_Background" xml:space="preserve"><value>背景图</value></data>
+  <data name="Settings_SelectBg" xml:space="preserve"><value>选择图片</value></data>
+  <data name="Settings_ClearBg" xml:space="preserve"><value>清除背景</value></data>
+  <data name="Settings_Providers" xml:space="preserve"><value>LLM 提供商</value></data>
+  <data name="Settings_ProviderAdd" xml:space="preserve"><value>添加提供商</value></data>
+  <data name="Settings_ProviderName" xml:space="preserve"><value>名称</value></data>
+  <data name="Settings_ProviderBaseUrl" xml:space="preserve"><value>基础 URL</value></data>
+  <data name="Settings_ProviderApiKey" xml:space="preserve"><value>API Key</value></data>
+  <data name="Settings_ProviderModel" xml:space="preserve"><value>默认模型</value></data>
+  <data name="Settings_ProviderKind" xml:space="preserve"><value>类型</value></data>
+  <data name="Settings_Activate" xml:space="preserve"><value>设为激活</value></data>
+  <data name="Settings_Remove" xml:space="preserve"><value>删除</value></data>
+  <data name="Settings_Add" xml:space="preserve"><value>添加</value></data>
+  <data name="Settings_Agents" xml:space="preserve"><value>Agent 程序</value></data>
+  <data name="Settings_AgentName" xml:space="preserve"><value>名称</value></data>
+  <data name="Settings_AgentExecutable" xml:space="preserve"><value>可执行文件</value></data>
 </root>
