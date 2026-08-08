@@ -153,7 +153,8 @@
                                                 <StackPanel Spacing="4">
                                                     <TextBlock Text="{x:Static res:Strings.Chat_BindPersona}" Classes="secTitle"/>
                                                      <ComboBox ItemsSource="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).Personas}"
-                                                               SelectedItem="{Binding Persona, Mode=TwoWay}"
+                                                               SelectedValuePath="Id"
+                                                               SelectedValue="{Binding PersonaId}"
                                                                HorizontalAlignment="Stretch">
                                                         <ComboBox.ItemTemplate>
                                                             <DataTemplate>
@@ -161,10 +162,10 @@
                                                             </DataTemplate>
                                                         </ComboBox.ItemTemplate>
                                                     </ComboBox>
-                                                     <TextBlock IsVisible="{Binding Persona is not null}"
-                                                                Classes="BodySmall"
-                                                                Foreground="{DynamicResource OnSurfaceVariant}"
-                                                                Text="{Binding Persona.Display}"/>
+                                                    <TextBlock IsVisible="{Binding PersonaId, Converter={StaticResource StringNotNullOrEmptyConverter}}"
+                                                               Classes="BodySmall"
+                                                               Foreground="{DynamicResource OnSurfaceVariant}"
+                                                               Text="{Binding PersonaDisplayName}"/>
                                                 </StackPanel>
                                                 <Button Classes="Text" Content="{x:Static res:Strings.Chat_SaveEntry}"
                                                         HorizontalAlignment="Right"
