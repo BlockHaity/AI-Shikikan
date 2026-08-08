@@ -172,4 +172,65 @@ public static class AgentTemplateService
         var file = Path.Combine(AppPaths.TemplatesDir, $"{template.Id}.json");
         File.WriteAllText(file, JsonSerializer.Serialize(template, AppJsonContext.Default.AgentTemplate));
     }
+
+    /// <summary>从外部 JSON 文件导入专家模板, 校验后保存到配置目录。
+    /// 返回 (导入对象可为 null, 错误信息)。</summary>
+    public static (AgentTemplate? Template, string? Error) ImportFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return (null, $"文件不存在: {path}");
+        }
+
+        AgentTemplate template;
+        try
+        {
+            template = JsonSerializer.Deserialize(File.ReadAllText(path), AppJsonContext.Default.AgentTemplate)
+                       ?? throw new InvalidDataException("文件内容不是有效的 Agent 模板(JSON)。");
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return (null, $"解析失败: {ex.Message}");
+        }
+
+        if (string.IsNullOrWhiteSpace(template.Id))
+        {
+            return (null, "缺少 id 字段, 无法导入。");
+        }
+
+        if (string.IsNullOrWhiteSpace(template.Name))
+        {
+            template.Name = template.Id;
+        }
+
+        if (string.IsNullOrWhiteSpace(template.SystemPrompt))
+        {
+            return (null, "缺少 systemPrompt 字段, 无法导入。");
+        }
+
+        template.Id = EnsureUniqueId(template.Id, AppPaths.TemplatesDir);
+        Save(template);
+        return (template, null);
+    }
+
+    private static string EnsureUniqueId(string id, string dir)
+    {
+        var file = Path.Combine(dir, $"{id}.json");
+        if (!File.Exists(file))
+        {
+            return id;
+        }
+
+        var n = 2;
+        while (File.Exists(Path.Combine(dir, $"{id}-{n}.json")))
+        {
+            n++;
+        }
+
+        return $"{id}-{n}";
+    }
 }

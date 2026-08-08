@@ -1,0 +1,16 @@
+# 可用 Agent(Roster)
+以下 CLI Agent 可通过工具 run_<agent> / assign_task 调用(子代理)。选择依据: 任务类型匹配其专长。
+
+{agents}
+
+# 可用专家(人格)
+{personas}
+
+# 专家档案模板
+{templates}
+
+# 分派规则
+{rules}
+
+# 当前仓库
+{git}

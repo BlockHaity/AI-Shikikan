@@ -66,6 +66,67 @@ public static class PersonaService
         File.WriteAllText(file, JsonSerializer.Serialize(persona, AppJsonContext.Default.Persona));
     }
 
+    /// <summary>从外部 JSON 文件导入专家/人格, 校验后保存到配置目录。
+    /// 返回 (导入对象可为 null, 错误信息)。</summary>
+    public static (Persona? Persona, string? Error) ImportFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+        {
+            return (null, $"文件不存在: {path}");
+        }
+
+        Persona persona;
+        try
+        {
+            persona = JsonSerializer.Deserialize(File.ReadAllText(path), AppJsonContext.Default.Persona)
+                      ?? throw new InvalidDataException("文件内容不是有效的专家文件(JSON)。");
+        }
+        catch (InvalidDataException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            return (null, $"解析失败: {ex.Message}");
+        }
+
+        if (string.IsNullOrWhiteSpace(persona.Name))
+        {
+            return (null, "缺少 name 字段, 无法导入。");
+        }
+
+        if (string.IsNullOrWhiteSpace(persona.Id))
+        {
+            persona.Id = Path.GetFileNameWithoutExtension(path);
+        }
+
+        if (string.IsNullOrWhiteSpace(persona.SystemPrompt))
+        {
+            return (null, "缺少 systemPrompt 字段, 无法导入。");
+        }
+
+        persona.Id = EnsureUniqueId(persona.Id, AppPaths.PersonasDir);
+        Save(persona);
+        return (persona, null);
+    }
+
+    private static string EnsureUniqueId(string id, string dir)
+    {
+        var file = Path.Combine(dir, $"{id}.json");
+        if (!File.Exists(file))
+        {
+            return id;
+        }
+
+        var n = 2;
+        while (File.Exists(Path.Combine(dir, $"{id}-{n}.json")))
+        {
+            n++;
+        }
+
+        return $"{id}-{n}";
+    }
+
     public static void WriteSampleFiles()
     {
         if (Directory.Exists(AppPaths.PersonasDir) && Directory.GetFiles(AppPaths.PersonasDir).Length > 0)

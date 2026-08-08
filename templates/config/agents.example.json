@@ -1,0 +1,24 @@
+{
+  "agents": [
+    {
+      "id": "my-codex",
+      "name": "我的 Codex",
+      "executable": "codex",
+      "args": [],
+      "injection": 3,
+      "memoryFile": null,
+      "defaultMode": "sync",
+      "maxConcurrent": 1,
+      "requireApproval": true,
+      "timeoutMinutes": 30,
+      "expertise": ["coding", "debugging", "refactor"],
+      "description": "基于内置 codex 的自定义 Agent 示例",
+      "recommendedPersonaId": null,
+      "defaultTemplateId": null,
+      "rosterEntry": null,
+      "environment": {}
+    }
+  ],
+  "rules": "优先选择专长与任务匹配的 Agent; 涉及多个领域时先拆分子任务再分配。",
+  "rosterEnabled": true
+}

@@ -1,0 +1,30 @@
+{
+  "activeProviderId": "openai",
+  "activeModel": "gpt-4o",
+  "providers": [
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "kind": 0,
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "",
+      "defaultModel": "gpt-4o"
+    },
+    {
+      "id": "anthropic",
+      "name": "Anthropic",
+      "kind": 1,
+      "baseUrl": "https://api.anthropic.com",
+      "apiKey": "",
+      "defaultModel": "claude-sonnet-4-20250514"
+    },
+    {
+      "id": "deepseek",
+      "name": "DeepSeek",
+      "kind": 0,
+      "baseUrl": "https://api.deepseek.com/v1",
+      "apiKey": "",
+      "defaultModel": "deepseek-chat"
+    }
+  ]
+}

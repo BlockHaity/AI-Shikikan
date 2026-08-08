@@ -87,7 +87,7 @@ public class CommandService
         table.AddRow("/help", "显示帮助信息");
         table.AddRow("/clear", "清除对话历史");
         table.AddRow("/model [grey]<model>[/]", $"切换活动模型, 格式: 模型{Markup.Escape("/provider")}");
-        table.AddRow("/persona [grey]<id/名称>[/]", "列出或切换专家/角色人格");
+        table.AddRow("/persona [grey]<id/名称|import <路径>>[/]", "列出/切换专家人格, import 导入专家文件");
         table.AddRow("/agents", "列出已注册的 CLI Agent 定义");
         table.AddRow("/templates", "列出专家模板");
         table.AddRow("/tools", "列出当前可用工具");
@@ -165,10 +165,20 @@ public class CommandService
     {
         if (!string.IsNullOrWhiteSpace(arg))
         {
+            var parts = arg.Split(' ', 2, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var sub = parts[0];
+
+            if (string.Equals(sub, "import", StringComparison.OrdinalIgnoreCase))
+            {
+                ImportPersonaFile(parts.Length > 1 ? parts[1].Trim() : string.Empty);
+                return;
+            }
+
             var persona = PersonaService.Find(arg, _runtime.Personas);
             if (persona is null)
             {
                 AnsiConsole.MarkupLine($"[red]未找到人格: {Markup.Escape(arg)}[/]");
+                AnsiConsole.MarkupLine("[grey]用法: /persona <id|名称> 切换主 Agent 人格 | /persona import <文件路径> 导入专家文件[/]");
             }
             else
             {
@@ -195,7 +205,39 @@ public class CommandService
         }
 
         AnsiConsole.Write(table);
-        AnsiConsole.MarkupLine("[grey]用法: /persona <id|名称> 切换主 Agent 人格[/]");
+        AnsiConsole.MarkupLine("[grey]用法: /persona <id|名称> 切换主 Agent 人格 | /persona import <文件路径> 导入专家文件[/]");
+        AnsiConsole.WriteLine();
+    }
+
+    private void ImportPersonaFile(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            AnsiConsole.MarkupLine("[red]用法: /persona import <专家文件.json>[/]");
+            AnsiConsole.WriteLine();
+            return;
+        }
+
+        try
+        {
+            var (persona, error) = PersonaService.ImportFile(path);
+            if (persona is null)
+            {
+                AnsiConsole.MarkupLine($"[red]{Markup.Escape(error ?? "导入失败")}[/]");
+            }
+            else
+            {
+                AnsiConsole.MarkupLine(
+                    $"[green]✔ 已导入专家:[/] [bold]{Markup.Escape(persona.Name)}[/] ({persona.Id})");
+                _runtime.Engine.SetPersonaText(persona.SystemPrompt);
+                AnsiConsole.MarkupLine($"[grey]已切换主 Agent 人格为 {Markup.Escape(persona.Name)}[/]");
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]{Markup.Escape(ex.Message)}[/]");
+        }
+
         AnsiConsole.WriteLine();
     }
 
