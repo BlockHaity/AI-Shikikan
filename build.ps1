@@ -6,6 +6,9 @@ param(
     [string]$Configuration = "Release",
     [string]$Version = "1.0.0",
 
+    [ValidateSet("x64", "arm64", "both")]
+    [string]$Arch = "both",
+
     [ValidateSet("auto", "always", "off")]
     [string]$AotMode = "auto"
 )
@@ -22,6 +25,23 @@ $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitect
     [System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" } else { "x64" }
 $HostRid = "$hostOs-$hostArch"
 
+function Get-PlatformBase([string]$platform) {
+    switch ($platform) {
+        "linux" { return "linux" }
+        "macos" { return "osx" }
+        "windows" { return "win" }
+        default { return "" }
+    }
+}
+
+function Get-RidsFor([string]$platform) {
+    $base = Get-PlatformBase $platform
+    if (-not $base) { return @() }
+    if ($Arch -eq "x64") { return @("$base-x64") }
+    if ($Arch -eq "arm64") { return @("$base-arm64") }
+    return @("$base-x64", "$base-arm64")
+}
+
 function Test-WantAot([string]$rid) {
     switch ($AotMode) {
         "off" { return $false }
@@ -36,16 +56,14 @@ function Write-Warn($msg)  { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
 function Build-Cli {
-    param([string]$Rid)
-
-    $outdir = Join-Path $OutputDir "cli/$Rid"
+    param([string]$Rid, [string]$OutDir)
 
     if (Test-WantAot $Rid) {
         Write-Info "Building CLI for $Rid with Native AOT..."
         dotnet publish $CliProject `
             -c $Configuration `
             -r $Rid `
-            -o $outdir `
+            -o $OutDir `
             --self-contained true `
             -p:PublishAot=true `
             -p:StripSymbols=true `
@@ -58,7 +76,7 @@ function Build-Cli {
         dotnet publish $CliProject `
             -c $Configuration `
             -r $Rid `
-            -o $outdir `
+            -o $OutDir `
             --self-contained true `
             -p:PublishAot=false `
             -p:PublishSingleFile=true `
@@ -73,19 +91,17 @@ function Build-Cli {
         exit 1
     }
 
-    Write-Ok "CLI built: $outdir"
+    Write-Ok "CLI built: $OutDir"
 }
 
 function Build-Gui {
-    param([string]$Rid)
+    param([string]$Rid, [string]$OutDir)
 
-    $outdir = Join-Path $OutputDir "gui/$Rid"
     Write-Info "Building GUI for $Rid..."
-
     dotnet publish $GuiProject `
         -c $Configuration `
         -r $Rid `
-        -o $outdir `
+        -o $OutDir `
         --self-contained true `
         -p:PublishSingleFile=true `
         -p:PublishTrimmed=false `
@@ -97,94 +113,48 @@ function Build-Gui {
         exit 1
     }
 
-    Write-Ok "GUI built: $outdir"
+    Write-Ok "GUI built: $OutDir"
 }
 
-function Build-Platform {
-    param([string]$Platform)
+function Build-Rid {
+    param([string]$Platform, [string]$Rid)
 
-    switch ($Platform) {
-        "linux" {
-            Write-Info "=== Building for Linux ==="
-            Build-Cli "linux-x64"
-            Build-Cli "linux-arm64"
-            Build-Gui "linux-x64"
-            Build-Gui "linux-arm64"
-        }
-        "macos" {
-            Write-Info "=== Building for macOS ==="
-            Build-Cli "osx-x64"
-            Build-Cli "osx-arm64"
-            Build-Gui "osx-x64"
-            Build-Gui "osx-arm64"
-        }
-        "windows" {
-            Write-Info "=== Building for Windows ==="
-            Build-Cli "win-x64"
-            Build-Cli "win-arm64"
-            Build-Gui "win-x64"
-            Build-Gui "win-arm64"
-        }
-    }
+    $outdir = Join-Path $OutputDir $Rid
+    Write-Info "=== $Rid (CLI + GUI) ==="
+    Build-Cli $Rid $outdir
+    Build-Gui $Rid $outdir
+    Write-Ok "$Rid bundled: $outdir"
 }
 
-function Pack-Platform {
-    param([string]$Platform)
+function Pack-Rid {
+    param([string]$Rid)
 
-    Write-Info "Packing $Platform artifacts..."
+    $dir = Join-Path $OutputDir $Rid
+    if (-not (Test-Path $dir)) { return }
 
-    switch ($Platform) {
-        "linux" {
-            $rids = @("linux-x64", "linux-arm64")
-            foreach ($rid in $rids) {
-                $cliDir = Join-Path $OutputDir "cli/$rid"
-                $guiDir = Join-Path $OutputDir "gui/$rid"
-
-                if (Test-Path $cliDir) {
-                    $archive = Join-Path $OutputDir "cli/AgentCommander.Cli-$Version-$rid.zip"
-                    Compress-Archive -Path "$cliDir/*" -DestinationPath $archive -Force
-                }
-                if (Test-Path $guiDir) {
-                    $archive = Join-Path $OutputDir "gui/AgentCommander.Gui-$Version-$rid.zip"
-                    Compress-Archive -Path "$guiDir/*" -DestinationPath $archive -Force
-                }
+    if ($IsWindows) {
+        $archive = Join-Path $OutputDir "AgentCommander-$Version-$Rid.zip"
+        Compress-Archive -Path "$dir/*" -DestinationPath $archive -Force
+    }
+    elseif (Get-Command tar -ErrorAction SilentlyContinue) {
+        Push-Location $OutputDir
+        try {
+            tar czf "AgentCommander-$Version-$Rid.tar.gz" -C "$Rid" .
+            if ($LASTEXITCODE -ne 0) {
+                Write-Warn "tar z failed for $Rid, retrying without gzip"
+                tar cf "AgentCommander-$Version-$Rid.tar" -C "$Rid" .
             }
         }
-        "macos" {
-            $rids = @("osx-x64", "osx-arm64")
-            foreach ($rid in $rids) {
-                $cliDir = Join-Path $OutputDir "cli/$rid"
-                $guiDir = Join-Path $OutputDir "gui/$rid"
-
-                if (Test-Path $cliDir) {
-                    $archive = Join-Path $OutputDir "cli/AgentCommander.Cli-$Version-$rid.zip"
-                    Compress-Archive -Path "$cliDir/*" -DestinationPath $archive -Force
-                }
-                if (Test-Path $guiDir) {
-                    $archive = Join-Path $OutputDir "gui/AgentCommander.Gui-$Version-$rid.zip"
-                    Compress-Archive -Path "$guiDir/*" -DestinationPath $archive -Force
-                }
-            }
-        }
-        "windows" {
-            $rids = @("win-x64", "win-arm64")
-            foreach ($rid in $rids) {
-                $cliDir = Join-Path $OutputDir "cli/$rid"
-                $guiDir = Join-Path $OutputDir "gui/$rid"
-
-                if (Test-Path $cliDir) {
-                    $archive = Join-Path $OutputDir "cli/AgentCommander.Cli-$Version-$rid.zip"
-                    Compress-Archive -Path "$cliDir/*" -DestinationPath $archive -Force
-                }
-                if (Test-Path $guiDir) {
-                    $archive = Join-Path $OutputDir "gui/AgentCommander.Gui-$Version-$rid.zip"
-                    Compress-Archive -Path "$guiDir/*" -DestinationPath $archive -Force
-                }
-            }
+        finally {
+            Pop-Location
         }
     }
+    else {
+        Write-Warn "No tar found, skipping compression for $Rid"
+        return
+    }
 
-    Write-Ok "Packed $Platform artifacts"
+    Write-Ok "Packed $Rid"
 }
 
 function Clean-Artifacts {
@@ -203,22 +173,23 @@ Write-Host "  ========================================" -ForegroundColor White
 Write-Host ""
 Write-Info "Configuration: $Configuration"
 Write-Info "Version:       $Version"
+Write-Info "ARCH:          $Arch"
 Write-Info "AOT_MODE:      $AotMode (host RID: $HostRid)"
 Write-Info "Output:        $OutputDir"
 Write-Host ""
 
 switch ($Command) {
     { $_ -in @("linux", "macos", "windows") } {
-        Build-Platform $_
-        Pack-Platform $_
+        foreach ($rid in (Get-Rids $_)) { Build-Rid $_ $rid }
+        foreach ($rid in (Get-Rids $_)) { Pack-Rid $rid }
     }
     "all" {
-        Build-Platform "linux"
-        Build-Platform "macos"
-        Build-Platform "windows"
-        Pack-Platform "linux"
-        Pack-Platform "macos"
-        Pack-Platform "windows"
+        foreach ($platform in @("linux", "macos", "windows")) {
+            foreach ($rid in (Get-Rids $platform)) { Build-Rid $platform $rid }
+        }
+        foreach ($platform in @("linux", "macos", "windows")) {
+            foreach ($rid in (Get-Rids $platform)) { Pack-Rid $rid }
+        }
     }
     "clean" {
         Clean-Artifacts
@@ -228,7 +199,7 @@ switch ($Command) {
 Write-Host ""
 Write-Ok "Build complete!"
 if (Test-Path $OutputDir) {
-    $archives = Get-ChildItem -Path $OutputDir -Recurse -Include "*.zip","*.tar.gz" -File
+    $archives = Get-ChildItem -Path $OutputDir -MaxDepth 1 -Include "*.zip","*.tar.gz","*.tar" -File
     if ($archives) {
         Write-Info "Artifacts:"
         foreach ($a in $archives) {
