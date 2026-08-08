@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Nav_Home" xml:space="preserve"><value>Home</value></data>
+  <data name="Nav_Chat" xml:space="preserve"><value>Chat</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Home_Welcome" xml:space="preserve"><value>Welcome to Agent Commander</value></data>
+  <data name="Home_Description" xml:space="preserve"><value>A powerful Agent management &amp; command tool</value></data>
+  <data name="Home_QuickStart" xml:space="preserve"><value>Quick Start</value></data>
+  <data name="Home_QuickStartDesc" xml:space="preserve"><value>Agent Commander helps you manage and command multiple AI Agents, providing a unified interface and toolchain.</value></data>
+  <data name="Home_ViewAgents" xml:space="preserve"><value>View Agents</value></data>
+  <data name="Home_ReadDocs" xml:space="preserve"><value>Read Docs</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>Settings</value></data>
+  <data name="Settings_Appearance" xml:space="preserve"><value>Appearance</value></data>
+  <data name="Settings_DarkTheme" xml:space="preserve"><value>Dark Theme</value></data>
+  <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Settings_About" xml:space="preserve"><value>About</value></data>
+  <data name="Settings_AppName" xml:space="preserve"><value>App Name</value></data>
+  <data name="Settings_Version" xml:space="preserve"><value>Version</value></data>
+  <data name="Settings_Font" xml:space="preserve"><value>Font</value></data>
+  <data name="Settings_Background" xml:space="preserve"><value>Background</value></data>
+  <data name="Settings_SelectBg" xml:space="preserve"><value>Select Image</value></data>
+  <data name="Settings_ClearBg" xml:space="preserve"><value>Clear Background</value></data>
+  <data name="Theme_ToggleTip" xml:space="preserve"><value>Toggle Theme</value></data>
+  <data name="Nav_CollapseTip" xml:space="preserve"><value>Collapse/Expand Navigation</value></data>
+  <data name="Chat_NewSession" xml:space="preserve"><value>New Session</value></data>
+  <data name="Chat_InputPlaceholder" xml:space="preserve"><value>Type a message...</value></data>
+  <data name="Chat_Send" xml:space="preserve"><value>Send</value></data>
+  <data name="Chat_NoSessions" xml:space="preserve"><value>No Sessions</value></data>
+  <data name="Chat_DefaultTitle" xml:space="preserve"><value>New Session</value></data>
+  <data name="App_Title" xml:space="preserve"><value>Agent Commander</value></data>
+</root>
