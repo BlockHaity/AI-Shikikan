@@ -2,7 +2,6 @@ using System.Collections;
 using System.Text;
 using Tomlyn;
 using Tomlyn.Model;
-using Tomlyn.Syntax;
 
 namespace AIShikikan.Core.Serialization;
 
@@ -52,7 +51,7 @@ public static class TomlSerializer
 
     public static T Deserialize<T>(string content)
     {
-        var table = Tomlyn.Toml.ToModel(content);
+        var table = Toml.ToModel(content);
         var dict = TableToDictionary(table);
         return DictionaryToObject<T>(dict);
     }
@@ -82,7 +81,7 @@ public static class TomlSerializer
         };
     }
 
-    private static Dictionary<string, object> TableToDictionary(TableModel table)
+    private static Dictionary<string, object> TableToDictionary(TomlTable table)
     {
         var dict = new Dictionary<string, object>();
         foreach (var kv in table)
@@ -92,15 +91,19 @@ public static class TomlSerializer
         return dict;
     }
 
-    private static object TomlValueToObj(TomlValue value)
+    private static object TomlValueToObj(TomlTable value)
     {
-        return value switch
+        if (value == null) return null!;
+        
+        // 检查是否是数组
+        if (value.ContainsKey("__array"))
         {
-            TableModel table => TableToDictionary(table),
-            ArrayModel array => array.Cast<TomlValue>().Select(TomlValueToObj).ToList(),
-            InlineTable inline => TableToDictionary(inline.ToModel()),
-            _ => value.ToString() ?? string.Empty
-        };
+            return value.Cast<KeyValuePair<string, TomlTable>>()
+                .Select(kv => TomlValueToObj(kv.Value))
+                .ToList();
+        }
+        
+        return TableToDictionary(value);
     }
 
     private static T DictionaryToObject<T>(Dictionary<string, object> dict)
