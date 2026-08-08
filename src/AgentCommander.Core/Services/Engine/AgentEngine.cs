@@ -1,0 +1,269 @@
+using System.Text.Json;
+using AgentCommander.Core.Services.Agents;
+using AgentCommander.Core.Services.Git;
+using AgentCommander.Core.Services.Llm;
+using AgentCommander.Core.Services.Personas;
+using AgentCommander.Core.Services.Templates;
+using AgentCommander.Core.Services.Tools;
+
+namespace AgentCommander.Core.Services.Engine;
+
+public abstract record AgentEngineEvent;
+
+public sealed record EngineTextDelta(string Text) : AgentEngineEvent;
+
+public sealed record EngineToolStarted(string ToolCallId, string ToolName, string Arguments) : AgentEngineEvent;
+
+public sealed record EngineToolOutput(string ToolCallId, string ToolName, string Line) : AgentEngineEvent;
+
+public sealed record EngineToolFinished(string ToolCallId, string ToolName, ToolResult Result) : AgentEngineEvent;
+
+public sealed record EngineApprovalRequested(
+    string ToolCallId, string ToolName, string Arguments,
+    TaskCompletionSource<bool> UserDecision) : AgentEngineEvent;
+
+public sealed record EngineDone(string? Content, string? Error) : AgentEngineEvent;
+
+public sealed record EngineAssignmentChanged(Assignment Assignment) : AgentEngineEvent;
+
+public sealed class EngineOptions
+{
+    public int MaxTurns { get; set; } = 10;
+    public bool AutoApprove { get; set; }
+    public string? Model { get; set; }
+    public string? ProviderId { get; set; }
+    public int MaxHistoryMessages { get; set; } = 40;
+    public string? SystemExtra { get; set; }
+}
+
+/// <summary>对话引擎: 组装 system(人格 + Roster) → LLM → 工具(批准/只读/子代理) → 循环至完成。</summary>
+public sealed class AgentEngine
+{
+    private readonly LlmService _llm;
+    private readonly ToolRegistry _registry;
+    private readonly GitStepService _git;
+    private readonly AssignmentManager _assignments;
+    private readonly IReadOnlyList<Persona> _personas;
+    private readonly IReadOnlyList<AgentTemplate> _templates;
+    private readonly IReadOnlyList<CliAgentDefinition> _agents;
+    private readonly string _workspaceRoot;
+    private string? _personaText;
+    private readonly EngineOptions _options;
+    private readonly List<ChatTurnMessage> _conversation = [];
+
+    public AgentEngine(
+        LlmService llm,
+        ToolRegistry registry,
+        GitStepService git,
+        AssignmentManager assignments,
+        IReadOnlyList<Persona> personas,
+        IReadOnlyList<AgentTemplate> templates,
+        IReadOnlyList<CliAgentDefinition> agents,
+        string workspaceRoot,
+        string? personaText = null,
+        EngineOptions? options = null)
+    {
+        _llm = llm;
+        _registry = registry;
+        _git = git;
+        _assignments = assignments;
+        _assignments.AssignmentChanged += a => OnEvent?.Invoke(new EngineAssignmentChanged(a));
+        _personas = personas;
+        _templates = templates;
+        _agents = agents;
+        _workspaceRoot = workspaceRoot;
+        _personaText = personaText;
+        _options = options ?? new EngineOptions();
+    }
+
+    public event Action<AgentEngineEvent>? OnEvent;
+
+    public AssignmentManager Assignments => _assignments;
+
+    public GitStepService Git => _git;
+
+    public string? PersonaText => _personaText;
+
+    public void SetPersonaText(string? text)
+    {
+        _personaText = string.IsNullOrWhiteSpace(text) ? null : text;
+    }
+
+    public void ClearConversation() => _conversation.Clear();
+
+    public async Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default)
+    {
+        _conversation.Add(new ChatTurnMessage { Role = ChatMsgRole.User, Content = userMessage });
+
+        try
+        {
+            var provider = _llm.GetProvider(_options.ProviderId);
+            if (provider is null)
+            {
+                var msg = "未配置 Provider。请新建 providers.json(见 ConfigDir) 或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
+                OnEvent?.Invoke(new EngineDone(null, msg));
+                return msg;
+            }
+
+            var model = _llm.ResolveModel(_options.Model, _options.ProviderId);
+            var system = BuildSystemPrompt();
+
+            for (var turn = 0; turn < _options.MaxTurns; turn++)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                var request = new ChatRequest
+                {
+                    Model = model,
+                    System = system,
+                    MaxTokens = 4096,
+                    Temperature = 0.2,
+                    Tools = _registry.ToSpecs(),
+                    Messages = _conversation
+                        .TakeLast(_options.MaxHistoryMessages)
+                        .ToList()
+                };
+
+                var response = await _llm.GetClient(_options.ProviderId).CompleteAsync(request, ct);
+
+                if (response.IsError)
+                {
+                    OnEvent?.Invoke(new EngineDone(null, response.Error));
+                    return $"模型调用失败: {response.Error}";
+                }
+
+                if (response.ToolCalls is { Count: > 0 })
+                {
+                    _conversation.Add(new ChatTurnMessage
+                    {
+                        Role = ChatMsgRole.Assistant,
+                        Content = string.Empty,
+                        ToolCalls = response.ToolCalls
+                    });
+
+                    foreach (var call in response.ToolCalls)
+                    {
+                        var result = await ExecuteToolAsync(call, ct);
+                        _conversation.Add(new ChatTurnMessage
+                        {
+                            Role = ChatMsgRole.Tool,
+                            Content = result,
+                            ToolCallId = call.Id
+                        });
+                    }
+
+                    continue;
+                }
+
+                var content = response.Content ?? string.Empty;
+                _conversation.Add(new ChatTurnMessage
+                {
+                    Role = ChatMsgRole.Assistant,
+                    Content = content
+                });
+
+                OnEvent?.Invoke(new EngineTextDelta(content));
+                OnEvent?.Invoke(new EngineDone(content, null));
+                return content;
+            }
+
+            var stopMsg = $"工具迭代超过 {_options.MaxTurns} 轮, 已停止。";
+            OnEvent?.Invoke(new EngineDone(null, stopMsg));
+            return stopMsg;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            var msg = $"发生错误: {ex.Message}";
+            OnEvent?.Invoke(new EngineDone(null, msg));
+            return msg;
+        }
+    }
+
+    private async Task<string> ExecuteToolAsync(ToolCallData call, CancellationToken ct)
+    {
+        OnEvent?.Invoke(new EngineToolStarted(call.Id, call.Name, call.Arguments));
+
+        if (!_registry.TryGet(call.Name, out var tool))
+        {
+            var err = $"工具不存在: {call.Name}";
+            OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(err)));
+            return $"工具调用失败: {err}";
+        }
+
+        if (tool.RequiresApproval && !_options.AutoApprove)
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            OnEvent?.Invoke(new EngineApprovalRequested(call.Id, call.Name, call.Arguments, tcs));
+            var approved = await tcs.Task.WaitAsync(ct);
+            if (!approved)
+            {
+                var declined = $"用户拒绝了工具调用 {call.Name}。请向用户说明并询问替代方案。";
+                OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(declined)));
+                return declined;
+            }
+        }
+
+        ToolResult result;
+        try
+        {
+            JsonElement args;
+            try
+            {
+                args = JsonDocument.Parse(string.IsNullOrWhiteSpace(call.Arguments) ? "{}" : call.Arguments).RootElement.Clone();
+            }
+            catch (JsonException)
+            {
+                args = JsonSerializer.SerializeToElement(new { _raw = call.Arguments });
+            }
+
+            var context = new ToolContext
+            {
+                WorkspaceRoot = _workspaceRoot,
+                OnToolOutput = line => OnEvent?.Invoke(new EngineToolOutput(call.Id, call.Name, line))
+            };
+
+            result = await tool.ExecuteAsync(args, context, ct);
+        }
+        catch (Exception ex)
+        {
+            result = ToolResult.Error($"工具执行异常: {ex.Message}");
+        }
+
+        OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, result));
+        return result.Content;
+    }
+
+    private string BuildSystemPrompt()
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(_personaText))
+        {
+            parts.Add(_personaText);
+        }
+
+        var configFile = AgentConfigService.LoadUserFile();
+        if (configFile.RosterEnabled)
+        {
+            var roster = RosterBuilder.Build(_agents, _personas, _templates,
+                configFile.Rules, _git, enabled: true);
+            if (!string.IsNullOrWhiteSpace(roster))
+            {
+                parts.Add(roster);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(_options.SystemExtra))
+        {
+            parts.Add(_options.SystemExtra);
+        }
+
+        return parts.Count == 0
+            ? "你是 Agent Commander 的指挥官, 负责分析需求、调用工具与子代理完成任务。"
+            : string.Join("\n\n", parts);
+    }
+}
