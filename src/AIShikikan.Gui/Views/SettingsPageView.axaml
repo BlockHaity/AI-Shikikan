@@ -1,0 +1,166 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:theme="using:CCSWE.Avalonia.Material"
+             xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+             xmlns:local="using:AIShikikan.Gui.Views"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AIShikikan.Gui.Views.SettingsPageView"
+             x:DataType="vm:SettingsPageViewModel">
+
+    <UserControl.Resources>
+        <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </UserControl.Resources>
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24" Spacing="24">
+            <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Settings_Title}" />
+
+            <!-- 外观设置 -->
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel>
+                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Appearance}" Margin="24,16,24,0" />
+                    <StackPanel Margin="24,16" Spacing="16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_DarkTheme}" VerticalAlignment="Center" />
+                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsDarkTheme}" />
+                        </Grid>
+                        <theme:Divider />
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Language}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding LanguageIndex}"
+                                      ItemsSource="{Binding LanguageOptions}" MinWidth="120" />
+                            <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="BodySmall"
+                                       Text="{x:Static res:Strings.Settings_RestartHint}"
+                                       IsVisible="{Binding IsRestartHintVisible}"
+                                       Foreground="{DynamicResource Primary}" Margin="0,8,0,0" />
+                        </Grid>
+                        <theme:Divider />
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Background}" VerticalAlignment="Center" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                <Button Classes="FilledTonal" Content="{x:Static res:Strings.Settings_SelectBg}"
+                                        Command="{Binding SelectBackgroundCommand}" />
+                                <Button Classes="Outlined" Content="{x:Static res:Strings.Settings_ClearBg}"
+                                        Command="{Binding ClearBackgroundCommand}" />
+                            </StackPanel>
+                            <Image Grid.Row="1" Grid.ColumnSpan="2"
+                                   Source="{Binding BackgroundPreview}"
+                                   MaxHeight="120" MaxWidth="400"
+                                   IsVisible="{Binding HasBackground}"
+                                   Margin="0,8,0,0" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </theme:Card>
+
+            <!-- LLM 提供商 -->
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel>
+                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Providers}" Margin="24,16,24,0" />
+                    <StackPanel Margin="24,16" Spacing="16">
+                        <ListBox ItemsSource="{Binding LlmSettings.Providers}" SelectedItem="{Binding SelectedProvider}"
+                                 MaxHeight="200">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" Classes="BodyMedium"/>
+                                        <TextBlock Text="{Binding Id}" Classes="LabelSmall"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                        <TextBlock Text="{Binding Kind}" Classes="LabelSmall"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Button Classes="FilledTonal" Content="{x:Static res:Strings.Settings_Activate}"
+                                    Command="{Binding SetActiveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
+                                    IsEnabled="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}"/>
+                            <Button Classes="Text" Content="{x:Static res:Strings.Settings_Remove}"
+                                    Command="{Binding RemoveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
+                                    Margin="8,0,0,0"/>
+                        </Grid>
+                        <theme:Divider />
+                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Settings_ProviderAdd}" />
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderName}"
+                                        Text="{Binding NewProviderName}" />
+                                <TextBlock Grid.Column="1" Classes="BodySmall"
+                                           Text="ID" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource OnSurfaceVariant}"
+                                           Margin="8,0,0,0"/>
+                            </Grid>
+                            <TextBox PlaceholderText="https://api.example.com/v1"
+                                     Text="{Binding NewProviderBaseUrl}" />
+                             <TextBox
+                                      Text="{Binding NewProviderApiKey}"
+                                      PlaceholderText="{x:Static res:Strings.Settings_ProviderApiKey}" />
+                            <TextBox PlaceholderText="gpt-4o"
+                                     Text="{Binding NewProviderDefaultModel}" />
+                            <ComboBox PlaceholderText="类型"
+                                      SelectedIndex="{Binding NewProviderKindIndex}"
+                                      ItemsSource="{Binding LanguageOptions}"
+                                      IsVisible="False"/>
+                            <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
+                                    Command="{Binding AddProviderCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </theme:Card>
+
+            <!-- Agent 程序 -->
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel>
+                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Agents}" Margin="24,16,24,0" />
+                    <StackPanel Margin="24,16" Spacing="16">
+                        <ListBox ItemsSource="{Binding UserAgents}" MaxHeight="200">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Name}" Classes="BodyMedium"/>
+                                        <TextBlock Text="{Binding Executable}" Classes="LabelSmall"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <theme:Divider />
+                        <StackPanel Spacing="8">
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentName}"
+                                     Text="{Binding NewAgentName}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentExecutable}"
+                                     Text="{Binding NewAgentExecutable}" />
+                            <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
+                                    Command="{Binding AddAgentCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </theme:Card>
+
+            <!-- 关于 -->
+            <theme:Card Classes="Outlined" MaxWidth="600">
+                <StackPanel>
+                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_About}" Margin="24,16,24,0" />
+                    <StackPanel Margin="24,16" Spacing="16">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto">
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_AppName}" Grid.Row="0" Grid.Column="0"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                            <TextBlock Classes="BodyLarge" Text="{Binding AppName}" Grid.Row="0" Grid.Column="1" />
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Version}" Grid.Row="1" Grid.Column="0"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                            <TextBlock Classes="BodyLarge" Text="{Binding AppVersion}" Grid.Row="1" Grid.Column="1" />
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Font}" Grid.Row="2" Grid.Column="0"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                            <TextBlock Classes="BodyLarge" Text="{Binding FontInfo}" Grid.Row="2" Grid.Column="1" />
+                        </Grid>
+                    </StackPanel>
+                </StackPanel>
+            </theme:Card>
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>
