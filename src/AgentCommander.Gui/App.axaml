@@ -4,7 +4,7 @@
              xmlns:local="using:AgentCommander.Gui"
              xmlns:theme="using:CCSWE.Avalonia.Material"
              xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-             RequestedThemeVariant="Dark">
+             >
 
     <Application.DataTemplates>
         <local:ViewLocator/>

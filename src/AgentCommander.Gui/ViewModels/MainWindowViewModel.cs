@@ -1,4 +1,5 @@
 using AgentCommander.Core;
+using AgentCommander.Core.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AgentCommander.Gui.ViewModels;
@@ -16,15 +17,29 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private ViewModelBase _currentPage;
 
+    [ObservableProperty]
+    private bool _hasBackgroundImage;
+
     private readonly HomePageViewModel _homePage;
+    private readonly ChatPageViewModel _chatPage;
     private readonly SettingsPageViewModel _settingsPage;
 
-    public MainWindowViewModel()
+    public ThemeService ThemeService { get; }
+
+    public MainWindowViewModel(ThemeService themeService)
     {
+        ThemeService = themeService;
         _homePage = new HomePageViewModel();
-        _settingsPage = new SettingsPageViewModel();
+        _chatPage = new ChatPageViewModel();
+        _settingsPage = new SettingsPageViewModel(themeService);
         _currentPage = _homePage;
         _selectedIndex = 0;
+        _hasBackgroundImage = themeService.BackgroundImagePath is not null;
+
+        themeService.BackgroundChanged += (_, path) =>
+        {
+            HasBackgroundImage = path is not null;
+        };
     }
 
     partial void OnSelectedIndexChanged(int value)
@@ -32,6 +47,7 @@ public partial class MainWindowViewModel : ViewModelBase
         CurrentPage = value switch
         {
             0 => _homePage,
+            1 => _chatPage,
             2 => _settingsPage,
             _ => _homePage
         };

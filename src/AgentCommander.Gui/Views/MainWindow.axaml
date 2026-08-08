@@ -4,12 +4,12 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:theme="using:CCSWE.Avalonia.Material"
+        xmlns:res="clr-namespace:AgentCommander.Gui.Resources"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
         x:Class="AgentCommander.Gui.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Width="1024" Height="768"
         WindowStartupLocation="CenterScreen"
-        Background="{DynamicResource Surface}"
         Title="{Binding Title}">
 
     <Design.DataContext>
@@ -22,89 +22,102 @@
         <StreamGeometry x:Key="IconSettings">m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z</StreamGeometry>
         <StreamGeometry x:Key="IconSun">M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM200-440H40v-80h160v80Zm720 0H760v-80h160v80ZM440-760v-160h80v160h-80Zm0 720v-160h80v160h-80ZM256-650l-101-97 57-59 96 100-52 56Zm492 496-97-101 53-55 101 97-57 59Zm-98-550 97-101 59 57-100 96-56-52ZM154-212l101-97 55 53-97 101-59-57Zm326-268Z</StreamGeometry>
         <StreamGeometry x:Key="IconMoon">M480-120q-150 0-255-105T120-480q0-150 105-255t255-105q14 0 27.5 1t26.5 3q-41 29-65.5 75.5T444-660q0 90 63 153t153 63q55 0 101-24.5t75-65.5q2 13 3 26.5t1 27.5q0 150-105 255T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z</StreamGeometry>
+        <StreamGeometry x:Key="IconChat">M80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Zm160-240h560v-480H160v480l80-80Zm-80 0v-480 480Z</StreamGeometry>
         <StreamGeometry x:Key="IconCaretLeft">M560-240 320-480l240-240 56 56-184 184 184 184-56 56Z</StreamGeometry>
     </Window.Resources>
 
-    <DrawerPage x:Name="Shell" DrawerBehavior="Locked" IsOpen="True">
+    <Grid>
+        <Image x:Name="BackgroundImage" Stretch="UniformToFill" Opacity="0.3"
+               IsVisible="{Binding HasBackgroundImage}" />
+        <Border Background="{DynamicResource Surface}" Opacity="0.85"
+                IsVisible="{Binding HasBackgroundImage}" />
+        <Border Background="{DynamicResource Surface}"
+                IsVisible="{Binding !HasBackgroundImage}" />
 
-        <DrawerPage.DrawerHeader>
-            <StackPanel Orientation="Horizontal" Spacing="12" Margin="24,20,24,12">
-                <PathIcon Data="{DynamicResource Material_IconSmartToy}" Width="28" Height="28"
-                          VerticalAlignment="Center" />
-                <TextBlock Classes="TitleLarge" Text="Agent Commander" VerticalAlignment="Center"
-                           IsVisible="{Binding !IsRail}" />
-            </StackPanel>
-        </DrawerPage.DrawerHeader>
+        <DrawerPage x:Name="Shell" DrawerBehavior="Locked" IsOpen="True" DrawerLength="160">
 
-        <DrawerPage.Drawer>
-            <Panel>
-                <ListBox x:Name="NavList" Classes="NavigationDrawer" SelectedIndex="0"
-                         IsVisible="{Binding !IsRail}"
-                         SelectionChanged="OnNavSelectionChanged">
-                    <ListBoxItem>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <PathIcon Data="{StaticResource IconHome}" Width="24" Height="24" />
-                            <TextBlock Classes="LabelLarge" Text="首页" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <PathIcon Data="{StaticResource IconSmartToy}" Width="24" Height="24" />
-                            <TextBlock Classes="LabelLarge" Text="Agent 管理" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                    <ListBoxItem>
-                        <StackPanel Orientation="Horizontal" Spacing="12">
-                            <PathIcon Data="{StaticResource IconSettings}" Width="24" Height="24" />
-                            <TextBlock Classes="LabelLarge" Text="设置" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </ListBoxItem>
-                </ListBox>
-                <ListBox x:Name="RailList" Classes="NavigationRail" VerticalAlignment="Top"
-                         IsVisible="{Binding IsRail}"
-                         SelectedIndex="{Binding #NavList.SelectedIndex, Mode=TwoWay}"
-                         SelectionChanged="OnNavSelectionChanged">
-                    <ListBoxItem ToolTip.Tip="首页">
-                        <PathIcon Data="{StaticResource IconHome}" Width="24" Height="24" />
-                    </ListBoxItem>
-                    <ListBoxItem ToolTip.Tip="Agent 管理">
-                        <PathIcon Data="{StaticResource IconSmartToy}" Width="24" Height="24" />
-                    </ListBoxItem>
-                    <ListBoxItem ToolTip.Tip="设置">
-                        <PathIcon Data="{StaticResource IconSettings}" Width="24" Height="24" />
-                    </ListBoxItem>
-                </ListBox>
-            </Panel>
-        </DrawerPage.Drawer>
+            <DrawerPage.DrawerHeader>
+                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,16,12,8">
+                    <PathIcon Data="{DynamicResource Material_IconSmartToy}" Width="24" Height="24"
+                              VerticalAlignment="Center" />
+                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.App_Title}" VerticalAlignment="Center"
+                               IsVisible="{Binding !IsRail}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+            </DrawerPage.DrawerHeader>
 
-        <DrawerPage.DrawerFooter>
-            <Border Padding="12,12" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0">
+            <DrawerPage.Drawer>
                 <Panel>
-                    <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left"
-                                IsVisible="{Binding !IsRail}">
-                        <Button x:Name="ThemeToggleBtn" Classes="Icon"
-                                Click="OnThemeToggleClick" ToolTip.Tip="切换明暗主题">
-                            <PathIcon x:Name="ThemeIcon" Data="{StaticResource IconMoon}" Width="24" Height="24" />
-                        </Button>
-                    </StackPanel>
-                    <Button x:Name="RailToggleBtn" Classes="Icon" HorizontalAlignment="Right"
-                            Click="OnToggleRail" ToolTip.Tip="折叠/展开导航">
-                        <PathIcon x:Name="CollapseChevron" Data="{StaticResource IconCaretLeft}"
-                                  Width="24" Height="24" RenderTransformOrigin="50%,50%" />
-                    </Button>
+                    <ListBox x:Name="NavList" Classes="NavigationDrawer" SelectedIndex="0"
+                             IsVisible="{Binding !IsRail}"
+                             SelectionChanged="OnNavSelectionChanged">
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Data="{StaticResource IconHome}" Width="24" Height="24" />
+                                <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Nav_Home}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="100" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Data="{StaticResource IconChat}" Width="24" Height="24" />
+                                <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Nav_Chat}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="100" />
+                            </StackPanel>
+                        </ListBoxItem>
+                        <ListBoxItem>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <PathIcon Data="{StaticResource IconSettings}" Width="24" Height="24" />
+                                <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Nav_Settings}" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="100" />
+                            </StackPanel>
+                        </ListBoxItem>
+                    </ListBox>
+                    <ListBox x:Name="RailList" Classes="NavigationRail" VerticalAlignment="Top"
+                             IsVisible="{Binding IsRail}"
+                             SelectedIndex="{Binding #NavList.SelectedIndex, Mode=TwoWay}"
+                             SelectionChanged="OnNavSelectionChanged">
+                        <ListBoxItem ToolTip.Tip="{x:Static res:Strings.Nav_Home}">
+                            <PathIcon Data="{StaticResource IconHome}" Width="24" Height="24" />
+                        </ListBoxItem>
+                        <ListBoxItem ToolTip.Tip="{x:Static res:Strings.Nav_Chat}">
+                            <PathIcon Data="{StaticResource IconChat}" Width="24" Height="24" />
+                        </ListBoxItem>
+                        <ListBoxItem ToolTip.Tip="{x:Static res:Strings.Nav_Settings}">
+                            <PathIcon Data="{StaticResource IconSettings}" Width="24" Height="24" />
+                        </ListBoxItem>
+                    </ListBox>
                 </Panel>
+            </DrawerPage.Drawer>
+
+            <DrawerPage.DrawerFooter>
+                <Border Padding="12,12" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0">
+                    <Panel>
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Left"
+                                    IsVisible="{Binding !IsRail}">
+                            <Button x:Name="ThemeToggleBtn" Classes="Icon"
+                                    Click="OnThemeToggleClick" ToolTip.Tip="{x:Static res:Strings.Theme_ToggleTip}">
+                                <PathIcon x:Name="ThemeIcon" Data="{StaticResource IconMoon}" Width="24" Height="24" />
+                            </Button>
+                        </StackPanel>
+                        <Button x:Name="RailToggleBtn" Classes="Icon" HorizontalAlignment="Right"
+                                Click="OnToggleRail" ToolTip.Tip="{x:Static res:Strings.Nav_CollapseTip}">
+                            <PathIcon x:Name="CollapseChevron" Data="{StaticResource IconCaretLeft}"
+                                      Width="24" Height="24" RenderTransformOrigin="50%,50%" />
+                        </Button>
+                    </Panel>
+                </Border>
+            </DrawerPage.DrawerFooter>
+
+            <Border DataContext="{Binding $parent[Window].DataContext}">
+                <TransitioningContentControl x:Name="PageHost"
+                                             Content="{Binding CurrentPage}">
+                    <TransitioningContentControl.PageTransition>
+                        <CrossFade Duration="0:0:0.15" />
+                    </TransitioningContentControl.PageTransition>
+                </TransitioningContentControl>
             </Border>
-        </DrawerPage.DrawerFooter>
 
-        <Border DataContext="{Binding $parent[Window].DataContext}">
-            <TransitioningContentControl x:Name="PageHost"
-                                         Content="{Binding CurrentPage}">
-                <TransitioningContentControl.PageTransition>
-                    <CrossFade Duration="0:0:0.15" />
-                </TransitioningContentControl.PageTransition>
-            </TransitioningContentControl>
-        </Border>
-
-    </DrawerPage>
+        </DrawerPage>
+    </Grid>
 
 </Window>
