@@ -1,7 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/AgentCommander.Cli/AgentCommander.Cli.csproj" />
-    <Project Path="src/AgentCommander.Core/AgentCommander.Core.csproj" />
-    <Project Path="src/AgentCommander.Gui/AgentCommander.Gui.csproj" />
-  </Folder>
-</Solution>

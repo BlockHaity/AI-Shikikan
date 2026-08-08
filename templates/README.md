@@ -1,13 +1,13 @@
 # 模板文件夹
 
-本目录存放 Agent Commander 的配置模板与人格/专家文件模板，
+本目录存放 AI-Shikikan 的配置模板与人格/专家文件模板，
 方便快速上手、复制与导入。
 
 ## 结构
 
 ```
 templates/
-├── config/       配置模板(对应 ~/.config/agent-commander/ 下的文件)
+├── config/       配置模板(对应 ~/.config/ai-shikikan/ 下的文件)
 │   ├── providers.example.json      LLM Provider 配置
 │   ├── agents.example.json         自定义 Agent 定义 + 分派规则
 │   └── roster.prompt.example       分派 Roster 提示词模板
@@ -36,10 +36,10 @@ templates/
 ### 2. 使用配置文件模板(手动复制)
 
 ```bash
-mkdir -p ~/.config/agent-commander
-cp templates/config/providers.example.json ~/.config/agent-commander/providers.json
-cp templates/config/agents.example.json    ~/.config/agent-commander/agents.json
-cp templates/config/roster.prompt.example  ~/.config/agent-commander/roster.prompt
+mkdir -p ~/.config/ai-shikikan
+cp templates/config/providers.example.json ~/.config/ai-shikikan/providers.json
+cp templates/config/agents.example.json    ~/.config/ai-shikikan/agents.json
+cp templates/config/roster.prompt.example  ~/.config/ai-shikikan/roster.prompt
 ```
 
 注意:

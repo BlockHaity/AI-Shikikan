@@ -17,8 +17,8 @@ $ErrorActionPreference = "Stop"
 
 $ProjectDir = $PSScriptRoot
 $OutputDir = Join-Path $ProjectDir "artifacts"
-$CliProject = Join-Path $ProjectDir "src/AgentCommander.Cli/AgentCommander.Cli.csproj"
-$GuiProject = Join-Path $ProjectDir "src/AgentCommander.Gui/AgentCommander.Gui.csproj"
+$CliProject = Join-Path $ProjectDir "src/AIShikikan.Cli/AIShikikan.Cli.csproj"
+$GuiProject = Join-Path $ProjectDir "src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 $hostOs = if ($IsLinux) { "linux" } elseif ($IsMacOS) { "osx" } else { "win" }
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq
@@ -133,16 +133,16 @@ function Pack-Rid {
     if (-not (Test-Path $dir)) { return }
 
     if ($IsWindows) {
-        $archive = Join-Path $OutputDir "AgentCommander-$Version-$Rid.zip"
+        $archive = Join-Path $OutputDir "AIShikikan-$Version-$Rid.zip"
         Compress-Archive -Path "$dir/*" -DestinationPath $archive -Force
     }
     elseif (Get-Command tar -ErrorAction SilentlyContinue) {
         Push-Location $OutputDir
         try {
-            tar czf "AgentCommander-$Version-$Rid.tar.gz" -C "$Rid" .
+            tar czf "AIShikikan-$Version-$Rid.tar.gz" -C "$Rid" .
             if ($LASTEXITCODE -ne 0) {
                 Write-Warn "tar z failed for $Rid, retrying without gzip"
-                tar cf "AgentCommander-$Version-$Rid.tar" -C "$Rid" .
+                tar cf "AIShikikan-$Version-$Rid.tar" -C "$Rid" .
             }
         }
         finally {
@@ -162,13 +162,13 @@ function Clean-Artifacts {
     if (Test-Path $OutputDir) {
         Remove-Item -Recurse -Force $OutputDir
     }
-    dotnet clean (Join-Path $ProjectDir "AgentCommander.slnx") -c $Configuration 2>$null | Out-Null
+    dotnet clean (Join-Path $ProjectDir "AIShikikan.slnx") -c $Configuration 2>$null | Out-Null
     Write-Ok "Cleaned"
 }
 
 Write-Host ""
 Write-Host "  ========================================" -ForegroundColor White
-Write-Host "  |     Agent Commander Build System      |" -ForegroundColor White
+Write-Host "  |     AI-Shikikan Build System      |" -ForegroundColor White
 Write-Host "  ========================================" -ForegroundColor White
 Write-Host ""
 Write-Info "Configuration: $Configuration"

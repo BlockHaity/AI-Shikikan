@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="Nav_Home" xml:space="preserve"><value>首页</value></data>
+  <data name="Nav_Chat" xml:space="preserve"><value>聊天</value></data>
+  <data name="Nav_Settings" xml:space="preserve"><value>设置</value></data>
+  <data name="Home_Welcome" xml:space="preserve"><value>欢迎使用 AI-Shikikan</value></data>
+  <data name="Home_Description" xml:space="preserve"><value>一个强大的 Agent 管理与指挥工具</value></data>
+  <data name="Home_QuickStart" xml:space="preserve"><value>快速开始</value></data>
+  <data name="Home_QuickStartDesc" xml:space="preserve"><value>AI-Shikikan 帮助你管理和指挥多个 AI Agent，提供统一的交互界面和工具链。</value></data>
+  <data name="Home_ViewAgents" xml:space="preserve"><value>查看 Agent</value></data>
+  <data name="Home_ReadDocs" xml:space="preserve"><value>阅读文档</value></data>
+  <data name="Settings_Title" xml:space="preserve"><value>设置</value></data>
+  <data name="Settings_Appearance" xml:space="preserve"><value>外观</value></data>
+  <data name="Settings_DarkTheme" xml:space="preserve"><value>深色主题</value></data>
+  <data name="Settings_Language" xml:space="preserve"><value>语言</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>语言更改将在重启程序后生效</value></data>
+  <data name="Settings_About" xml:space="preserve"><value>关于</value></data>
+  <data name="Settings_AppName" xml:space="preserve"><value>应用名称</value></data>
+  <data name="Settings_Version" xml:space="preserve"><value>版本</value></data>
+  <data name="Settings_Font" xml:space="preserve"><value>字体</value></data>
+  <data name="Settings_Background" xml:space="preserve"><value>背景图</value></data>
+  <data name="Settings_SelectBg" xml:space="preserve"><value>选择图片</value></data>
+  <data name="Settings_ClearBg" xml:space="preserve"><value>清除背景</value></data>
+  <data name="Theme_ToggleTip" xml:space="preserve"><value>切换明暗主题</value></data>
+  <data name="Nav_CollapseTip" xml:space="preserve"><value>折叠/展开导航</value></data>
+  <data name="Chat_NewSession" xml:space="preserve"><value>新建会话</value></data>
+  <data name="Chat_InputPlaceholder" xml:space="preserve"><value>输入消息...</value></data>
+  <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
+  <data name="Chat_NoSessions" xml:space="preserve"><value>暂无会话</value></data>
+  <data name="Chat_DefaultTitle" xml:space="preserve"><value>新会话</value></data>
+  <data name="Chat_ClearSession" xml:space="preserve"><value>清空会话</value></data>
+  <data name="Chat_PanelTitle" xml:space="preserve"><value>会话指挥面板</value></data>
+  <data name="Chat_Expert" xml:space="preserve"><value>对话专家</value></data>
+  <data name="Chat_ExpertDesc" xml:space="preserve"><value>选择当前对话使用的主 Agent 人格(在设置页导入)</value></data>
+  <data name="Chat_Assign" xml:space="preserve"><value>手动分配子代理</value></data>
+  <data name="Chat_AssignDesc" xml:space="preserve"><value>选择 Agent 与任务, 启动一次子代理执行(同步等待结果, 异步后台执行)</value></data>
+  <data name="Chat_AssignTaskWatermark" xml:space="preserve"><value>任务描述...</value></data>
+  <data name="Chat_AsyncMode" xml:space="preserve"><value>异步执行</value></data>
+  <data name="Chat_StartAssign" xml:space="preserve"><value>启动</value></data>
+  <data name="Chat_Assignments" xml:space="preserve"><value>子代理分派</value></data>
+  <data name="Chat_Cancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_Git" xml:space="preserve"><value>Git 步骤</value></data>
+  <data name="Chat_Refresh" xml:space="preserve"><value>刷新</value></data>
+  <data name="Chat_GitMerge" xml:space="preserve"><value>合并</value></data>
+  <data name="Chat_GitDrop" xml:space="preserve"><value>丢弃</value></data>
+  <data name="Chat_GitRevert" xml:space="preserve"><value>回滚</value></data>
+  <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
+  <data name="App_Title" xml:space="preserve"><value>AI-Shikikan</value></data>
+</root>

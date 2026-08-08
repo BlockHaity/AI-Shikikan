@@ -9,8 +9,8 @@ VERSION="${VERSION:-1.0.0}"
 AOT_MODE="${AOT_MODE:-auto}"
 ARCH="${ARCH:-both}"
 
-CLI_PROJECT="$PROJECT_DIR/src/AgentCommander.Cli/AgentCommander.Cli.csproj"
-GUI_PROJECT="$PROJECT_DIR/src/AgentCommander.Gui/AgentCommander.Gui.csproj"
+CLI_PROJECT="$PROJECT_DIR/src/AIShikikan.Cli/AIShikikan.Cli.csproj"
+GUI_PROJECT="$PROJECT_DIR/src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 detect_host_rid() {
     local arch="x64"
@@ -138,19 +138,19 @@ pack_rid() {
 
     [ -d "$dir" ] || return 0
 
-    chmod +x "$dir/AgentCommander.Cli" "$dir/AgentCommander.Gui" 2>/dev/null || true
+    chmod +x "$dir/AIShikikan.Cli" "$dir/AIShikikan.Gui" 2>/dev/null || true
 
     case "$rid" in
         win-*)
             cd "$OUTPUT_DIR"
-            zip -r "AgentCommander-$VERSION-$rid.zip" "$rid/" -x '*.pdb' -x '*.dbg' > /dev/null 2>&1 || \
-            7z a "AgentCommander-$VERSION-$rid.zip" "./$rid/*" "-x!*.pdb" "-x!*.dbg" > /dev/null 2>&1 || \
+            zip -r "AIShikikan-$VERSION-$rid.zip" "$rid/" -x '*.pdb' -x '*.dbg' > /dev/null 2>&1 || \
+            7z a "AIShikikan-$VERSION-$rid.zip" "./$rid/*" "-x!*.pdb" "-x!*.dbg" > /dev/null 2>&1 || \
             warn "No zip tool found, skipping compression for $rid"
             cd "$PROJECT_DIR"
             ;;
         *)
             cd "$OUTPUT_DIR"
-            tar czf "AgentCommander-$VERSION-$rid.tar.gz" -C "$rid" --exclude='*.pdb' --exclude='*.dbg' .
+            tar czf "AIShikikan-$VERSION-$rid.tar.gz" -C "$rid" --exclude='*.pdb' --exclude='*.dbg' .
             cd "$PROJECT_DIR"
             ;;
     esac
@@ -190,7 +190,7 @@ EOF
 clean() {
     info "Cleaning build artifacts..."
     rm -rf "$OUTPUT_DIR"
-    dotnet clean "$PROJECT_DIR/AgentCommander.slnx" -c "$CONFIGURATION" > /dev/null 2>&1 || true
+    dotnet clean "$PROJECT_DIR/AIShikikan.slnx" -c "$CONFIGURATION" > /dev/null 2>&1 || true
     ok "Cleaned"
 }
 
@@ -199,7 +199,7 @@ main() {
 
     echo ""
     echo "  ╔══════════════════════════════════════╗"
-    echo "  ║     Agent Commander Build System      ║"
+    echo "  ║     AI-Shikikan Build System      ║"
     echo "  ╚══════════════════════════════════════╝"
     echo ""
     info "Configuration: $CONFIGURATION"
