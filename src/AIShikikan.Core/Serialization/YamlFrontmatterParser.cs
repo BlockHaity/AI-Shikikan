@@ -1,3 +1,4 @@
+using System.Text;
 using YamlDotNet.RepresentationModel;
 using AIShikikan.Core.Services.Personas;
 

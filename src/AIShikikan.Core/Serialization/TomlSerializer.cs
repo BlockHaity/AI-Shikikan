@@ -84,6 +84,7 @@ public static class TomlSerializer
     private static Dictionary<string, object> TableToDictionary(TomlTable table)
     {
         var dict = new Dictionary<string, object>();
+        if (table == null) return dict;
         foreach (var kv in table)
         {
             dict[ToCSharpName(kv.Key)] = TomlValueToObj(kv.Value);
@@ -91,19 +92,14 @@ public static class TomlSerializer
         return dict;
     }
 
-    private static object TomlValueToObj(TomlTable value)
+    private static object TomlValueToObj(object? value)
     {
         if (value == null) return null!;
-        
-        // 检查是否是数组
-        if (value.ContainsKey("__array"))
+        if (value is TomlTable table)
         {
-            return value.Cast<KeyValuePair<string, TomlTable>>()
-                .Select(kv => TomlValueToObj(kv.Value))
-                .ToList();
+            return TableToDictionary(table);
         }
-        
-        return TableToDictionary(value);
+        return value.ToString() ?? string.Empty;
     }
 
     private static T DictionaryToObject<T>(Dictionary<string, object> dict)

@@ -27,4 +27,6 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(ChatSession))]
 [JsonSerializable(typeof(ChatMessage))]
 [JsonSerializable(typeof(ThemeService.Preferences))]
+[JsonSerializable(typeof(RosterConfig))]
+[JsonSerializable(typeof(AgentRosterEntry))]
 public sealed partial class AppJsonContext : JsonSerializerContext;
