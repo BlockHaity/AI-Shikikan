@@ -66,8 +66,12 @@ public partial class ChatPageViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _useCommanderPersonaForAgents;
+
     [ObservableProperty]
     private IReadOnlyList<AgentRosterEntry> _rosterEntries = [];
+
+    [ObservableProperty]
+    private bool _rosterEnabled = true;
 
     [ObservableProperty]
     private IReadOnlyList<Assignment> _assignments = [];
