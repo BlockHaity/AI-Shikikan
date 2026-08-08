@@ -228,6 +228,7 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
 
+    [RelayCommand(CanExecute = nameof(CanAssign))]
     private void Assign()
     {
         if (SelectedAgent is null || string.IsNullOrWhiteSpace(AssignTaskText)) return;
