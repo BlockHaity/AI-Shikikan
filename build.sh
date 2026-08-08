@@ -6,9 +6,24 @@ PROJECT_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PROJECT_DIR/artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 VERSION="${VERSION:-1.0.0}"
+AOT_MODE="${AOT_MODE:-auto}"
 
 CLI_PROJECT="$PROJECT_DIR/src/AgentCommander.Cli/AgentCommander.Cli.csproj"
 GUI_PROJECT="$PROJECT_DIR/src/AgentCommander.Gui/AgentCommander.Gui.csproj"
+
+detect_host_rid() {
+    local arch="x64"
+    case "$(uname -m)" in
+        x86_64|amd64) arch="x64" ;;
+        aarch64|arm64) arch="arm64" ;;
+    esac
+    case "$(uname -s)" in
+        Darwin) echo "osx-$arch" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "win-$arch" ;;
+        *) echo "linux-$arch" ;;
+    esac
+}
+HOST_RID="$(detect_host_rid)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -25,19 +40,43 @@ build_cli() {
     local rid="$1"
     local outdir="$OUTPUT_DIR/cli/$rid"
 
-    info "Building CLI for $rid..."
-    dotnet publish "$CLI_PROJECT" \
-        -c "$CONFIGURATION" \
-        -r "$rid" \
-        -o "$outdir" \
-        --self-contained true \
-        -p:PublishSingleFile=true \
-        -p:PublishTrimmed=true \
-        -p:TrimMode=partial \
-        -p:Version="$VERSION" \
-        -p:IncludeNativeLibrariesForSelfExtract=true
+    if want_aot "$rid"; then
+        info "Building CLI for $rid with Native AOT..."
+        dotnet publish "$CLI_PROJECT" \
+            -c "$CONFIGURATION" \
+            -r "$rid" \
+            -o "$outdir" \
+            --self-contained true \
+            -p:PublishAot=true \
+            -p:StripSymbols=true \
+            -p:PublishSingleFile=true \
+            -p:Version="$VERSION"
+    else
+        warn "AOT_MODE=$AOT_MODE: host=$HOST_RID, target=$rid; 无法交叉 AOT, 回退到单文件裁剪发布"
+        info "Building CLI for $rid (single-file/trimmed)..."
+        dotnet publish "$CLI_PROJECT" \
+            -c "$CONFIGURATION" \
+            -r "$rid" \
+            -o "$outdir" \
+            --self-contained true \
+            -p:PublishAot=false \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=true \
+            -p:TrimMode=partial \
+            -p:Version="$VERSION" \
+            -p:IncludeNativeLibrariesForSelfExtract=true
+    fi
 
     ok "CLI built: $outdir"
+}
+
+want_aot() {
+    local rid="$1"
+    case "$AOT_MODE" in
+        off) return 1 ;;
+        always) return 0 ;;
+        *) [ "$rid" = "$HOST_RID" ] ;;
+    esac
 }
 
 build_gui() {
@@ -165,12 +204,16 @@ Commands:
 Options:
   CONFIGURATION=Release   Build configuration (default: Release)
   VERSION=1.0.0           Version string (default: 1.0.0)
+  AOT_MODE=auto           Native AOT strategy for CLI: auto | always | off
+                          auto   - AOT only when target RID equals host RID, else fallback
+                          always - force AOT for all targets (requires cross toolchain)
+                          off    - single-file/trimmed publish (default: auto)
 
 Examples:
   $(basename "$0") linux
   $(basename "$0") all
   $(basename "$0") all VERSION=2.0.0
-  CONFIGURATION=Debug $(basename "$0") windows
+  AOT_MODE=off CONFIGURATION=Debug $(basename "$0") windows
 EOF
 }
 
@@ -191,6 +234,7 @@ main() {
     echo ""
     info "Configuration: $CONFIGURATION"
     info "Version:       $VERSION"
+    info "AOT_MODE:      $AOT_MODE (host RID: $HOST_RID)"
     info "Output:        $OUTPUT_DIR"
     echo ""
 
