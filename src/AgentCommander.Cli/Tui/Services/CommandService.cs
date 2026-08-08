@@ -86,7 +86,7 @@ public class CommandService
 
         table.AddRow("/help", "显示帮助信息");
         table.AddRow("/clear", "清除对话历史");
-        table.AddRow("/model [grey]<model>[/]", "切换活动模型, 格式: 模型[/provider]");
+        table.AddRow("/model [grey]<model>[/]", $"切换活动模型, 格式: 模型{Markup.Escape("/provider")}");
         table.AddRow("/persona [grey]<id/名称>[/]", "列出或切换专家/角色人格");
         table.AddRow("/agents", "列出已注册的 CLI Agent 定义");
         table.AddRow("/templates", "列出专家模板");
