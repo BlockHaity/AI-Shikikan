@@ -101,9 +101,9 @@
                             </Grid>
                             <TextBox PlaceholderText="https://api.example.com/v1"
                                      Text="{Binding NewProviderBaseUrl}" />
-                            <TextBox PlaceholderText="API Key"
-                                     Text="{Binding NewProviderApiKey}"
-                                     PlaceholderText="{x:Static res:Strings.Settings_ProviderApiKey}" />
+                             <TextBox
+                                      Text="{Binding NewProviderApiKey}"
+                                      PlaceholderText="{x:Static res:Strings.Settings_ProviderApiKey}" />
                             <TextBox PlaceholderText="gpt-4o"
                                      Text="{Binding NewProviderDefaultModel}" />
                             <ComboBox PlaceholderText="类型"
