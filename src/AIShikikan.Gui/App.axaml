@@ -18,4 +18,8 @@
     <Application.Resources>
         <FontFamily x:Key="ContentControlThemeFontFamily">avares://AIShikikan.Gui/Assets/Fonts/#HarmonyOS Sans SC</FontFamily>
     </Application.Resources>
+
+    <Application.Icon>
+        <Bitmap Source="avares://AIShikikan.Gui/Assets/logo.jpg" />
+    </Application.Icon>
 </Application>
