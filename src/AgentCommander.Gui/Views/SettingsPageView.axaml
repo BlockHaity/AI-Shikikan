@@ -22,10 +22,14 @@
                         <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsDarkTheme}" />
                     </Grid>
                     <theme:Divider />
-                    <Grid ColumnDefinitions="*,Auto">
+                    <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                         <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Language}" VerticalAlignment="Center" />
                         <ComboBox Grid.Column="1" SelectedIndex="{Binding LanguageIndex}"
                                   ItemsSource="{Binding LanguageOptions}" MinWidth="120" />
+                        <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="BodySmall"
+                                   Text="{x:Static res:Strings.Settings_RestartHint}"
+                                   IsVisible="{Binding IsRestartHintVisible}"
+                                   Foreground="{DynamicResource Primary}" Margin="0,8,0,0" />
                     </Grid>
                     <theme:Divider />
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">

@@ -34,6 +34,7 @@
   <data name="Settings_Appearance" xml:space="preserve"><value>外观</value></data>
   <data name="Settings_DarkTheme" xml:space="preserve"><value>深色主题</value></data>
   <data name="Settings_Language" xml:space="preserve"><value>语言</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>语言更改将在重启程序后生效</value></data>
   <data name="Settings_About" xml:space="preserve"><value>关于</value></data>
   <data name="Settings_AppName" xml:space="preserve"><value>应用名称</value></data>
   <data name="Settings_Version" xml:space="preserve"><value>版本</value></data>

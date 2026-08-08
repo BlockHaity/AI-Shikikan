@@ -31,6 +31,7 @@ public static class Strings
     public static string Settings_Appearance => Get(nameof(Settings_Appearance));
     public static string Settings_DarkTheme => Get(nameof(Settings_DarkTheme));
     public static string Settings_Language => Get(nameof(Settings_Language));
+    public static string Settings_RestartHint => Get(nameof(Settings_RestartHint));
     public static string Settings_About => Get(nameof(Settings_About));
     public static string Settings_AppName => Get(nameof(Settings_AppName));
     public static string Settings_Version => Get(nameof(Settings_Version));

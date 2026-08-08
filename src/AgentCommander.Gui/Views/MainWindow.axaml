@@ -34,7 +34,7 @@
         <Border Background="{DynamicResource Surface}"
                 IsVisible="{Binding !HasBackgroundImage}" />
 
-        <DrawerPage x:Name="Shell" DrawerBehavior="Locked" IsOpen="True" DrawerLength="160">
+        <DrawerPage x:Name="Shell" DrawerBehavior="Locked" IsOpen="True" DrawerLength="220">
 
             <DrawerPage.DrawerHeader>
                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,16,12,8">

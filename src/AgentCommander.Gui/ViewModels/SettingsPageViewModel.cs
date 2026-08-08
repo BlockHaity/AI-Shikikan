@@ -29,11 +29,17 @@ public partial class SettingsPageViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasBackground;
 
+    [ObservableProperty]
+    private bool _isRestartHintVisible;
+
+    private readonly int _currentLanguageIndex;
+
     public SettingsPageViewModel(ThemeService themeService)
     {
         _themeService = themeService;
         _isDarkTheme = themeService.IsDarkTheme;
-        _languageIndex = themeService.Language == "zh-CN" ? 0 : 1;
+        _currentLanguageIndex = themeService.Language == "zh-CN" ? 0 : 1;
+        _languageIndex = _currentLanguageIndex;
 
         _themeService.ThemeChanged += (_, isDark) => IsDarkTheme = isDark;
     }
@@ -53,6 +59,7 @@ public partial class SettingsPageViewModel : ViewModelBase
     {
         var lang = value == 0 ? "zh-CN" : "en-US";
         _themeService.Language = lang;
+        IsRestartHintVisible = value != _currentLanguageIndex;
     }
 
     [RelayCommand]

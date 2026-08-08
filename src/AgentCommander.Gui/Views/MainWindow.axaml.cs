@@ -132,7 +132,7 @@ public partial class MainWindow : Window
         if (DataContext is MainWindowViewModel vm)
         {
             vm.IsRail = !vm.IsRail;
-            Shell.DrawerLength = vm.IsRail ? 80 : 160;
+            Shell.DrawerLength = vm.IsRail ? 80 : 220;
             CollapseChevron.RenderTransform = new RotateTransform(vm.IsRail ? 180 : 0);
             RailToggleBtn.HorizontalAlignment = vm.IsRail
                 ? HorizontalAlignment.Center

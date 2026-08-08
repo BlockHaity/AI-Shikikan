@@ -34,6 +34,7 @@
   <data name="Settings_Appearance" xml:space="preserve"><value>Appearance</value></data>
   <data name="Settings_DarkTheme" xml:space="preserve"><value>Dark Theme</value></data>
   <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
+  <data name="Settings_RestartHint" xml:space="preserve"><value>Language change takes effect after restarting the app</value></data>
   <data name="Settings_About" xml:space="preserve"><value>About</value></data>
   <data name="Settings_AppName" xml:space="preserve"><value>App Name</value></data>
   <data name="Settings_Version" xml:space="preserve"><value>Version</value></data>
