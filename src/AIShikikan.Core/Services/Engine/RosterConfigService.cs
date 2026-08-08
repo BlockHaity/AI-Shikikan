@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Engine;

@@ -1,4 +1,5 @@
 using YamlDotNet.RepresentationModel;
+using AIShikikan.Core.Services.Personas;
 
 namespace AIShikikan.Core.Serialization;
 

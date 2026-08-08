@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Text;
 using Tomlyn;
 using Tomlyn.Model;
@@ -20,7 +21,7 @@ public static class TomlSerializer
 
             var key = ToTomlKey(prop.Name);
 
-            if (value is IEnumerable<object> list)
+            if (value is IList list)
             {
                 foreach (var item in list)
                 {
@@ -51,8 +52,9 @@ public static class TomlSerializer
 
     public static T Deserialize<T>(string content)
     {
-        var table = TomlToDictionary(Tomlyn.Toml.ToModel(content));
-        return DictionaryToObject<T>(table);
+        var table = Tomlyn.Toml.ToModel(content);
+        var dict = TableToDictionary(table);
+        return DictionaryToObject<T>(dict);
     }
 
     private static string SerializeObjectToToml(object obj)
@@ -80,7 +82,7 @@ public static class TomlSerializer
         };
     }
 
-    private static Dictionary<string, object> TomlToDictionary(TableModel table)
+    private static Dictionary<string, object> TableToDictionary(TableModel table)
     {
         var dict = new Dictionary<string, object>();
         foreach (var kv in table)
@@ -94,10 +96,10 @@ public static class TomlSerializer
     {
         return value switch
         {
-            TableModel table => TomlToDictionary(table),
+            TableModel table => TableToDictionary(table),
             ArrayModel array => array.Cast<TomlValue>().Select(TomlValueToObj).ToList(),
-            InlineTable inline => TomlToDictionary(inline.ToModel()),
-            _ => value.ToString()
+            InlineTable inline => TableToDictionary(inline.ToModel()),
+            _ => value.ToString() ?? string.Empty
         };
     }
 
@@ -108,11 +110,14 @@ public static class TomlSerializer
         foreach (var prop in type.GetProperties())
         {
             if (!dict.TryGetValue(ToTomlKey(prop.Name), out var value)) continue;
-            if (value == null) continue;
+            if (value == null || value is string s && string.IsNullOrEmpty(s)) continue;
 
             var target = prop.PropertyType;
             var converted = ConvertValue(value, target);
-            prop.SetValue(obj, converted);
+            if (converted != null)
+            {
+                prop.SetValue(obj, converted);
+            }
         }
         return (T)obj!;
     }
