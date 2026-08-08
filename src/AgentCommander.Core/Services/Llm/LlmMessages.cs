@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace AgentCommander.Core.Services.Llm;
 
@@ -12,37 +13,40 @@ public static class LlmJson
         }
         catch (JsonException)
         {
-            return JsonSerializer.SerializeToElement(new { _raw = raw });
+            return JsonDocument.Parse(new JsonObject { ["_raw"] = raw }.ToJsonString()).RootElement;
         }
     }
 
     public static JsonElement JsonSchema(string json) =>
         JsonDocument.Parse(json).RootElement.Clone();
 
-    public static object BuildAnthropicToolUse(ToolCallData call)
+    public static JsonObject BuildAnthropicToolUse(ToolCallData call)
     {
-        return new
+        return new JsonObject
         {
-            type = "tool_use",
-            id = call.Id,
-            name = call.Name,
-            input = ParseArgs(call.Arguments)
+            ["type"] = "tool_use",
+            ["id"] = call.Id,
+            ["name"] = call.Name,
+            ["input"] = ToNode(call.Arguments)
         };
     }
 
-    public static object BuildOpenAiToolCall(ToolCallData call)
+    public static JsonObject BuildOpenAiToolCall(ToolCallData call)
     {
-        return new
+        return new JsonObject
         {
-            id = call.Id,
-            type = "function",
-            function = new
+            ["id"] = call.Id,
+            ["type"] = "function",
+            ["function"] = new JsonObject
             {
-                name = call.Name,
-                arguments = ParseArgs(call.Arguments)
+                ["name"] = call.Name,
+                ["arguments"] = ToNode(call.Arguments)
             }
         };
     }
+
+    public static JsonNode? ToNode(string argsJson) =>
+        JsonNode.Parse(ParseArgs(argsJson).GetRawText());
 
     public sealed class LlmHttpResponse : IDisposable
     {

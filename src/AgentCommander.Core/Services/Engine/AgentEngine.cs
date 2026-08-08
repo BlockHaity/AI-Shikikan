@@ -217,7 +217,7 @@ public sealed class AgentEngine
             }
             catch (JsonException)
             {
-                args = JsonSerializer.SerializeToElement(new { _raw = call.Arguments });
+                args = LlmJson.ParseArgs(call.Arguments);
             }
 
             var context = new ToolContext

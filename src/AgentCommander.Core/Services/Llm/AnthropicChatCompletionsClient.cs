@@ -172,6 +172,8 @@ public class AnthropicChatCompletionsClient : IChatCompletionsClient
         }
     }
 
+    private static void JAdd(JsonArray array, JsonNode? node) => array.Add(node);
+
     private static string BuildBody(ChatRequest request, bool stream)
     {
         var messages = new JsonArray();
@@ -183,17 +185,17 @@ public class AnthropicChatCompletionsClient : IChatCompletionsClient
                 case ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 }:
                 {
                     var blocks = new JsonArray();
-                    blocks.Add(new JsonObject
+                    JAdd(blocks, new JsonObject
                     {
                         ["type"] = "text",
                         ["text"] = m.Content
                     });
                     foreach (var call in m.ToolCalls)
                     {
-                        blocks.Add(JsonNode.Parse(JsonSerializer.Serialize(LlmJson.BuildAnthropicToolUse(call))));
+                        JAdd(blocks, LlmJson.BuildAnthropicToolUse(call));
                     }
 
-                    messages.Add(new JsonObject
+                    JAdd(messages, new JsonObject
                     {
                         ["role"] = "assistant",
                         ["content"] = blocks
@@ -202,31 +204,33 @@ public class AnthropicChatCompletionsClient : IChatCompletionsClient
                 }
 
                 case ChatMsgRole.Tool:
-                    messages.Add(new JsonObject
+                {
+                    var content = new JsonArray();
+                    JAdd(content, new JsonObject
+                    {
+                        ["type"] = "tool_result",
+                        ["tool_use_id"] = m.ToolCallId,
+                        ["content"] = m.Content
+                    });
+                    JAdd(messages, new JsonObject
                     {
                         ["role"] = "user",
-                        ["content"] = new JsonArray
-                        {
-                            new JsonObject
-                            {
-                                ["type"] = "tool_result",
-                                ["tool_use_id"] = m.ToolCallId,
-                                ["content"] = m.Content
-                            }
-                        }
+                        ["content"] = content
                     });
                     break;
+                }
 
                 default:
-                    messages.Add(new JsonObject
+                {
+                    var content = new JsonArray();
+                    JAdd(content, new JsonObject { ["type"] = "text", ["text"] = m.Content });
+                    JAdd(messages, new JsonObject
                     {
                         ["role"] = m.Role == ChatMsgRole.Assistant ? "assistant" : "user",
-                        ["content"] = new JsonArray
-                        {
-                            new JsonObject { ["type"] = "text", ["text"] = m.Content }
-                        }
+                        ["content"] = content
                     });
                     break;
+                }
             }
         }
 
@@ -260,7 +264,7 @@ public class AnthropicChatCompletionsClient : IChatCompletionsClient
                     tool["input_schema"] = JsonNode.Parse(t.Parameters.GetRawText());
                 }
 
-                tools.Add(tool);
+                JAdd(tools, tool);
             }
 
             body["tools"] = tools;

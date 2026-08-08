@@ -187,12 +187,14 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
         };
     }
 
+    private static void JAdd(JsonArray array, JsonNode? node) => array.Add(node);
+
     private static string BuildBody(ChatRequest request, bool stream)
     {
         var messages = new JsonArray();
         if (!string.IsNullOrEmpty(request.System))
         {
-            messages.Add(new JsonObject { ["role"] = "system", ["content"] = request.System });
+            JAdd(messages, new JsonObject { ["role"] = "system", ["content"] = request.System });
         }
 
         foreach (var m in request.Messages)
@@ -208,7 +210,7 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
                 var calls = new JsonArray();
                 foreach (var call in m.ToolCalls)
                 {
-                    calls.Add(JsonNode.Parse(JsonSerializer.Serialize(LlmJson.BuildOpenAiToolCall(call))));
+                    JAdd(calls, LlmJson.BuildOpenAiToolCall(call));
                 }
 
                 obj["tool_calls"] = calls;
@@ -219,7 +221,7 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
                 obj["tool_call_id"] = m.ToolCallId;
             }
 
-            messages.Add(obj);
+            JAdd(messages, obj);
         }
 
         var body = new JsonObject
@@ -246,7 +248,7 @@ public class OpenAiChatCompletionsClient : IChatCompletionsClient
                     fn["parameters"] = JsonNode.Parse(t.Parameters.GetRawText());
                 }
 
-                tools.Add(new JsonObject { ["type"] = "function", ["function"] = fn });
+                JAdd(tools, new JsonObject { ["type"] = "function", ["function"] = fn });
             }
 
             body["tools"] = tools;
