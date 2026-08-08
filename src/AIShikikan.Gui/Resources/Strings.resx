@@ -86,5 +86,7 @@
   <data name="GitPanel_Push" xml:space="preserve"><value>推送</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>步骤检查点</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库</value></data>
-  <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+   <data name="GitPanel_Graph" xml:space="preserve"><value>提交图谱</value></data>
+   <data name="GitPanel_NoGraph" xml:space="preserve"><value>暂无图谱</value></data>
 </root>

@@ -105,6 +105,31 @@
                     </Grid>
                 </StackPanel>
 
+                <!-- 提交图谱 -->
+                <StackPanel Spacing="4">
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_Graph}" Classes="secTitle"/>
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_NoGraph}" FontSize="12" Opacity="0.6"
+                               IsVisible="{Binding !HasGraph}"/>
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                  IsVisible="{Binding HasGraph}">
+                        <ItemsControl ItemsSource="{Binding Graph}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="core:GitGraphLine">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock FontFamily="monospace" FontSize="11"
+                                                   Text="{Binding GraphPart}"
+                                                   Foreground="{DynamicResource Primary}"/>
+                                        <TextBlock FontFamily="monospace" FontSize="11"
+                                                   Text="{Binding CommitPart}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </StackPanel>
+
                 <!-- 步骤检查点 -->
                 <StackPanel Spacing="4">
                     <TextBlock Text="{x:Static res:Strings.GitPanel_Steps}" Classes="secTitle"/>

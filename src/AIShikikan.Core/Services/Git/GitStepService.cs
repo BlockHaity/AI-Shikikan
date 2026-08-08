@@ -63,6 +63,12 @@ public record GitFileStatus
     };
 }
 
+public record GitGraphLine
+{
+    public string GraphPart { get; init; } = string.Empty;
+    public string CommitPart { get; init; } = string.Empty;
+}
+
 public sealed class GitStepService
 {
     private readonly Dictionary<string, GitStepRecord> _steps = new(StringComparer.OrdinalIgnoreCase);
@@ -194,6 +200,36 @@ public sealed class GitStepService
             .Select(s => s.Trim())
             .Where(s => s.Length > 0)
             .ToList();
+    }
+
+    public IReadOnlyList<GitGraphLine> GetCommitGraph(int limit = 60)
+    {
+        var r = Run("log", "--graph", "--all", "--no-color",
+            $"--pretty=format:%x01%h %s",
+            $"-n {limit}");
+        if (!r.Succeeded)
+        {
+            return [];
+        }
+
+        var list = new List<GitGraphLine>();
+        foreach (var line in r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var sepIdx = line.IndexOf('\x01');
+            if (sepIdx < 0)
+            {
+                list.Add(new GitGraphLine { GraphPart = string.Empty, CommitPart = line });
+                continue;
+            }
+
+            list.Add(new GitGraphLine
+            {
+                GraphPart = line[..sepIdx],
+                CommitPart = line[(sepIdx + 1)..]
+            });
+        }
+
+        return list;
     }
 
     public GitCommandResult SwitchBranch(string branch) => Run("switch", branch);

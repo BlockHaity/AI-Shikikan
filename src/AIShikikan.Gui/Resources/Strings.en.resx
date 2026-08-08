@@ -86,5 +86,7 @@
   <data name="GitPanel_Push" xml:space="preserve"><value>Push</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>Step checkpoints</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>Not a git repository</value></data>
-  <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
+   <data name="GitPanel_Graph" xml:space="preserve"><value>Git graph</value></data>
+   <data name="GitPanel_NoGraph" xml:space="preserve"><value>No graph</value></data>
 </root>

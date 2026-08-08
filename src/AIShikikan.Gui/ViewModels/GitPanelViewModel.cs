@@ -15,10 +15,9 @@ public partial class GitPanelViewModel : ViewModelBase
     private readonly CommanderRuntime _runtime = AppShell.Instance.Runtime;
 
     public ObservableCollection<GitFileStatus> StatusFiles { get; } = [];
-
     public ObservableCollection<GitStepRecord> Steps { get; } = [];
-
     public ObservableCollection<string> Branches { get; } = [];
+    public ObservableCollection<GitGraphLine> Graph { get; } = [];
 
     [ObservableProperty]
     private string _stateText = string.Empty;
@@ -43,6 +42,9 @@ public partial class GitPanelViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _hasChanges;
+
+    [ObservableProperty]
+    private bool _hasGraph;
 
     public GitPanelViewModel()
     {
@@ -70,6 +72,7 @@ public partial class GitPanelViewModel : ViewModelBase
         RefreshStatus();
         RefreshSteps();
         RefreshBranches();
+        RefreshGraph();
     }
 
     private void RefreshStatus()
@@ -109,6 +112,18 @@ public partial class GitPanelViewModel : ViewModelBase
         {
             SelectedBranch = Branches[0];
         }
+    }
+
+    private void RefreshGraph()
+    {
+        var lines = _runtime.Git.GetCommitGraph();
+        Graph.Clear();
+        foreach (var line in lines)
+        {
+            Graph.Add(line);
+        }
+
+        HasGraph = Graph.Count > 0;
     }
 
     [RelayCommand]

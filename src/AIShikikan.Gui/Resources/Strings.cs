@@ -83,5 +83,7 @@ public static class Strings
     public static string GitPanel_Steps => Get(nameof(GitPanel_Steps));
     public static string GitPanel_NotRepo => Get(nameof(GitPanel_NotRepo));
     public static string GitPanel_DiffTitle => Get(nameof(GitPanel_DiffTitle));
+    public static string GitPanel_Graph => Get(nameof(GitPanel_Graph));
+    public static string GitPanel_NoGraph => Get(nameof(GitPanel_NoGraph));
     public static string Chat_TogglePanel => Get(nameof(Chat_TogglePanel));
 }
