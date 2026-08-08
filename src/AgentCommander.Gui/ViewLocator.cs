@@ -19,6 +19,7 @@ public class ViewLocator : IDataTemplate
         return param switch
         {
             HomePageViewModel => new Views.HomePageView(),
+            ChatPageViewModel => new Views.ChatPageView(),
             SettingsPageViewModel => new Views.SettingsPageView(),
             _ => BuildByReflection(param)
         };

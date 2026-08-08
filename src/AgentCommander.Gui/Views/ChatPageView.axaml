@@ -1,0 +1,74 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AgentCommander.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:theme="using:CCSWE.Avalonia.Material"
+             xmlns:res="clr-namespace:AgentCommander.Gui.Resources"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="AgentCommander.Gui.Views.ChatPageView"
+             x:DataType="vm:ChatPageViewModel">
+
+    <Grid ColumnDefinitions="200,*">
+
+        <Border Grid.Column="0" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,1,0">
+            <StackPanel Margin="8" Spacing="8">
+                <Button Classes="FilledTonal" Content="{x:Static res:Strings.Chat_NewSession}"
+                        Command="{Binding NewSessionCommand}" HorizontalAlignment="Stretch" />
+
+                <ScrollViewer>
+                    <ItemsControl ItemsSource="{Binding Sessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Button Classes="Text" HorizontalAlignment="Stretch"
+                                        Content="{Binding DisplayTitle}"
+                                        Command="{Binding $parent[UserControl].((vm:ChatPageViewModel)DataContext).SwitchSessionCommand}"
+                                        CommandParameter="{Binding Id}"
+                                        Margin="0,2" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </StackPanel>
+        </Border>
+
+        <Grid Grid.Column="1" RowDefinitions="*,Auto">
+
+            <ScrollViewer x:Name="MessageScroller" Grid.Row="0">
+                <ItemsControl ItemsSource="{Binding Messages}" Margin="16,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Margin="0,4" Padding="12,8"
+                                    CornerRadius="8"
+                                    Background="{Binding Role, Converter={StaticResource MessageBgConverter}}"
+                                    HorizontalAlignment="{Binding Role, Converter={StaticResource MessageAlignConverter}}"
+                                    MaxWidth="500">
+                                <StackPanel Spacing="4">
+                                    <TextBlock Classes="LabelSmall"
+                                               Text="{Binding RoleLabel}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <TextBlock Classes="BodyMedium" Text="{Binding Content}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <Border Grid.Row="1" Padding="16,8"
+                    BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0">
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
+                             Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
+                             KeyDown="OnInputKeyDown" />
+                    <Button Grid.Column="1" Classes="Filled" Margin="8,0,0,0"
+                            Content="{x:Static res:Strings.Chat_Send}"
+                            Command="{Binding SendMessageCommand}" IsEnabled="{Binding !IsSending}" />
+                </Grid>
+            </Border>
+
+        </Grid>
+
+    </Grid>
+
+</UserControl>
