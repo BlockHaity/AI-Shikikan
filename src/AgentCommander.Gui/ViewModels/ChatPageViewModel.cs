@@ -1,7 +1,10 @@
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using System.Threading.Tasks;
 using AgentCommander.Core.Models;
 using AgentCommander.Core.Services;
+using AgentCommander.Core.Services.Engine;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -10,6 +13,8 @@ namespace AgentCommander.Gui.ViewModels;
 public partial class ChatPageViewModel : ViewModelBase
 {
     private readonly ChatService _chatService;
+    private readonly CommanderRuntime _runtime;
+    private readonly StringBuilder _toolLog = new();
 
     [ObservableProperty]
     private IReadOnlyList<ChatSession> _sessions = [];
@@ -29,6 +34,7 @@ public partial class ChatPageViewModel : ViewModelBase
     public ChatPageViewModel()
     {
         _chatService = new ChatService();
+        _runtime = CommanderRuntime.Boot(Directory.GetCurrentDirectory());
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
         Messages = CurrentSession?.Messages ?? [];
@@ -89,9 +95,51 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private async Task RespondAsync(string userMessage)
     {
-        await Task.Delay(500);
-        var response = $"Echo: {userMessage}";
-        _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, response);
+        var sb = new StringBuilder();
+
+        void OnEngineEvent(AgentEngineEvent e)
+        {
+            switch (e)
+            {
+                case EngineToolStarted started:
+                    _toolLog.AppendLine($"[tool] {started.ToolName} {started.Arguments}");
+                    break;                case EngineToolOutput output:
+                    _toolLog.AppendLine($"  {output.Line}");
+                    break;
+                case EngineToolFinished finished:
+                    _toolLog.AppendLine(finished.Result.IsError ? $"✘ {finished.Result.Content}" : "✔");
+                    break;
+                case EngineApprovalRequested approval:
+                    approval.UserDecision.SetResult(true);
+                    break;
+            }
+        }
+
+        _runtime.Engine.OnEvent += OnEngineEvent;
+        try
+        {
+            var reply = await _runtime.Engine.RunTurnAsync(userMessage);
+            if (_toolLog.Length > 0)
+            {
+                sb.AppendLine(reply);
+                sb.AppendLine();
+                sb.AppendLine(_toolLog.ToString().TrimEnd());
+            }
+            else
+            {
+                sb.Append(reply);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            sb.AppendLine($"⚠ 发生错误: {ex.Message}");
+        }
+        finally
+        {
+            _runtime.Engine.OnEvent -= OnEngineEvent;
+        }
+
+        _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, sb.ToString());
         Messages = CurrentSession.Messages;
         IsSending = false;
     }
