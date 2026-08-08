@@ -1,6 +1,9 @@
 using AgentCommander.Cli.Models;
 using AgentCommander.Cli.Tui.Renderers;
 using AgentCommander.Cli.Tui.Services;
+using AgentCommander.Core.Services;
+using AgentCommander.Core.Services.Engine;
+using AgentCommander.Core.Services.Git;
 using Spectre.Console;
 
 namespace AgentCommander.Cli.Tui;
@@ -10,14 +13,19 @@ public class TuiApp
     private readonly List<Message> _messages = [];
     private readonly CommandService _commandService;
     private readonly InputService _inputService;
-    private readonly StreamingService _streamingService;
+    private readonly CommanderRuntime _runtime;
 
-    public TuiApp()
+    public TuiApp(string? personaId = null)
     {
-        _commandService = new CommandService(_messages);
+        _runtime = CommanderRuntime.Boot(Environment.CurrentDirectory, personaId);
+        _commandService = new CommandService(_messages, _runtime);
         _inputService = new InputService();
-        _streamingService = new StreamingService();
+        _runtime.Engine.OnEvent += OnEngineEvent;
+        _runtime.Assignments.AssignmentChanged += a =>
+            AnsiConsole.MarkupLine($"[grey]分派更新: {a.Display}[/]");
     }
+
+    public CommanderRuntime Runtime => _runtime;
 
     public async Task RunAsync(CancellationToken ct = default)
     {
@@ -28,7 +36,6 @@ public class TuiApp
             Role = MessageRole.System,
             Content = "Agent Commander TUI 已启动。输入消息或 /help 查看可用命令。"
         });
-
         MessageRenderer.Render(_messages[0]);
 
         while (!ct.IsCancellationRequested)
@@ -68,12 +75,9 @@ public class TuiApp
     {
         AnsiConsole.Clear();
 
-        var figlet = new FigletText("Agent Commander")
-            .Color(Color.Green);
-        AnsiConsole.Write(figlet);
-
+        AnsiConsole.Write(new FigletText("Agent Commander").Color(Color.Green));
         AnsiConsole.MarkupLine("[grey]一个强大的 Agent 管理与指挥工具[/]");
-        AnsiConsole.MarkupLine("[grey]输入 /help 查看可用命令，/quit 退出[/]");
+        AnsiConsole.MarkupLine("[grey]输入 /help 查看可用命令, /quit 退出[/]");
         AnsiConsole.WriteLine();
     }
 
@@ -85,15 +89,118 @@ public class TuiApp
 
     private async Task<string> ProcessUserInputAsync(string input, CancellationToken ct)
     {
-        await Task.Delay(100, ct);
+        var beforeSteps = _runtime.Git.PendingReview().Select(s => s.StepId).ToHashSet(StringComparer.Ordinal);
 
-        return $@"收到你的消息：""{input}""
+        var response = await _runtime.Engine.RunTurnAsync(input, ct);
 
-目前 Agent Commander 处于初始开发阶段，AI 对话功能尚未接入。
-后续将支持：
-- 多模型 AI 对话
-- Agent 管理与调度
-- 工具调用与权限确认
-- Markdown 渲染与流式输出";
+        await ReviewPendingStepsAsync(beforeSteps);
+        return response;
     }
+
+    private async Task ReviewPendingStepsAsync(HashSet<string> before)
+    {
+        var pending = _runtime.Git.PendingReview()
+            .Where(s => !before.Contains(s.StepId))
+            .ToList();
+
+        foreach (var step in pending)
+        {
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine($"[bold cyan]步骤检查点:[/] {step.StepId} [{Markup.Escape(step.Label)}]  分支: {step.StepBranch} → 基: {step.BaseBranch}");
+
+            while (true)
+            {
+                var choice = AnsiConsole.Prompt(
+                    new SelectionPrompt<string>()
+                        .Title("[grey]如何处理该步骤的变更?[/]")
+                        .AddChoices("查看 diff", "合并到主分支", "丢弃(回滚该步)", "暂不处理"));
+
+                switch (choice)
+                {
+                    case "查看 diff":
+                        var diff = _runtime.Git.GetDiff(step.StepId);
+                        AnsiConsole.WriteLine(diff.Succeeded ? diff.Stdout : diff.Stderr);
+                        continue;
+
+                    case "合并到主分支":
+                        ExecuteGitSafe(() => _runtime.Git.MergeStep(step.StepId),
+                            $"已合并步骤 {step.StepId} 到 {step.BaseBranch}");
+                        break;
+
+                    case "丢弃(回滚该步骤)":
+                        if (AnsiConsole.Confirm("丢弃将删除该步骤分支并放弃全部变更, 确认?", false))
+                        {
+                            ExecuteGitSafe(() => _runtime.Git.DropStep(step.StepId),
+                                $"已丢弃步骤 {step.StepId}");
+                        }
+
+                        break;
+                }
+
+                break;
+            }
+        }
+    }
+
+    private void ExecuteGitSafe(Func<GitCommandResult> action, string successMessage)
+    {
+        try
+        {
+            var result = action();
+            if (!result.Succeeded)
+            {
+                AnsiConsole.MarkupLine($"[red]git 操作失败:[/] {Markup.Escape(result.Stderr)}");
+                return;
+            }
+
+            AnsiConsole.MarkupLine($"[green]{Markup.Escape(successMessage)}[/]");
+            if (!string.IsNullOrWhiteSpace(result.Stdout))
+            {
+                AnsiConsole.MarkupLine($"[grey]{Markup.Escape(Truncate(result.Stdout, 2000))}[/]");
+            }
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]git 操作失败:[/] {Markup.Escape(ex.Message)}");
+        }
+    }
+
+    private void OnEngineEvent(AgentEngineEvent e)
+    {
+        switch (e)
+        {
+            case EngineToolStarted started:
+                var args = started.Arguments.Length > 100
+                    ? started.Arguments[..100] + "..."
+                    : started.Arguments;
+                AnsiConsole.MarkupLine($"[cyan]🔥 工具调用:[/] [bold]{started.ToolName}[/]");
+                if (args.Length > 0)
+                {
+                    AnsiConsole.MarkupLine($"[grey]   {Markup.Escape(args)}[/]");
+                }
+
+                break;
+
+            case EngineToolOutput output:
+                AnsiConsole.MarkupLine($"[grey]   ├ {Markup.Escape(TruncateLine(output.Line))}[/]");
+                break;
+
+            case EngineToolFinished finished:
+                AnsiConsole.MarkupLine(finished.Result.IsError
+                    ? $"[red]   └ 工具失败: {Markup.Escape(Truncate(finished.Result.Content, 200))}[/]"
+                    : $"[green]   └ 工具完成 ✓[/]");
+                break;
+
+            case EngineApprovalRequested approval:
+                var approved = AnsiConsole.Confirm(
+                    $"[bold yellow]批准调用工具 {approval.ToolName}[/] ({Markup.Escape(Truncate(approval.Arguments, 120))})?",
+                    false);
+                approval.UserDecision.TrySetResult(approved);
+                break;
+        }
+    }
+
+    private static string Truncate(string s, int len) => s.Length <= len ? s : s[..len] + "...";
+
+    private static string TruncateLine(string s) => s.Length <= 160 ? s : s[..160] + "...";
 }
