@@ -228,15 +228,6 @@ public partial class ChatPageViewModel : ViewModelBase
         }
     }
 
-    partial void OnSelectedPersonaChanged(Persona? value)
-    {
-        if (value is not null)
-        {
-            _runtime.SetPersonaText(value.SystemPrompt);
-        }
-    }
-
-    [RelayCommand(CanExecute = nameof(CanAssign))]
     private void Assign()
     {
         if (SelectedAgent is null || string.IsNullOrWhiteSpace(AssignTaskText)) return;
