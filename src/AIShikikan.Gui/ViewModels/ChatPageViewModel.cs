@@ -48,8 +48,6 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private IReadOnlyList<Persona> _personas = [];
 
-    [ObservableProperty]
-    private Persona? _selectedPersona;
 
     [ObservableProperty]
     private IReadOnlyList<CliAgentDefinition> _agents = [];
@@ -71,8 +69,6 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private IReadOnlyList<AgentRosterEntry> _rosterEntries = [];
 
-    [ObservableProperty]
-    private Persona? _selectedPersona;
     [ObservableProperty]
     private IReadOnlyList<Assignment> _assignments = [];
 
