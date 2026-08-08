@@ -4,5 +4,6 @@ public enum MessageRole
 {
     User,
     Assistant,
-    System
+    System,
+    Tool
 }

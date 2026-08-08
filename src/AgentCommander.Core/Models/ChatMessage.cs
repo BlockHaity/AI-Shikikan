@@ -15,6 +15,7 @@ public class ChatMessage
         MessageRole.User => "User",
         MessageRole.Assistant => "Assistant",
         MessageRole.System => "System",
+        MessageRole.Tool => "Tool",
         _ => "Unknown"
     };
 }

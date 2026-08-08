@@ -17,6 +17,15 @@ public static class AppPaths
     public static string SessionsDir { get; }
     public static string BackgroundsDir { get; }
 
+    public static string ProvidersPath { get; }
+    public static string AgentsPath { get; }
+    public static string PersonasDir { get; }
+    public static string TemplatesDir { get; }
+    public static string RosterTemplatePath { get; }
+    public static string StepsDir { get; }
+    public static string SubagentsDir { get; }
+    public static string AssignmentsDir { get; }
+
     static AppPaths()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -57,6 +66,15 @@ public static class AppPaths
         PreferencesPath = Path.Combine(ConfigDir, "preferences.json");
         SessionsDir = Path.Combine(DataDir, "sessions");
         BackgroundsDir = Path.Combine(DataDir, "backgrounds");
+
+        ProvidersPath = Path.Combine(ConfigDir, "providers.json");
+        AgentsPath = Path.Combine(ConfigDir, "agents.json");
+        PersonasDir = Path.Combine(ConfigDir, "personas");
+        TemplatesDir = Path.Combine(ConfigDir, "templates");
+        RosterTemplatePath = Path.Combine(ConfigDir, "roster.prompt");
+        StepsDir = Path.Combine(DataDir, "steps");
+        SubagentsDir = Path.Combine(DataDir, "subagents");
+        AssignmentsDir = Path.Combine(DataDir, "assignments");
     }
 
     public static void EnsureDirectoriesExist()
@@ -67,5 +85,10 @@ public static class AppPaths
         Directory.CreateDirectory(LogDir);
         Directory.CreateDirectory(SessionsDir);
         Directory.CreateDirectory(BackgroundsDir);
+        Directory.CreateDirectory(PersonasDir);
+        Directory.CreateDirectory(TemplatesDir);
+        Directory.CreateDirectory(StepsDir);
+        Directory.CreateDirectory(SubagentsDir);
+        Directory.CreateDirectory(AssignmentsDir);
     }
 }
