@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+             mc:Ignorable="d" d:DesignWidth="220" d:DesignHeight="600"
+             x:Class="AIShikikan.Gui.Views.SessionPanelView"
+             x:DataType="vm:SessionPanelViewModel">
+
+    <UserControl.Resources>
+        <StreamGeometry x:Key="IconChatSmall">M22,9v6c0,1.1-0.9,2-2,2h-1v2c0,1.1-0.9,2-2,2H7c-1.1,0-2-0.9-2-2v-2H4c-1.1,0-2-0.9-2-2V9c0-1.1,0.9-2,2-2h1V5c0-1.1,0.9-2,2-2h10c1.1,0,2,0.9,2,2v2h1C21.1,7,22,7.9,22,9zM8,13h6v-2H8V13zM18,11h-2v2h2V11zM19,7h-2v2h2V7zM20,9h-2v2h2V9z</StreamGeometry>
+        <StreamGeometry x:Key="IconEdit">M3,17.25V21h3.75L17.81,9.94l-3.75-3.75L3,17.25zM20.71,7.04c0.39-0.39,0.39-1.02,0-1.41l-2.34-2.34c-0.39-0.39-1.02-0.39-1.41,0l-1.83,1.83l3.75,3.75L20.71,7.04z</StreamGeometry>
+        <StreamGeometry x:Key="IconDelete">M6,19c0,1.1,0.9,2,2,2h8c1.1,0,2-0.9,2-2V7H6V19zM19,4h-3.5l-1-1h-5l-1,1H5v2h14V4z</StreamGeometry>
+        <MenuFlyout x:Key="SessionItemFlyout" Placement="BottomEdgeAlignedLeft">
+            <MenuItem Header="{x:Static res:Strings.Session_Rename}"
+                      Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).ContextRenameCommand}"
+                      CommandParameter="{Binding}"/>
+            <MenuItem Header="{x:Static res:Strings.Session_Delete}"
+                      Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).ContextDeleteCommand}"
+                      CommandParameter="{Binding}"/>
+        </MenuFlyout>
+    </UserControl.Resources>
+
+    <UserControl.Styles>
+        <Style Selector="Border.sessionItem">
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="10,8"/>
+            <Setter Property="Margin" Value="4,2"/>
+            <Setter Property="Background" Value="Transparent"/>
+        </Style>
+        <Style Selector="Border.sessionItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+        </Style>
+        <Style Selector="Border.sessionItem.selected">
+            <Setter Property="Background" Value="{DynamicResource SecondaryContainer}"/>
+        </Style>
+        <Style Selector="Button.sessionAction">
+            <Setter Property="Width" Value="24"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
+            <Setter Property="CornerRadius" Value="12"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+
+        <!-- 标题 + 新建按钮 -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,10,8,4">
+            <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Session_Panel_Title}"
+                       VerticalAlignment="Center"/>
+            <Button Grid.Column="1" Classes="FilledTonal" Padding="8,4"
+                    Command="{Binding NewSessionCommand}"
+                    ToolTip.Tip="{x:Static res:Strings.Session_New}">
+                <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="＋" FontSize="14"/>
+                    <TextBlock Text="{x:Static res:Strings.Session_New}" FontSize="12"/>
+                </StackPanel>
+            </Button>
+        </Grid>
+
+        <!-- 会话列表 -->
+        <ScrollViewer Grid.Row="1">
+            <Panel>
+                <ItemsControl ItemsSource="{Binding Sessions}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SessionItemViewModel">
+                            <Border Classes="sessionItem"
+                                    Classes.selected="{Binding IsSelected}"
+                                    PointerReleased="OnSessionPointerReleased"
+                                    ContextFlyout="{StaticResource SessionItemFlyout}">
+                                <StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <PathIcon Data="{StaticResource IconChatSmall}" Width="18" Height="18"
+                                                  Foreground="{DynamicResource OnSurfaceVariant}" VerticalAlignment="Center"/>
+                                        <TextBlock Grid.Column="1" Margin="6,0"
+                                                   Classes="BodyMedium"
+                                                   Text="{Binding Title}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding !IsEditing}"/>
+                                        <TextBox Grid.Column="1" Margin="6,0"
+                                                 Text="{Binding EditTitle}"
+                                                 IsVisible="{Binding IsEditing}"
+                                                 VerticalAlignment="Center"
+                                                 FontSize="12">
+                                            <TextBox.KeyBindings>
+                                                <KeyBinding Gesture="Enter"
+                                                            Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).RenameSessionCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                                <KeyBinding Gesture="Escape"
+                                                            Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).CancelRenameCommand}"
+                                                            CommandParameter="{Binding}"/>
+                                            </TextBox.KeyBindings>
+                                        </TextBox>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2">
+                                            <Button Classes="sessionAction" ToolTip.Tip="{x:Static res:Strings.Session_Rename}"
+                                                    Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).ContextRenameCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <PathIcon Data="{StaticResource IconEdit}" Width="16" Height="16"/>
+                                            </Button>
+                                            <Button Classes="sessionAction" ToolTip.Tip="{x:Static res:Strings.Session_Delete}"
+                                                    Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).ContextDeleteCommand}"
+                                                    CommandParameter="{Binding}">
+                                                <PathIcon Data="{StaticResource IconDelete}" Width="16" Height="16"/>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,2,0,0">
+                                        <TextBlock Text="{Binding TimeLabel}" FontSize="10"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                        <TextBlock Text="{Binding MessageText}" FontSize="10"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                                   IsVisible="{Binding HasMessages}"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <TextBlock Text="{x:Static res:Strings.Session_Empty}" FontSize="12" Opacity="0.6"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           IsVisible="{Binding !HasSessions}"/>
+            </Panel>
+        </ScrollViewer>
+
+    </Grid>
+</UserControl>
