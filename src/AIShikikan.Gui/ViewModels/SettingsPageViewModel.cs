@@ -104,9 +104,6 @@ public partial class SettingsPageViewModel : ViewModelBase
     private ProviderConfig? _selectedProvider;
 
     [ObservableProperty]
-    private string _newProviderId = string.Empty;
-
-    [ObservableProperty]
     private string _newProviderName = string.Empty;
 
     [ObservableProperty]
@@ -116,7 +113,20 @@ public partial class SettingsPageViewModel : ViewModelBase
     private string _newProviderApiKey = string.Empty;
 
     [ObservableProperty]
-    private string _newProviderDefaultModel = string.Empty;
+    private string _newProviderCustomModel = string.Empty;
+
+    [ObservableProperty]
+    private int _newProviderModelSourceIndex;
+
+    [ObservableProperty]
+    private string _newProviderModelError = string.Empty;
+
+    [ObservableProperty]
+    private bool _isFetchingNewProviderModels;
+
+    public IReadOnlyList<string> NewProviderModelSourceOptions { get; } = ["自定义模型", "从 API 获取"];
+
+    public IReadOnlyList<string> NewProviderFetchedModels { get; private set; } = [];
 
     [ObservableProperty]
     private int _newProviderKindIndex;
@@ -340,18 +350,20 @@ public partial class SettingsPageViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(NewProviderName)) return;
 
-        var id = string.IsNullOrWhiteSpace(NewProviderId)
-            ? NewProviderName.Trim().ToLowerInvariant().Replace(" ", "-")
-            : NewProviderId.Trim();
+        var name = NewProviderName.Trim();
+        var id = name.ToLowerInvariant().Replace(" ", "-");
         var kind = NewProviderKindIndex == 0 ? ProviderKind.OpenAi : ProviderKind.Anthropic;
+        var defaultModel = NewProviderModelSourceIndex == 0
+            ? NewProviderCustomModel.Trim()
+            : (NewProviderFetchedModels.FirstOrDefault() ?? string.Empty);
         var provider = new ProviderConfig
         {
             Id = id,
-            Name = NewProviderName.Trim(),
+            Name = name,
             Kind = kind,
             BaseUrl = NewProviderBaseUrl.Trim(),
             ApiKey = NewProviderApiKey.Trim(),
-            DefaultModel = NewProviderDefaultModel.Trim()
+            DefaultModel = defaultModel
         };
 
         if (provider.EnabledModels.Count == 0 && !string.IsNullOrWhiteSpace(provider.DefaultModel))
@@ -363,11 +375,13 @@ public partial class SettingsPageViewModel : ViewModelBase
         ProviderSettingsService.Save(LlmSettings);
         AppShell.Instance.NotifyDataChanged();
 
-        NewProviderId = string.Empty;
         NewProviderName = string.Empty;
         NewProviderBaseUrl = string.Empty;
         NewProviderApiKey = string.Empty;
-        NewProviderDefaultModel = string.Empty;
+        NewProviderCustomModel = string.Empty;
+        NewProviderModelSourceIndex = 0;
+        NewProviderFetchedModels = [];
+        NewProviderModelError = string.Empty;
         NewProviderKindIndex = 0;
     }
 
@@ -388,6 +402,53 @@ public partial class SettingsPageViewModel : ViewModelBase
     }
 
     // 模型管理
+    partial void OnNewProviderModelSourceIndexChanged(int value)
+    {
+        NewProviderCustomModel = string.Empty;
+        NewProviderFetchedModels = [];
+        NewProviderModelError = string.Empty;
+        if (value == 1)
+        {
+            FetchNewProviderModelsCommand.Execute(null);
+        }
+    }
+
+    [RelayCommand]
+    private async Task FetchNewProviderModels()
+    {
+        if (string.IsNullOrWhiteSpace(NewProviderBaseUrl) || string.IsNullOrWhiteSpace(NewProviderApiKey))
+        {
+            NewProviderModelError = "请先填写基础 URL 和 API Key";
+            return;
+        }
+
+        IsFetchingNewProviderModels = true;
+        NewProviderModelError = string.Empty;
+        try
+        {
+            var kind = NewProviderKindIndex == 0 ? ProviderKind.OpenAi : ProviderKind.Anthropic;
+            var tempProvider = new ProviderConfig
+            {
+                Kind = kind,
+                BaseUrl = NewProviderBaseUrl.Trim(),
+                ApiKey = NewProviderApiKey.Trim()
+            };
+            NewProviderFetchedModels = (await ModelListService.FetchModelsAsync(tempProvider)).ToList();
+            if (NewProviderFetchedModels.Count == 0)
+            {
+                NewProviderModelError = "未获取到任何模型";
+            }
+        }
+        catch (Exception ex)
+        {
+            NewProviderModelError = $"{ex.GetType().Name}: {ex.Message}";
+        }
+        finally
+        {
+            IsFetchingNewProviderModels = false;
+        }
+    }
+
     [RelayCommand]
     private async Task FetchModels()
     {
