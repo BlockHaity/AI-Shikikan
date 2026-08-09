@@ -33,7 +33,7 @@ public class LlmService
     public IChatCompletionsClient GetClient(string? providerId = null)
     {
         var provider = GetProvider(providerId)
-            ?? throw new LlmApiException($"未找到 Provider: {providerId}，请检查 providers.json");
+            ?? throw new LlmApiException($"未找到 Provider: {providerId}，请检查 providers.toml");
 
         if (_clients.TryGetValue(provider.Id, out var existing))
         {

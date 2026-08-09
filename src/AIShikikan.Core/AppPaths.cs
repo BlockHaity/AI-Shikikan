@@ -63,12 +63,12 @@ public static class AppPaths
             LogDir = Path.Combine(xdgDataHome, AppNameLower, "logs");
         }
 
-        PreferencesPath = Path.Combine(ConfigDir, "preferences.json");
+        PreferencesPath = Path.Combine(ConfigDir, "preferences.toml");
         SessionsDir = Path.Combine(DataDir, "sessions");
         BackgroundsDir = Path.Combine(DataDir, "backgrounds");
 
-        ProvidersPath = Path.Combine(ConfigDir, "providers.json");
-        AgentsPath = Path.Combine(ConfigDir, "agents.json");
+        ProvidersPath = Path.Combine(ConfigDir, "providers.toml");
+        AgentsPath = Path.Combine(ConfigDir, "agents.toml");
         PersonasDir = Path.Combine(ConfigDir, "personas");
         TemplatesDir = Path.Combine(ConfigDir, "templates");
         RosterTemplatePath = Path.Combine(ConfigDir, "roster.prompt");

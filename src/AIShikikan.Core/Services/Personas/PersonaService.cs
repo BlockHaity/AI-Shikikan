@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Personas;
@@ -10,6 +11,7 @@ public class Persona
     public string Description { get; set; } = string.Empty;
     public string SystemPrompt { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public string Display => string.IsNullOrEmpty(Name) ? Id : Name;
 }
 
@@ -25,6 +27,32 @@ public static class PersonaService
     {
         var list = new List<Persona>();
         Directory.CreateDirectory(AppPaths.PersonasDir);
+        foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.toml"))
+        {
+            try
+            {
+                var persona = TomlBridge.Deserialize<Persona>(File.ReadAllText(file));
+                if (persona is null || string.IsNullOrWhiteSpace(persona.Id))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(persona.Name))
+                {
+                    persona.Name = persona.Id;
+                }
+
+                if (!string.IsNullOrWhiteSpace(persona.Name))
+                {
+                    list.Add(persona);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // 兼容旧 Markdown(YAML frontmatter)格式
         foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.md"))
         {
             try
@@ -67,11 +95,11 @@ public static class PersonaService
     public static void Save(Persona persona)
     {
         Directory.CreateDirectory(AppPaths.PersonasDir);
-        var path = Path.Combine(AppPaths.PersonasDir, $"{persona.Id}.md");
-        File.WriteAllText(path, YamlFrontmatterParser.Build(persona, persona.SystemPrompt));
+        var path = Path.Combine(AppPaths.PersonasDir, $"{persona.Id}.toml");
+        File.WriteAllText(path, TomlBridge.Serialize(persona));
     }
 
-    /// <summary>从外部文件导入专家/人格, 支持 .json 和 .md 两种格式, 校验后保存到配置目录。</summary>
+    /// <summary>从外部文件导入专家/人格, 支持 .toml(推荐)、.json/.md(旧格式兼容), 校验后保存到配置目录。</summary>
     public static (Persona? Persona, string? Error) ImportFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -84,8 +112,21 @@ public static class PersonaService
 
         try
         {
-            if (ext == ".md")
+            if (ext == ".toml")
             {
+                persona = TomlBridge.Deserialize<Persona>(File.ReadAllText(path))
+                          ?? throw new InvalidDataException("文件内容不是有效的专家文件(TOML)。");
+            }
+            else if (ext == ".json")
+            {
+                // 兼容旧 JSON 格式
+                persona = System.Text.Json.JsonSerializer.Deserialize(
+                    File.ReadAllText(path), AppJsonContext.Default.Persona)
+                    ?? throw new InvalidDataException("文件内容不是有效的专家文件。");
+            }
+            else
+            {
+                // 兼容旧 Markdown(YAML frontmatter)格式
                 var content = File.ReadAllText(path);
                 var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
 
@@ -105,13 +146,6 @@ public static class PersonaService
                         ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
                         : body.Trim()
                 };
-            }
-            else
-            {
-                // 兼容旧 JSON 格式
-                persona = System.Text.Json.JsonSerializer.Deserialize(
-                    File.ReadAllText(path), AppJsonContext.Default.Persona)
-                    ?? throw new InvalidDataException("文件内容不是有效的专家文件。");
             }
         }
         catch (InvalidDataException)
@@ -140,14 +174,14 @@ public static class PersonaService
 
     private static string EnsureUniqueId(string id, string dir)
     {
-        var file = Path.Combine(dir, $"{id}.md");
+        var file = Path.Combine(dir, $"{id}.toml");
         if (!File.Exists(file))
         {
             return id;
         }
 
         var n = 2;
-        while (File.Exists(Path.Combine(dir, $"{id}-{n}.md")))
+        while (File.Exists(Path.Combine(dir, $"{id}-{n}.toml")))
         {
             n++;
         }

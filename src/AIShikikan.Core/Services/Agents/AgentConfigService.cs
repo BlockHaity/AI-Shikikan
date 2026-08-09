@@ -59,7 +59,19 @@ public static class AgentConfigService
             if (File.Exists(AppPaths.AgentsPath))
             {
                 var content = File.ReadAllText(AppPaths.AgentsPath);
-                var file = JsonSerializer.Deserialize(content, AppJsonContext.Default.AgentConfigFile);
+                var file = TomlBridge.Deserialize<AgentConfigFile>(content);
+                if (file is not null)
+                {
+                    return file;
+                }
+            }
+
+            // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 agents.json
+            var legacyPath = Path.ChangeExtension(AppPaths.AgentsPath, ".json");
+            if (File.Exists(legacyPath))
+            {
+                var file = JsonSerializer.Deserialize(
+                    File.ReadAllText(legacyPath), AppJsonContext.Default.AgentConfigFile);
                 if (file is not null)
                 {
                     return file;
@@ -124,7 +136,7 @@ public static class AgentConfigService
     private static void SaveFile(AgentConfigFile file)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.AgentsPath, JsonSerializer.Serialize(file, AppJsonContext.Default.AgentConfigFile));
+        File.WriteAllText(AppPaths.AgentsPath, TomlBridge.Serialize(file));
         _cache = null;
     }
 }

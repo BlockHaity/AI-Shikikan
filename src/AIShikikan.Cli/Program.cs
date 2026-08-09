@@ -90,7 +90,7 @@ static int RunDoctor()
             !string.IsNullOrEmpty(Environment.GetEnvironmentVariable(p.EnvKey)));
         checks.Add(("Provider API Key",
             configured,
-            configured ? "至少一个 Provider 已配置 Key" : "未找到 API Key(检查 providers.json 或环境变量)"));
+            configured ? "至少一个 Provider 已配置 Key" : "未找到 API Key(检查 providers.toml 或环境变量)"));
 
         checks.Add(("Agent 定义", runtime.Agents.Count > 0, $"{runtime.Agents.Count} 个 Agent"));
         checks.Add(("专家/模板", runtime.Personas.Count > 0, $"{runtime.Personas.Count} 个专家, {runtime.Templates.Count} 个模板"));
