@@ -15,6 +15,7 @@
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibilityConverter"/>
         <local:FontCustomVisibilityConverter x:Key="FontCustomVisibilityConverter"/>
         <local:FetchingToTextConverter x:Key="FetchingToTextConverter"/>
+        <local:IntEqualsConverter x:Key="IntEqualsConverter"/>
     </UserControl.Resources>
 
     <ScrollViewer>
@@ -141,24 +142,34 @@
                         <theme:Divider />
                         <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Settings_ProviderAdd}" />
                         <StackPanel Spacing="8">
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderName}"
-                                        Text="{Binding NewProviderName}" />
-                                <TextBlock Grid.Column="1" Classes="BodySmall"
-                                           Text="ID" VerticalAlignment="Center"
-                                           Foreground="{DynamicResource OnSurfaceVariant}"
-                                           Margin="8,0,0,0"/>
-                            </Grid>
-                            <TextBox PlaceholderText="provider-id(留空自动生成)"
-                                     Text="{Binding NewProviderId}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderName}"
+                                     Text="{Binding NewProviderName}" />
                             <TextBox PlaceholderText="https://api.example.com/v1"
                                      Text="{Binding NewProviderBaseUrl}" />
-                             <TextBox
-                                      Text="{Binding NewProviderApiKey}"
-                                      PlaceholderText="{x:Static res:Strings.Settings_ProviderApiKey}" />
-                            <TextBox PlaceholderText="gpt-4o"
-                                     Text="{Binding NewProviderDefaultModel}" />
-                            <ComboBox PlaceholderText="类型"
+                            <TextBox
+                                     Text="{Binding NewProviderApiKey}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_ProviderApiKey}" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ComboBox SelectedIndex="{Binding NewProviderModelSourceIndex}"
+                                          ItemsSource="{Binding NewProviderModelSourceOptions}"
+                                          HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Classes="FilledTonal" Margin="8,0,0,0"
+                                        Content="{Binding IsFetchingNewProviderModels, Converter={StaticResource FetchingToTextConverter}}"
+                                        Command="{Binding FetchNewProviderModelsCommand}"
+                                        IsEnabled="{Binding !IsFetchingNewProviderModels}"/>
+                            </Grid>
+                            <TextBlock Classes="BodySmall" Text="{Binding NewProviderModelError}"
+                                       Foreground="{DynamicResource Error}"
+                                       IsVisible="{Binding NewProviderModelError, Converter={StaticResource NotEmptyToVisibilityConverter}}"
+                                       TextWrapping="Wrap" />
+                            <ComboBox PlaceholderText="{x:Static res:Strings.Settings_ProviderModel}"
+                                      Text="{Binding NewProviderCustomModel}"
+                                      ItemsSource="{Binding NewProviderFetchedModels}"
+                                      IsVisible="{Binding NewProviderModelSourceIndex, Converter={StaticResource IntEqualsConverter}, ConverterParameter=1}"/>
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderModelCustom}"
+                                     Text="{Binding NewProviderCustomModel}"
+                                     IsVisible="{Binding NewProviderModelSourceIndex, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}"/>
+                            <ComboBox PlaceholderText="{x:Static res:Strings.Settings_ProviderKind}"
                                       SelectedIndex="{Binding NewProviderKindIndex}"
                                       ItemsSource="{Binding ProviderKindOptions}"/>
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
