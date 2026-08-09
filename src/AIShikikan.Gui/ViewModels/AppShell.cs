@@ -168,6 +168,9 @@ public sealed class AppShell
         DataChanged?.Invoke();
     }
 
+    /// <summary>通知订阅方(如聊天页)刷新展示数据。</summary>
+    public void NotifyDataChanged() => DataChanged?.Invoke();
+
     private static void Sync<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
         target.Clear();
