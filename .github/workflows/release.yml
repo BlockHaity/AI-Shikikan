@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: '发布版本号 (如 1.0.0)'
-        required: true
-        default: '1.0.0'
+        description: '覆盖版本号 (留空则读取根目录 VERSION 文件)'
+        required: false
+        default: ''
       prerelease:
         description: '标记为预发布 (Pre-release)'
         type: boolean
@@ -15,14 +15,66 @@ on:
         description: '先创建为草稿 (Draft)'
         type: boolean
         default: false
+      force:
+        description: '强制重新构建 (即使 v<version> 标签已存在)'
+        type: boolean
+        default: false
 
 env:
   DOTNET_VERSION: '10.0.x'
-  RELEASE_VERSION: ${{ inputs.version }}
 
 jobs:
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      run_build: ${{ steps.decide.outputs.run_build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from VERSION file
+        id: read
+        run: |
+          FILE_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
+          if [ -z "$FILE_VERSION" ]; then
+            FILE_VERSION="1.0.0"
+            echo "::warning::VERSION file missing or empty, falling back to 1.0.0"
+          fi
+          if [ -z "${{ inputs.version }}" ]; then
+            echo "version=${FILE_VERSION}" >> "$GITHUB_OUTPUT"
+            echo "source=VERSION file" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "source=manual input" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Decide whether to build
+        id: decide
+        run: |
+          TAG="v${{ steps.read.outputs.version }}"
+          if [ "${{ inputs.force }}" = "true" ]; then
+            RUN=true; REASON="force input"
+          elif git ls-remote --exit-code --tags origin "$TAG" > /dev/null 2>&1; then
+            RUN=false; REASON="tag $TAG already exists"
+          else
+            RUN=true; REASON="tag $TAG not found"
+          fi
+          echo "run_build=${RUN}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Version check"
+            echo ""
+            echo "- Version: \`${{ steps.read.outputs.version }}\` (from: ${{ steps.read.outputs.source }})"
+            echo "- Tag: \`${TAG}\`"
+            echo "- Build: **${RUN}** — ${REASON}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build ${{ matrix.rid }}
+    needs: check
+    if: needs.check.outputs.run_build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -72,11 +124,11 @@ jobs:
           dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/aot
+            -p:Version=${{ needs.check.outputs.version }} -o stage/aot
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=true -p:PublishSingleFile=true \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/aot
+            -p:Version=${{ needs.check.outputs.version }} -o stage/aot
 
       - name: Publish regular dotnet (framework-dependent)
         shell: bash
@@ -84,11 +136,11 @@ jobs:
           dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
             -c Release -r ${{ matrix.rid }} \
             -p:PublishAot=false \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/dotnet
+            -p:Version=${{ needs.check.outputs.version }} -o stage/dotnet
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} \
             -p:PublishAot=false \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/dotnet
+            -p:Version=${{ needs.check.outputs.version }} -o stage/dotnet
 
       - name: Publish self-contained (with .NET runtime)
         shell: bash
@@ -98,12 +150,12 @@ jobs:
             -p:PublishAot=false -p:PublishSingleFile=true \
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/selfcontained
+            -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=false -p:PublishSingleFile=true \
             -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:Version=${{ env.RELEASE_VERSION }} -o stage/selfcontained
+            -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
@@ -111,18 +163,18 @@ jobs:
         run: |
           mkdir -p dist
           chmod +x stage/*/AIShikikan.Cli stage/*/AIShikikan.Gui 2>/dev/null || true
-          tar czf dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-AOT.tar.gz -C stage/aot .
-          tar czf dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-dotnet.tar.gz -C stage/dotnet .
-          tar czf dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-selfcontained.tar.gz -C stage/selfcontained .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz -C stage/aot .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz -C stage/dotnet .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz -C stage/selfcontained .
 
       - name: Package artifacts (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-AOT.zip
-          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-dotnet.zip
-          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ env.RELEASE_VERSION }}-${{ matrix.rid }}-selfcontained.zip
+          Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.zip
+          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.zip
+          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.zip
 
       - name: Upload to build artifacts
         uses: actions/upload-artifact@v4
@@ -133,11 +185,15 @@ jobs:
 
   release:
     name: Publish GitHub Release
-    needs: build
+    needs: [check, build]
+    if: needs.check.outputs.run_build == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -150,10 +206,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ env.RELEASE_VERSION }}
-          name: v${{ env.RELEASE_VERSION }}
+          tag_name: v${{ needs.check.outputs.version }}
+          name: v${{ needs.check.outputs.version }}
           body: |
-            AI-Shikikan v${{ env.RELEASE_VERSION }} 发布
+            AI-Shikikan v${{ needs.check.outputs.version }} 发布
 
             包含三种构建版本 (每平台):
             - **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快
