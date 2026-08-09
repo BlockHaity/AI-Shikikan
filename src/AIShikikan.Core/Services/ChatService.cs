@@ -136,7 +136,7 @@ public class ChatService
                 {
                     var json = File.ReadAllText(file);
                     var session = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatSession);
-                    if (session is not null)
+                    if (session is not null && !string.IsNullOrEmpty(session.Id))
                     {
                         _sessions.Add(session);
                     }
