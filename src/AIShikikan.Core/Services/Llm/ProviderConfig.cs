@@ -76,7 +76,19 @@ public static class ProviderSettingsService
             if (File.Exists(AppPaths.ProvidersPath))
             {
                 var content = File.ReadAllText(AppPaths.ProvidersPath);
-                var settings = TomlSerializer.Deserialize<LlmSettings>(content);
+                var settings = TomlBridge.Deserialize<LlmSettings>(content);
+                if (settings is { Providers.Count: > 0 })
+                {
+                    return settings;
+                }
+            }
+
+            // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 providers.json
+            var legacyPath = Path.ChangeExtension(AppPaths.ProvidersPath, ".json");
+            if (File.Exists(legacyPath))
+            {
+                var settings = JsonSerializer.Deserialize(
+                    File.ReadAllText(legacyPath), AppJsonContext.Default.LlmSettings);
                 if (settings is { Providers.Count: > 0 })
                 {
                     return settings;
@@ -93,7 +105,6 @@ public static class ProviderSettingsService
     public static void Save(LlmSettings settings)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.ProvidersPath,
-            TomlSerializer.Serialize(settings));
+        File.WriteAllText(AppPaths.ProvidersPath, TomlBridge.Serialize(settings));
     }
 }

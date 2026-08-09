@@ -11,7 +11,7 @@ using AIShikikan.Core.Services.Templates;
 
 namespace AIShikikan.Core.Serialization;
 
-/// <summary>源生成 JSON 上下文: AOT/裁剪安全, 替代反射式 JsonSerializer 调用。</summary>
+/// <summary>源生成 JSON 上下文: 用于数据文件(会话/步骤/分派/roster)与旧 JSON 配置兼容读取。</summary>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = true,
@@ -22,11 +22,11 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(CliAgentDefinition))]
 [JsonSerializable(typeof(Persona))]
 [JsonSerializable(typeof(AgentTemplate))]
+[JsonSerializable(typeof(ThemeService.Preferences))]
 [JsonSerializable(typeof(GitStepRecord))]
 [JsonSerializable(typeof(Assignment))]
 [JsonSerializable(typeof(ChatSession))]
 [JsonSerializable(typeof(ChatMessage))]
-[JsonSerializable(typeof(ThemeService.Preferences))]
 [JsonSerializable(typeof(RosterConfig))]
 [JsonSerializable(typeof(AgentRosterEntry))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

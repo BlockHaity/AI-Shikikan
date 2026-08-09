@@ -81,7 +81,7 @@
                                IsVisible="{Binding !HasChanges}"/>
 
                     <TextBox Text="{Binding CommitMessage}"
-                             Watermark="{x:Static res:Strings.GitPanel_CommitMessage}" FontSize="12"/>
+                             PlaceholderText="{x:Static res:Strings.GitPanel_CommitMessage}" FontSize="12"/>
                     <Button Classes="Filled" HorizontalAlignment="Stretch"
                             Content="{x:Static res:Strings.GitPanel_Commit}" Command="{Binding CommitCommand}"/>
                 </StackPanel>

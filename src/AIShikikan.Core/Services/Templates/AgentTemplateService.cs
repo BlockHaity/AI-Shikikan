@@ -28,6 +28,27 @@ public static class AgentTemplateService
     {
         var list = new List<AgentTemplate>();
         Directory.CreateDirectory(AppPaths.TemplatesDir);
+        foreach (var file in Directory.GetFiles(AppPaths.TemplatesDir, "*.toml"))
+        {
+            try
+            {
+                var t = TomlBridge.Deserialize<AgentTemplate>(File.ReadAllText(file));
+                if (t is not null && !string.IsNullOrEmpty(t.Id))
+                {
+                    if (string.IsNullOrEmpty(t.Name))
+                    {
+                        t.Name = t.Id;
+                    }
+
+                    list.Add(t);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // 兼容旧 JSON 格式
         foreach (var file in Directory.GetFiles(AppPaths.TemplatesDir, "*.json"))
         {
             try
@@ -80,7 +101,7 @@ public static class AgentTemplateService
 
     public static void EnsureSamplesExist()
     {
-        if (Directory.Exists(AppPaths.TemplatesDir) && Directory.GetFiles(AppPaths.TemplatesDir, "*.json").Length > 0)
+        if (Directory.Exists(AppPaths.TemplatesDir) && Directory.GetFiles(AppPaths.TemplatesDir, "*.toml").Length > 0)
         {
             return;
         }
@@ -169,11 +190,11 @@ public static class AgentTemplateService
     private static void Save(AgentTemplate template)
     {
         Directory.CreateDirectory(AppPaths.TemplatesDir);
-        var file = Path.Combine(AppPaths.TemplatesDir, $"{template.Id}.json");
-        File.WriteAllText(file, JsonSerializer.Serialize(template, AppJsonContext.Default.AgentTemplate));
+        var file = Path.Combine(AppPaths.TemplatesDir, $"{template.Id}.toml");
+        File.WriteAllText(file, TomlBridge.Serialize(template));
     }
 
-    /// <summary>从外部 JSON 文件导入专家模板, 校验后保存到配置目录。
+    /// <summary>从外部 TOML/JSON 文件导入专家模板(兼容旧 JSON), 校验后保存到配置目录。
     /// 返回 (导入对象可为 null, 错误信息)。</summary>
     public static (AgentTemplate? Template, string? Error) ImportFile(string path)
     {
@@ -185,8 +206,11 @@ public static class AgentTemplateService
         AgentTemplate template;
         try
         {
-            template = JsonSerializer.Deserialize(File.ReadAllText(path), AppJsonContext.Default.AgentTemplate)
-                       ?? throw new InvalidDataException("文件内容不是有效的 Agent 模板(JSON)。");
+            template = Path.GetExtension(path).ToLowerInvariant() == ".json"
+                ? JsonSerializer.Deserialize(File.ReadAllText(path), AppJsonContext.Default.AgentTemplate)
+                  ?? throw new InvalidDataException("文件内容不是有效的 Agent 模板(JSON)。")
+                : TomlBridge.Deserialize<AgentTemplate>(File.ReadAllText(path))
+                  ?? throw new InvalidDataException("文件内容不是有效的 Agent 模板(TOML)。");
         }
         catch (InvalidDataException)
         {
@@ -219,14 +243,14 @@ public static class AgentTemplateService
 
     private static string EnsureUniqueId(string id, string dir)
     {
-        var file = Path.Combine(dir, $"{id}.json");
+        var file = Path.Combine(dir, $"{id}.toml");
         if (!File.Exists(file))
         {
             return id;
         }
 
         var n = 2;
-        while (File.Exists(Path.Combine(dir, $"{id}-{n}.json")))
+        while (File.Exists(Path.Combine(dir, $"{id}-{n}.toml")))
         {
             n++;
         }

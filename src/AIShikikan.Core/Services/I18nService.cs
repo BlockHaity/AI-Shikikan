@@ -4,7 +4,7 @@ namespace AIShikikan.Core.Services;
 
 public class I18nService
 {
-    private CultureInfo _currentCulture = CultureInfo.CurrentCulture;
+    private CultureInfo _currentCulture;
 
     public CultureInfo CurrentCulture
     {
@@ -21,12 +21,6 @@ public class I18nService
 
     public event EventHandler<CultureInfo>? LanguageChanged;
 
-    public static readonly CultureInfo[] SupportedLanguages =
-    [
-        new("zh-CN"),
-        new("en-US")
-    ];
-
     public I18nService()
     {
         _currentCulture = CultureInfo.CurrentCulture;
@@ -34,7 +28,6 @@ public class I18nService
 
     public void SetLanguage(string cultureName)
     {
-        var culture = new CultureInfo(cultureName);
-        CurrentCulture = culture;
+        CurrentCulture = new CultureInfo(cultureName);
     }
 }
