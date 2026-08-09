@@ -25,6 +25,7 @@ public static class AppPaths
     public static string StepsDir { get; }
     public static string SubagentsDir { get; }
     public static string AssignmentsDir { get; }
+    public static string UsageStatsPath { get; }
 
     static AppPaths()
     {
@@ -75,6 +76,7 @@ public static class AppPaths
         StepsDir = Path.Combine(DataDir, "steps");
         SubagentsDir = Path.Combine(DataDir, "subagents");
         AssignmentsDir = Path.Combine(DataDir, "assignments");
+        UsageStatsPath = Path.Combine(DataDir, "usage.json");
     }
 
     public static void EnsureDirectoriesExist()
