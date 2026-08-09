@@ -4,6 +4,7 @@ using AIShikikan.Cli.Tui.Services;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
+using AIShikikan.Core.Services.Usage;
 using Spectre.Console;
 
 namespace AIShikikan.Cli.Tui;
@@ -21,8 +22,19 @@ public class TuiApp
         _commandService = new CommandService(_messages, _runtime);
         _inputService = new InputService();
         _runtime.Engine.OnEvent += OnEngineEvent;
+        _runtime.Engine.OnEvent += OnUsageRecorded;
         _runtime.Assignments.AssignmentChanged += a =>
             AnsiConsole.MarkupLine($"[grey]分派更新: {a.Display}[/]");
+    }
+
+    /// <summary>记录 CLI 会话的 LLM 用量统计。</summary>
+    private void OnUsageRecorded(AgentEngineEvent e)
+    {
+        if (e is not EngineUsageRecorded usage) return;
+        UsageStatsService.RecordLlmUsage(
+            "tui", "TUI 会话",
+            usage.Provider, usage.Model,
+            usage.Usage.InputTokens, usage.Usage.OutputTokens);
     }
 
     public CommanderRuntime Runtime => _runtime;
