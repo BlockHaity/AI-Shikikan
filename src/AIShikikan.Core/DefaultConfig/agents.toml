@@ -1,0 +1,77 @@
+# Agent 程序默认配置(首次启动自动生成)
+# injection: "None" 不注入 / "PromptFlag" 命令行参数 / "MemoryFile" 记忆文件 / "Both" 两者
+# 可自由修改或删除任意条目
+
+rules = "优先选择专长与任务匹配的 Agent; 涉及多个领域时先拆分子任务再分配。"
+roster_enabled = true
+
+[[agents]]
+id = "claude"
+name = "Claude Code"
+executable = "claude"
+args = ["-p", "{prompt}"]
+memory_file = "CLAUDE.md"
+injection = "Both"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["编码", "重构", "测试", "feature", "bug", "实现"]
+description = "Anthropic 官方编码 Agent, 擅长代码实现/重构/测试"
+recommended_persona_id = "general-expert"
+
+[[agents]]
+id = "codex"
+name = "Codex CLI"
+executable = "codex"
+args = ["exec", "{prompt}"]
+memory_file = "AGENTS.md"
+injection = "Both"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["修复", "小步修改", "lint", "样式修复", "快速实现"]
+description = "OpenAI 官方 CLI 编码 Agent, 擅长精确的小步修改"
+recommended_persona_id = "general-expert"
+
+[[agents]]
+id = "gemini"
+name = "Gemini CLI"
+executable = "gemini"
+args = ["-p", "{prompt}"]
+memory_file = "GEMINI.md"
+injection = "Both"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["搜索", "研究", "文档", "多模态", "翻译"]
+description = "Google 官方命令行 Agent, 支持联网与多模态, 适合研究与搜索"
+
+[[agents]]
+id = "opencode"
+name = "OpenCode"
+executable = "opencode"
+args = ["run", "{prompt}"]
+memory_file = "AGENTS.md"
+injection = "Both"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["通用", "跨栈", "脚本", "自动化"]
+description = "开源通用命令行 Agent, 插件生态丰富"
+
+[[agents]]
+id = "reasonix"
+name = "Reasonix"
+executable = "reasonix"
+args = ["run", "{prompt}"]
+injection = "PromptFlag"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["低成本", "批量", "长任务", "审查", "批处理"]
+description = "DeepSeek 原生缓存优先 Agent, 低成本批量/长任务"
