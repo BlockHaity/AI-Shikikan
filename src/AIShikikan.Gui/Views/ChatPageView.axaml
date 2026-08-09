@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AIShikikan.Gui.ViewModels"
              xmlns:v="using:AIShikikan.Gui.Views"
+             xmlns:llm="using:AIShikikan.Core.Services.Llm"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
@@ -34,7 +35,11 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid ColumnDefinitions="*,Auto,Auto">
+    <Grid>
+
+        <v:PageBackground ThemeService="{Binding ThemeService}" ScrimOpacity="0.7" />
+
+        <Grid ColumnDefinitions="*,Auto,Auto">
 
         <!-- 聊天区 -->
         <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
@@ -43,6 +48,15 @@
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock Classes="TitleSmall" VerticalAlignment="Center"
                                Text="{Binding ActiveModelText}" TextTrimming="CharacterEllipsis"/>
+                    <ComboBox ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}"
+                              MinWidth="140" VerticalAlignment="Center"
+                              IsVisible="{Binding AvailableProviders.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate x:DataType="llm:ProviderConfig">
+                                <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
                     <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}"
                               MinWidth="180" VerticalAlignment="Center"
                               IsVisible="{Binding AvailableModels.Count, Converter={StaticResource ModelListVisibilityConverter}}" />
@@ -136,6 +150,7 @@
             </Panel>
         </Border>
 
+        </Grid>
     </Grid>
 
 </UserControl>

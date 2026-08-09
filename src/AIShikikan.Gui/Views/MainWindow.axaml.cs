@@ -47,20 +47,10 @@ public partial class MainWindow : Window
         var path = themeService.BackgroundImagePath;
         if (path is not null && File.Exists(path))
         {
-            try
-            {
-                BackgroundImage.Source = new Bitmap(path);
-                ApplyDynamicPalette(path);
-            }
-            catch
-            {
-                BackgroundImage.Source = null;
-                _dynamicThemeService?.ResetToDefault();
-            }
+            ApplyDynamicPalette(path);
         }
         else
         {
-            BackgroundImage.Source = null;
             _dynamicThemeService?.ResetToDefault();
         }
     }
