@@ -116,10 +116,10 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="core:GitGraphLine">
                                     <StackPanel Orientation="Horizontal" Spacing="4">
-                                        <TextBlock FontFamily="monospace" FontSize="11"
+                                        <TextBlock FontFamily="{DynamicResource MonoThemeFontFamily}" FontSize="11"
                                                    Text="{Binding GraphPart}"
                                                    Foreground="{DynamicResource Primary}"/>
-                                        <TextBlock FontFamily="monospace" FontSize="11"
+                                        <TextBlock FontFamily="{DynamicResource MonoThemeFontFamily}" FontSize="11"
                                                    Text="{Binding CommitPart}"
                                                    Foreground="{DynamicResource OnSurfaceVariant}"
                                                    TextTrimming="CharacterEllipsis"/>
