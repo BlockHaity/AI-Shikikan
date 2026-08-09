@@ -13,6 +13,9 @@ public class ProviderConfig
     public string ApiKey { get; set; } = string.Empty;
     public string DefaultModel { get; set; } = string.Empty;
 
+    /// <summary>启用的模型列表; 为空表示全部允许。</summary>
+    public List<string> EnabledModels { get; set; } = [];
+
     [JsonIgnore]
     public string EnvKey => Kind == ProviderKind.Anthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
 }
@@ -45,7 +48,8 @@ public static class ProviderDefaults
                 Name = "OpenAI",
                 Kind = ProviderKind.OpenAi,
                 BaseUrl = "https://api.openai.com/v1",
-                DefaultModel = "gpt-4o"
+                DefaultModel = "gpt-4o",
+                EnabledModels = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3"]
             },
             new ProviderConfig
             {
@@ -53,7 +57,15 @@ public static class ProviderDefaults
                 Name = "Anthropic",
                 Kind = ProviderKind.Anthropic,
                 BaseUrl = "https://api.anthropic.com",
-                DefaultModel = "claude-sonnet-4-20250514"
+                DefaultModel = "claude-sonnet-4-20250514",
+                EnabledModels =
+                [
+                    "claude-sonnet-4-20250514",
+                    "claude-sonnet-4-5-20250929",
+                    "claude-opus-4-20250514",
+                    "claude-3-7-sonnet-20250219",
+                    "claude-3-5-sonnet-20241022"
+                ]
             },
             new ProviderConfig
             {
@@ -61,7 +73,8 @@ public static class ProviderDefaults
                 Name = "DeepSeek",
                 Kind = ProviderKind.OpenAi,
                 BaseUrl = "https://api.deepseek.com/v1",
-                DefaultModel = "deepseek-chat"
+                DefaultModel = "deepseek-chat",
+                EnabledModels = ["deepseek-chat", "deepseek-reasoner"]
             }
         ]
     };

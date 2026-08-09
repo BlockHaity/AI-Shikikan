@@ -73,8 +73,21 @@ public class LlmService
         }
 
         var provider = GetProvider(providerId);
-        return !string.IsNullOrEmpty(_settings.ActiveModel)
+        var preferred = !string.IsNullOrEmpty(_settings.ActiveModel)
             ? _settings.ActiveModel
             : provider?.DefaultModel ?? string.Empty;
+
+        if (provider?.EnabledModels is not { Count: > 0 })
+        {
+            return preferred;
+        }
+
+        if (provider.EnabledModels.Contains(preferred, StringComparer.OrdinalIgnoreCase))
+        {
+            return preferred;
+        }
+
+        return provider.EnabledModels.FirstOrDefault(id => !string.IsNullOrWhiteSpace(id))
+            ?? provider.DefaultModel;
     }
 }
