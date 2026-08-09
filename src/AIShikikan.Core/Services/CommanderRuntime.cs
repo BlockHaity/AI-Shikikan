@@ -37,6 +37,8 @@ public sealed class CommanderRuntime
         PersonaService.WriteSampleFiles();
         AgentTemplateService.EnsureSamplesExist();
         RosterBuilder.WriteDefaultTemplate();
+        AgentConfigService.EnsureDefaultExists();
+        ProviderSettingsService.EnsureDefaultExists();
         AgentConfigService.Refresh();
 
         var root = Path.GetFullPath(string.IsNullOrWhiteSpace(workspaceRoot) ? "." : workspaceRoot);
