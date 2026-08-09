@@ -88,7 +88,6 @@ public static class RosterBuilder
                 parts.Add(entry.Description);
             }
             if (agent.Description.Length > 0) parts.Add(agent.Description);
-            if (agent.Expertise.Count > 0) parts.Add($"专长: {string.Join("/", agent.Expertise)}");
             if (entry.PersonaId is { Length: > 0 } && personaMap.TryGetValue(entry.PersonaId, out var persona))
             {
                 parts.Add($"推荐专家: {persona.Display}");
@@ -114,7 +113,6 @@ public static class RosterBuilder
 
             var parts = new List<string> { agent.Id };
             if (agent.Description.Length > 0) parts.Add(agent.Description);
-            if (agent.Expertise.Count > 0) parts.Add($"专长: {string.Join("/", agent.Expertise)}");
             if (agent.RecommendedPersonaId is { Length: > 0 }) parts.Add($"推荐专家: {agent.RecommendedPersonaId}");
             if (agent.DefaultTemplateId is { Length: > 0 }) parts.Add($"推荐模板: {agent.DefaultTemplateId}");
             parts.Add($"模式: {agent.DefaultMode}, 并发: {agent.MaxConcurrent}");

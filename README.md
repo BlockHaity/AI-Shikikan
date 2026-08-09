@@ -129,9 +129,6 @@ id = "claude"
 name = "Claude Code"
 executable = "claude"
 args = ["-p", "{prompt}"]
-memory_file = "CLAUDE.md"
-injection = "Both"
-expertise = ["编码", "重构", "测试"]
 description = "Anthropic 官方编码 Agent"
 ```
 
