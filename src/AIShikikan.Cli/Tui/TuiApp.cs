@@ -34,7 +34,8 @@ public class TuiApp
         UsageStatsService.RecordLlmUsage(
             "tui", "TUI 会话",
             usage.Provider, usage.Model,
-            usage.Usage.InputTokens, usage.Usage.OutputTokens);
+            usage.Usage.InputTokens, usage.Usage.OutputTokens,
+            usage.Usage.CachedInputTokens);
     }
 
     public CommanderRuntime Runtime => _runtime;

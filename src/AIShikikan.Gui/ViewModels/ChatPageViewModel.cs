@@ -216,7 +216,8 @@ public partial class ChatPageViewModel : ViewModelBase
         UsageStatsService.RecordLlmUsage(
             _currentSessionId ?? "unknown", title,
             usage.Provider, usage.Model,
-            usage.Usage.InputTokens, usage.Usage.OutputTokens);
+            usage.Usage.InputTokens, usage.Usage.OutputTokens,
+            usage.Usage.CachedInputTokens);
     }
 
     private void RefreshShellDataChanged()
