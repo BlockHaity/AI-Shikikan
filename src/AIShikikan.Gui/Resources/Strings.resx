@@ -150,4 +150,6 @@
   <data name="Session_NewTitle" xml:space="preserve"><value>新会话</value></data>
   <data name="Session_Empty" xml:space="preserve"><value>暂无会话</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
+  <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>
+  <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
 </root>

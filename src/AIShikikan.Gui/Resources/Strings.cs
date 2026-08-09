@@ -147,4 +147,6 @@ public static class Strings
     public static string Session_NewTitle => Get(nameof(Session_NewTitle));
     public static string Session_Empty => Get(nameof(Session_Empty));
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
+    public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
+    public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
 }
