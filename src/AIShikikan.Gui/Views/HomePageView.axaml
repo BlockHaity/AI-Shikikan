@@ -21,13 +21,19 @@
 
         <ScrollViewer>
             <StackPanel Margin="32,24" Spacing="24">
-                <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="140" Height="140"
-                       Stretch="Uniform" HorizontalAlignment="Center" />
-                <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Home_Welcome}" />
-                <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Home_Description}"
-                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
-                           Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
+                <StackPanel Orientation="Horizontal" Spacing="20">
+                    <Border CornerRadius="16" ClipToBounds="True" VerticalAlignment="Center">
+                        <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="96" Height="96"
+                               Stretch="Uniform" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock Classes="HeadlineMedium" Text="{x:Static res:Strings.Home_Welcome}" />
+                        <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Home_Description}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                        <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
+                    </StackPanel>
+                </StackPanel>
 
                 <!-- 用量统计 -->
                 <theme:Card Classes="Elevated" MaxWidth="600">
