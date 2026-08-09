@@ -52,6 +52,9 @@ public class ChatUsage
 {
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
+
+    /// <summary>命中的缓存输入 token 数(Anthropic cache_read / OpenAI cached_tokens)。</summary>
+    public int CachedInputTokens { get; set; }
 }
 
 public class ChatCompletionResult

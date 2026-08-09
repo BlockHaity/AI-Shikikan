@@ -108,6 +108,7 @@ public class AnthropicChatCompletionsClient : ChatCompletionsClientBase
             if (message.StreamStartMessage?.Usage is { } start)
             {
                 usage.InputTokens = start.InputTokens;
+                usage.CachedInputTokens = start.CacheReadInputTokens;
             }
 
             if (message.Usage is { } u)

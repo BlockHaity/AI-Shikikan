@@ -92,6 +92,7 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
             {
                 usage.InputTokens = u.InputTokenCount;
                 usage.OutputTokens = u.OutputTokenCount;
+                usage.CachedInputTokens = u.InputTokenDetails?.CachedTokenCount ?? 0;
             }
 
             if (update.FinishReason is { } fr && string.IsNullOrEmpty(finishReason))

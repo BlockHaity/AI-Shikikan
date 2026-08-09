@@ -13,6 +13,9 @@ public sealed class LlmUsageEntry
     public string Model { get; set; } = string.Empty;
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
+
+    /// <summary>命中的缓存输入 token 数(旧数据无此字段时为 0)。</summary>
+    public int CachedInputTokens { get; set; }
 }
 
 /// <summary>单次子 Agent 调用记录。</summary>
@@ -77,6 +80,16 @@ public sealed class AgentCallStat
     public int Succeeded { get; set; }
 }
 
+/// <summary>按天聚合的用量点(用于首页趋势折线图)。</summary>
+public sealed class DailyUsageStat
+{
+    public DateTime Date { get; set; }
+    public int InputTokens { get; set; }
+    public int OutputTokens { get; set; }
+    public int CachedTokens { get; set; }
+    public int Calls { get; set; }
+}
+
 /// <summary>首页用量统计快照。</summary>
 public sealed class UsageSnapshot
 {
@@ -89,6 +102,9 @@ public sealed class UsageSnapshot
     public List<ModelUsageStat> ModelStats { get; set; } = [];
     public List<SessionUsageStat> SessionStats { get; set; } = [];
     public List<AgentCallStat> AgentStats { get; set; } = [];
+
+    /// <summary>按天聚合的用量序列(从首个使用日起到今日, 无记录的天为 0)。</summary>
+    public List<DailyUsageStat> DailyStats { get; set; } = [];
 }
 
 /// <summary>用量统计服务: 记录 LLM 调用与子 Agent 调用, 持久化到 usage.json, 生成汇总快照。</summary>
@@ -150,7 +166,7 @@ public static class UsageStatsService
     /// <summary>记录一次 LLM 调用用量; 输入输出均为 0 时忽略。</summary>
     public static void RecordLlmUsage(
         string sessionId, string sessionTitle, string provider, string model,
-        int inputTokens, int outputTokens)
+        int inputTokens, int outputTokens, int cachedInputTokens = 0)
     {
         if (inputTokens <= 0 && outputTokens <= 0) return;
 
@@ -164,7 +180,8 @@ public static class UsageStatsService
                 Provider = provider,
                 Model = model,
                 InputTokens = inputTokens,
-                OutputTokens = outputTokens
+                OutputTokens = outputTokens,
+                CachedInputTokens = cachedInputTokens
             });
             Save();
         }
@@ -197,6 +214,7 @@ public static class UsageStatsService
 
             var modelMap = new Dictionary<string, ModelUsageStat>(StringComparer.OrdinalIgnoreCase);
             var sessionMap = new Dictionary<string, SessionUsageStat>(StringComparer.OrdinalIgnoreCase);
+            var dayMap = new Dictionary<DateTime, DailyUsageStat>();
 
             foreach (var e in data.LlmEntries)
             {
@@ -209,6 +227,17 @@ public static class UsageStatsService
                 snapshot.TotalInputTokens += e.InputTokens;
                 snapshot.TotalOutputTokens += e.OutputTokens;
                 snapshot.TotalLlmCalls++;
+
+                var day = e.Timestamp.Date;
+                if (!dayMap.TryGetValue(day, out var ds))
+                {
+                    dayMap[day] = ds = new DailyUsageStat { Date = day };
+                }
+
+                ds.InputTokens += e.InputTokens;
+                ds.OutputTokens += e.OutputTokens;
+                ds.CachedTokens += e.CachedInputTokens;
+                ds.Calls++;
 
                 var model = string.IsNullOrWhiteSpace(e.Model) ? "未知模型" : e.Model;
                 if (!modelMap.TryGetValue(model, out var ms))
@@ -244,6 +273,21 @@ public static class UsageStatsService
                 .OrderByDescending(s => s.InputTokens + s.OutputTokens)
                 .Take(5)
                 .ToList();
+
+            if (dayMap.Count > 0)
+            {
+                // 从首个使用日到今日按天补零, 保证折线图时间轴连续
+                var first = dayMap.Keys.Min();
+                var daily = new List<DailyUsageStat>();
+                for (var d = first; d <= today; d = d.AddDays(1))
+                {
+                    daily.Add(dayMap.TryGetValue(d, out var ds)
+                        ? ds
+                        : new DailyUsageStat { Date = d });
+                }
+
+                snapshot.DailyStats = daily;
+            }
 
             var agentMap = new Dictionary<string, AgentCallStat>(StringComparer.OrdinalIgnoreCase);
             foreach (var e in data.AgentEntries)
