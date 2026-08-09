@@ -27,7 +27,7 @@
         </Style>
         <Style Selector="TextBlock.filePath">
             <Setter Property="FontSize" Value="12"/>
-            <Setter Property="FontFamily" Value="monospace"/>
+            <Setter Property="FontFamily" Value="{DynamicResource MonoThemeFontFamily}"/>
         </Style>
     </UserControl.Styles>
 
@@ -170,7 +170,7 @@
                 <TextBlock Text="{x:Static res:Strings.GitPanel_DiffTitle}" Classes="secTitle"
                            IsVisible="{Binding HasDiff}"/>
                 <TextBox Text="{Binding DiffText}" IsReadOnly="True" AcceptsReturn="True"
-                         FontFamily="monospace" FontSize="11" MinHeight="60" MaxHeight="180"
+                         FontFamily="{DynamicResource MonoThemeFontFamily}" FontSize="11" MinHeight="60" MaxHeight="180"
                          IsVisible="{Binding HasDiff}"/>
                 <TextBlock Text="{Binding ResultText}" FontSize="12" TextWrapping="Wrap"
                            Foreground="{DynamicResource OnSurfaceVariant}"/>

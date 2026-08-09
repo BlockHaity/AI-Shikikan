@@ -13,7 +13,6 @@
     <UserControl.Resources>
         <local:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibilityConverter"/>
-        <local:FontCustomVisibilityConverter x:Key="FontCustomVisibilityConverter"/>
         <local:FetchingToTextConverter x:Key="FetchingToTextConverter"/>
         <local:IntEqualsConverter x:Key="IntEqualsConverter"/>
     </UserControl.Resources>
@@ -46,14 +45,23 @@
                         </Grid>
                         <theme:Divider />
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
-                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_FontSelect}" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedFontIndex}"
-                                      ItemsSource="{Binding FontOptions}" MinWidth="200" />
-                            <StackPanel Grid.Row="1" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="8"
-                                        Margin="0,8,0,0">
-                                <TextBox Width="220" PlaceholderText="{x:Static res:Strings.Settings_FontCustom}"
-                                         Text="{Binding CustomFontText}" IsVisible="{Binding SelectedFontIndex, Converter={StaticResource FontCustomVisibilityConverter}}" />
-                            </StackPanel>
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_FontStandard}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedStandardFontIndex}"
+                                      ItemsSource="{Binding StandardFontOptions}" MinWidth="200" />
+                            <TextBox Grid.Row="1" Grid.ColumnSpan="2" Width="220" Margin="0,8,0,0"
+                                     PlaceholderText="{x:Static res:Strings.Settings_FontCustomStandard}"
+                                     Text="{Binding StandardCustomFontText}"
+                                     IsVisible="{Binding SelectedStandardFontIndex, Converter={StaticResource IntEqualsConverter}, ConverterParameter=1}" />
+                        </Grid>
+                        <theme:Divider />
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_FontMono}" VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding SelectedMonoFontIndex}"
+                                      ItemsSource="{Binding MonoFontOptions}" MinWidth="200" />
+                            <TextBox Grid.Row="1" Grid.ColumnSpan="2" Width="220" Margin="0,8,0,0"
+                                     PlaceholderText="{x:Static res:Strings.Settings_FontCustomMono}"
+                                     Text="{Binding MonoCustomFontText}"
+                                     IsVisible="{Binding SelectedMonoFontIndex, Converter={StaticResource IntEqualsConverter}, ConverterParameter=1}" />
                         </Grid>
                         <theme:Divider />
                         <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
@@ -230,16 +238,19 @@
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_About}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
-                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto">
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto,Auto">
                             <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_AppName}" Grid.Row="0" Grid.Column="0"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                             <TextBlock Classes="BodyLarge" Text="{Binding AppName}" Grid.Row="0" Grid.Column="1" />
                             <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Version}" Grid.Row="1" Grid.Column="0"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                             <TextBlock Classes="BodyLarge" Text="{Binding AppVersion}" Grid.Row="1" Grid.Column="1" />
-                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_Font}" Grid.Row="2" Grid.Column="0"
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_FontStandard}" Grid.Row="2" Grid.Column="0"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                             <TextBlock Classes="BodyLarge" Text="{Binding FontInfo}" Grid.Row="2" Grid.Column="1" />
+                            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Settings_FontMono}" Grid.Row="3" Grid.Column="0"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                            <TextBlock Classes="BodyLarge" Text="{Binding MonoFontInfo}" Grid.Row="3" Grid.Column="1" />
                         </Grid>
                     </StackPanel>
                 </StackPanel>
