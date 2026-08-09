@@ -208,6 +208,13 @@ AIShikikan.Core    - 核心逻辑
 - [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm/)
 - [Material.Icons.Avalonia](https://www.nuget.org/packages/Material.Icons.Avalonia/)
 
+### 字体
+
+- [HarmonyOS Sans SC](https://developer.huawei.com/consumer/cn/design/resource/) — 华为, 依据 *HarmonyOS Sans 字体许可协议* 使用(默认标准字体)
+- [CaskaydiaCove Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts) — Nerd Fonts 项目, 依据 *SIL Open Font License 1.1* 使用(默认等宽字体)
+
+字体文件与许可文本位于 `src/AIShikikan.Gui/Assets/Fonts/`。
+
 ## 贡献者
 
 ![贡献者图片列表](https://contrib.rocks/image?repo=BlockHaity/AI-Shikikan)
