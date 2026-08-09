@@ -111,7 +111,7 @@ public sealed class AgentEngine
             var provider = _llm.GetProvider(_options.ProviderId);
             if (provider is null)
             {
-                var msg = "未配置 Provider。请新建 providers.json(见 ConfigDir) 或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
+                var msg = "未配置 Provider。请新建 providers.toml(见 ConfigDir) 或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
                 OnEvent?.Invoke(new EngineDone(null, msg));
                 return msg;
             }

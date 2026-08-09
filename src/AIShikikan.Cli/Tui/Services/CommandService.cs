@@ -213,7 +213,7 @@ public class CommandService
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            AnsiConsole.MarkupLine("[red]用法: /persona import <专家文件.json>[/]");
+            AnsiConsole.MarkupLine("[red]用法: /persona import <专家文件.toml>[/]");
             AnsiConsole.WriteLine();
             return;
         }

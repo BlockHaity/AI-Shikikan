@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Text.Json.Serialization;
 
 namespace AIShikikan.Core.Services.Agents;
 
@@ -47,6 +48,7 @@ public record CliAgentDefinition
 
     public Dictionary<string, string> Environment { get; set; } = [];
 
+    [JsonIgnore]
     public string Display => string.IsNullOrEmpty(Name) ? Id : Name;
 }
 
