@@ -126,4 +126,5 @@
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
 </root>

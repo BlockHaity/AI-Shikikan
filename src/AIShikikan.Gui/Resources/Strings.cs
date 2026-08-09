@@ -123,4 +123,5 @@ public static class Strings
     public static string Settings_AgentSave => Get(nameof(Settings_AgentSave));
     public static string Settings_AgentEditHint => Get(nameof(Settings_AgentEditHint));
     public static string Chat_Model => Get(nameof(Chat_Model));
+    public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
 }
