@@ -116,6 +116,8 @@ public partial class AgentPanelViewModel : ViewModelBase
 
     private string _sessionId = string.Empty;
 
+    private bool _subAgentsRefreshQueued;
+
     [ObservableProperty]
     private string _assignTaskText = string.Empty;
 
@@ -139,10 +141,25 @@ public partial class AgentPanelViewModel : ViewModelBase
 
     partial void OnRosterEnabledChanged(bool value) => PushRoster();
 
+    /// <summary>延迟到调度器下一轮再重建子 Agent 列表, 避免在输入事件级联中同步增删
+    /// ItemsControl 项: Material 主题模板内部的 Transitions(如 Button 的 Opacity 过渡,
+    /// Easing 绑 DynamicResource)在控件移除触发的主题变体级联中会把 Easing 置 null,
+    /// 导致 Avalonia 内部 NRE(12.0.4 未修复)。多次调用会合并为一次刷新。</summary>
+    private void QueueRefreshSubAgents()
+    {
+        if (_subAgentsRefreshQueued) return;
+        _subAgentsRefreshQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _subAgentsRefreshQueued = false;
+            RefreshSubAgents();
+        });
+    }
+
     public void SetSession(string sessionId)
     {
         _sessionId = sessionId;
-        RefreshSubAgents();
+        QueueRefreshSubAgents();
     }
 
     [RelayCommand]
@@ -158,11 +175,13 @@ public partial class AgentPanelViewModel : ViewModelBase
             SelectedAgent = Agents[0];
         }
 
-        RefreshSubAgents();
+        QueueRefreshSubAgents();
         RefreshAssignments();
     }
 
-    /// <summary>以全局定义重建列表, 会话覆盖(roster.json 中描述/专家非空)优先。</summary>
+    /// <summary>以全局定义对账列表, 会话覆盖(roster.json 中描述/专家非空)优先。
+    /// 批量对账: 已有项原地更新(保留展开状态, 不销毁控件), 仅对真正增删的 agent 做集合操作,
+    /// 顺序调整用 Move——避免 Clear+重建触发主题过渡在控件移除级联中的 Avalonia 内部 NRE。</summary>
     private void RefreshSubAgents()
     {
         var userIds = new HashSet<string>(
@@ -175,43 +194,81 @@ public partial class AgentPanelViewModel : ViewModelBase
             sessionConfig = RosterConfigService.Load(_sessionId);
         }
 
-        SubAgents.Clear();
+        var remaining = new Dictionary<string, SubAgentItemViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var item in SubAgents)
+        {
+            remaining[item.AgentId] = item;
+        }
+
+        var desired = new List<SubAgentItemViewModel>(Agents.Count);
         foreach (var agent in Agents)
         {
-            var item = new SubAgentItemViewModel(agent, !userIds.Contains(agent.Id))
-            {
-                SelectedOption = PersonaOptionFor(agent.RecommendedPersonaId)
-            };
+            var item = remaining.Remove(agent.Id, out var existing)
+                ? existing
+                : new SubAgentItemViewModel(agent, !userIds.Contains(agent.Id));
+            ApplySessionOverride(item, sessionConfig);
+            desired.Add(item);
+        }
 
-            if (sessionConfig is not null)
+        // 仅移除已不存在的 agent(此时才会真正销毁其控件)
+        for (var i = SubAgents.Count - 1; i >= 0; i--)
+        {
+            if (remaining.ContainsKey(SubAgents[i].AgentId))
             {
-                var entry = sessionConfig.Entries.FirstOrDefault(e =>
-                    string.Equals(e.AgentId, agent.Id, StringComparison.OrdinalIgnoreCase));
-                if (entry is not null)
-                {
-                    item.Enabled = entry.Enabled;
-                    item.HasSessionOverride = !string.IsNullOrWhiteSpace(entry.Description)
-                                              || !string.IsNullOrWhiteSpace(entry.PersonaId);
-                    if (item.HasSessionOverride)
-                    {
-                        if (!string.IsNullOrWhiteSpace(entry.Description))
-                        {
-                            item.Description = entry.Description;
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(entry.PersonaId))
-                        {
-                            item.SelectedOption = PersonaOptionFor(entry.PersonaId);
-                        }
-                    }
-                }
+                SubAgents.RemoveAt(i);
             }
+        }
 
-            SubAgents.Add(item);
+        // 补齐新项 / 调整顺序(Move 不会销毁重建容器)
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var item = desired[i];
+            if (i < SubAgents.Count && ReferenceEquals(SubAgents[i], item)) continue;
+
+            var idx = SubAgents.IndexOf(item);
+            if (idx < 0)
+            {
+                SubAgents.Insert(Math.Min(i, SubAgents.Count), item);
+            }
+            else if (idx != i)
+            {
+                SubAgents.Move(idx, i);
+            }
         }
 
         HasNoAgents = SubAgents.Count == 0;
         PushRoster();
+    }
+
+    /// <summary>将会话覆盖(roster.json)套用到单项: 先重置为全局默认, 再叠加会话条目。</summary>
+    private void ApplySessionOverride(SubAgentItemViewModel item, RosterConfig? sessionConfig)
+    {
+        item.Enabled = true;
+        item.HasSessionOverride = false;
+        item.Description = item.Agent.Description;
+        item.SelectedOption = PersonaOptionFor(item.Agent.RecommendedPersonaId);
+
+        if (sessionConfig is null) return;
+
+        var entry = sessionConfig.Entries.FirstOrDefault(e =>
+            string.Equals(e.AgentId, item.AgentId, StringComparison.OrdinalIgnoreCase));
+        if (entry is null) return;
+
+        item.Enabled = entry.Enabled;
+        item.HasSessionOverride = !string.IsNullOrWhiteSpace(entry.Description)
+                                  || !string.IsNullOrWhiteSpace(entry.PersonaId);
+        if (item.HasSessionOverride)
+        {
+            if (!string.IsNullOrWhiteSpace(entry.Description))
+            {
+                item.Description = entry.Description;
+            }
+
+            if (!string.IsNullOrWhiteSpace(entry.PersonaId))
+            {
+                item.SelectedOption = PersonaOptionFor(entry.PersonaId);
+            }
+        }
     }
 
     private PersonaOption? PersonaOptionFor(string? personaId)
@@ -300,7 +357,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             _shell.ReloadAgents();
         }
 
-        RefreshSubAgents();
+        QueueRefreshSubAgents();
     }
 
     /// <summary>把会话覆盖改回全局: 写全局并清除会话条目(若仅开关状态则保留)。</summary>
@@ -316,7 +373,7 @@ public partial class AgentPanelViewModel : ViewModelBase
         }
 
         _shell.ReloadAgents();
-        RefreshSubAgents();
+        QueueRefreshSubAgents();
     }
 
     [RelayCommand]
@@ -325,7 +382,7 @@ public partial class AgentPanelViewModel : ViewModelBase
         AgentConfigService.RemoveUserAgent(item.AgentId);
         RosterConfigService.RemoveEntry(_sessionId, item.AgentId);
         _shell.ReloadAgents();
-        RefreshSubAgents();
+        QueueRefreshSubAgents();
     }
 
     [RelayCommand]
