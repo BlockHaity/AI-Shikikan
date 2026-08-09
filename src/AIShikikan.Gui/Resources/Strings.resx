@@ -126,4 +126,5 @@
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>修改可执行文件路径后点保存(内置 Agent 会按 Id 覆盖)</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>模型</value></data>
+  <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
 </root>
