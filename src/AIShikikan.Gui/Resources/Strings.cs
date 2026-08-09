@@ -23,10 +23,6 @@ public static class Strings
     public static string Nav_Settings => Get(nameof(Nav_Settings));
     public static string Home_Welcome => Get(nameof(Home_Welcome));
     public static string Home_Description => Get(nameof(Home_Description));
-    public static string Home_QuickStart => Get(nameof(Home_QuickStart));
-    public static string Home_QuickStartDesc => Get(nameof(Home_QuickStartDesc));
-    public static string Home_ViewAgents => Get(nameof(Home_ViewAgents));
-    public static string Home_ReadDocs => Get(nameof(Home_ReadDocs));
     public static string Home_UsageTitle => Get(nameof(Home_UsageTitle));
     public static string Home_UsageToday => Get(nameof(Home_UsageToday));
     public static string Home_UsageTotal => Get(nameof(Home_UsageTotal));
@@ -36,6 +32,15 @@ public static class Strings
     public static string Home_UsageBySession => Get(nameof(Home_UsageBySession));
     public static string Home_UsageByAgent => Get(nameof(Home_UsageByAgent));
     public static string Home_UsageEmpty => Get(nameof(Home_UsageEmpty));
+    public static string Home_UsageTrend => Get(nameof(Home_UsageTrend));
+    public static string Home_UsageRange => Get(nameof(Home_UsageRange));
+    public static string Home_Range7 => Get(nameof(Home_Range7));
+    public static string Home_Range14 => Get(nameof(Home_Range14));
+    public static string Home_Range30 => Get(nameof(Home_Range30));
+    public static string Home_RangeAll => Get(nameof(Home_RangeAll));
+    public static string Home_UsageInput => Get(nameof(Home_UsageInput));
+    public static string Home_UsageOutput => Get(nameof(Home_UsageOutput));
+    public static string Home_UsageCacheHit => Get(nameof(Home_UsageCacheHit));
     public static string Theme_ToggleTip => Get(nameof(Theme_ToggleTip));
     public static string Nav_CollapseTip => Get(nameof(Nav_CollapseTip));
     public static string Chat_NewSession => Get(nameof(Chat_NewSession));

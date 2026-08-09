@@ -3,6 +3,7 @@
              xmlns:vm="using:AIShikikan.Gui.ViewModels"
              xmlns:v="using:AIShikikan.Gui.Views"
              xmlns:usage="using:AIShikikan.Core.Services.Usage"
+             xmlns:ScottPlot="clr-namespace:ScottPlot.Avalonia;assembly=ScottPlot.Avalonia"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:theme="using:CCSWE.Avalonia.Material"
@@ -35,114 +36,128 @@
                     </StackPanel>
                 </StackPanel>
 
-                <!-- 用量统计 -->
-                <theme:Card Classes="Elevated" MaxWidth="600">
-                    <StackPanel Margin="24" Spacing="12">
-                        <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTitle}" />
+                <!-- 用量统计: 左右两张卡片 -->
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="24">
+                    <!-- 左卡片: 汇总数字 + 分布 -->
+                    <theme:Card Classes="Elevated">
+                        <StackPanel Margin="24" Spacing="12">
+                            <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTitle}" />
 
-                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="28">
-                            <StackPanel Spacing="2">
-                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageToday}"
-                                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                                <TextBlock Classes="BodyLarge" Text="{Binding TodayUsageText}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageTotal}"
-                                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                                <TextBlock Classes="BodyLarge" Text="{Binding TotalUsageText}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2" Spacing="2">
-                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageLlmCalls}"
-                                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                                <TextBlock Classes="BodyLarge" Text="{Binding LlmCallsText}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="3" Spacing="2">
-                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageAgentCalls}"
-                                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                                <TextBlock Classes="BodyLarge" Text="{Binding AgentCallsText}" />
-                            </StackPanel>
-                        </Grid>
+                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="28">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageToday}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <TextBlock Classes="BodyLarge" Text="{Binding TodayUsageText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageTotal}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <TextBlock Classes="BodyLarge" Text="{Binding TotalUsageText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Spacing="2">
+                                    <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageLlmCalls}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <TextBlock Classes="BodyLarge" Text="{Binding LlmCallsText}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="3" Spacing="2">
+                                    <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageAgentCalls}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <TextBlock Classes="BodyLarge" Text="{Binding AgentCallsText}" />
+                                </StackPanel>
+                            </Grid>
 
-                        <theme:Divider />
+                            <theme:Divider />
 
-                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByModel}" />
-                        <ItemsControl ItemsSource="{Binding UsageSnapshot.ModelStats}"
-                                      IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="usage:ModelUsageStat">
-                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
-                                        <TextBlock Classes="BodyMedium" Text="{Binding Model}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1" Classes="BodySmall"
-                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                        <TextBlock Grid.Column="2" Classes="BodySmall"
-                                                   Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
-                                   Foreground="{DynamicResource OnSurfaceVariant}"
-                                   IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+                            <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByModel}" />
+                            <ItemsControl ItemsSource="{Binding UsageSnapshot.ModelStats}"
+                                          IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="usage:ModelUsageStat">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                            <TextBlock Classes="BodyMedium" Text="{Binding Model}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                       Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                            <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                       Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                       IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
 
-                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageBySession}" />
-                        <ItemsControl ItemsSource="{Binding UsageSnapshot.SessionStats}"
-                                      IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="usage:SessionUsageStat">
-                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
-                                        <TextBlock Classes="BodyMedium" Text="{Binding SessionTitle}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1" Classes="BodySmall"
-                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                        <TextBlock Grid.Column="2" Classes="BodySmall"
-                                                   Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
-                                   Foreground="{DynamicResource OnSurfaceVariant}"
-                                   IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+                            <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageBySession}" />
+                            <ItemsControl ItemsSource="{Binding UsageSnapshot.SessionStats}"
+                                          IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="usage:SessionUsageStat">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                            <TextBlock Classes="BodyMedium" Text="{Binding SessionTitle}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                       Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                            <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                       Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                       IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
 
-                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByAgent}" />
-                        <ItemsControl ItemsSource="{Binding UsageSnapshot.AgentStats}"
-                                      IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="usage:AgentCallStat">
-                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
-                                        <TextBlock Classes="BodyMedium" Text="{Binding AgentName}" TextTrimming="CharacterEllipsis" />
-                                        <TextBlock Grid.Column="1" Classes="BodySmall"
-                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                        <TextBlock Grid.Column="2" Classes="BodySmall"
-                                                   Text="{Binding Succeeded, StringFormat={}成功 {0} 次}"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    </Grid>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
-                                   Foreground="{DynamicResource OnSurfaceVariant}"
-                                   IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
-                    </StackPanel>
-                </theme:Card>
+                            <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByAgent}" />
+                            <ItemsControl ItemsSource="{Binding UsageSnapshot.AgentStats}"
+                                          IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="usage:AgentCallStat">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                            <TextBlock Classes="BodyMedium" Text="{Binding AgentName}" TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                       Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                            <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                       Text="{Binding Succeeded, StringFormat={}成功 {0} 次}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                       IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+                        </StackPanel>
+                    </theme:Card>
 
-                <theme:Card Classes="Elevated" MaxWidth="600">
-                    <StackPanel Margin="24" Spacing="12">
-                        <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_QuickStart}" />
-                        <TextBlock Classes="BodyMedium"
-                                   Text="{x:Static res:Strings.Home_QuickStartDesc}"
-                                   Foreground="{DynamicResource OnSurfaceVariant}" />
-                    </StackPanel>
-                </theme:Card>
+                    <!-- 右卡片: 用量趋势折线图 -->
+                    <theme:Card Classes="Elevated" Grid.Column="1" VerticalAlignment="Top">
+                        <StackPanel Margin="24" Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTrend}"
+                                           VerticalAlignment="Center" />
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Classes="BodyMedium" Text="{x:Static res:Strings.Home_UsageRange}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    <ComboBox ItemsSource="{Binding RangeOptions}"
+                                              SelectedIndex="{Binding SelectedRangeIndex}"
+                                              MinWidth="88" HorizontalAlignment="Right" />
+                                </StackPanel>
+                            </Grid>
 
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <Button Classes="FilledTonal" Content="{x:Static res:Strings.Home_ViewAgents}" />
-                    <Button Classes="Outlined" Content="{x:Static res:Strings.Home_ReadDocs}" />
-                </StackPanel>
+                            <ScottPlot:AvaPlot x:Name="UsageChart" Height="300"
+                                               IsVisible="{Binding HasChartData}" />
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                       IsVisible="{Binding !HasChartData}" HorizontalAlignment="Center"
+                                       Margin="0,100,0,0" />
+                        </StackPanel>
+                    </theme:Card>
+                </Grid>
             </StackPanel>
         </ScrollViewer>
     </Grid>
