@@ -1,6 +1,8 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:v="using:AIShikikan.Gui.Views"
+             xmlns:usage="using:AIShikikan.Core.Services.Usage"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:theme="using:CCSWE.Avalonia.Material"
@@ -9,28 +11,134 @@
              x:Class="AIShikikan.Gui.Views.HomePageView"
              x:DataType="vm:HomePageViewModel">
 
-    <ScrollViewer>
-        <StackPanel Margin="32,24" Spacing="24">
-            <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Home_Welcome}" />
-            <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Home_Description}"
-                       Foreground="{DynamicResource OnSurfaceVariant}" />
-            <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
-                       Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
+    <UserControl.Resources>
+        <v:ModelListVisibilityConverter x:Key="ModelListVisibilityConverter"/>
+        <v:IntEqualsConverter x:Key="IntEqualsConverter"/>
+    </UserControl.Resources>
 
-            <theme:Card Classes="Elevated" MaxWidth="600">
-                <StackPanel Margin="24" Spacing="12">
-                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_QuickStart}" />
-                    <TextBlock Classes="BodyMedium"
-                               Text="{x:Static res:Strings.Home_QuickStartDesc}"
-                               Foreground="{DynamicResource OnSurfaceVariant}" />
+    <Grid>
+        <v:PageBackground ThemeService="{Binding ThemeService}" />
+
+        <ScrollViewer>
+            <StackPanel Margin="32,24" Spacing="24">
+                <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="140" Height="140"
+                       Stretch="Uniform" HorizontalAlignment="Center" />
+                <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Home_Welcome}" />
+                <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Home_Description}"
+                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
+                           Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
+
+                <!-- 用量统计 -->
+                <theme:Card Classes="Elevated" MaxWidth="600">
+                    <StackPanel Margin="24" Spacing="12">
+                        <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTitle}" />
+
+                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="28">
+                            <StackPanel Spacing="2">
+                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageToday}"
+                                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                                <TextBlock Classes="BodyLarge" Text="{Binding TodayUsageText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="2">
+                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageTotal}"
+                                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                                <TextBlock Classes="BodyLarge" Text="{Binding TotalUsageText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Spacing="2">
+                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageLlmCalls}"
+                                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                                <TextBlock Classes="BodyLarge" Text="{Binding LlmCallsText}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Spacing="2">
+                                <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageAgentCalls}"
+                                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                                <TextBlock Classes="BodyLarge" Text="{Binding AgentCallsText}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <theme:Divider />
+
+                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByModel}" />
+                        <ItemsControl ItemsSource="{Binding UsageSnapshot.ModelStats}"
+                                      IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="usage:ModelUsageStat">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <TextBlock Classes="BodyMedium" Text="{Binding Model}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                   Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+
+                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageBySession}" />
+                        <ItemsControl ItemsSource="{Binding UsageSnapshot.SessionStats}"
+                                      IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="usage:SessionUsageStat">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <TextBlock Classes="BodyMedium" Text="{Binding SessionTitle}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                   Text="{Binding TotalTokens, StringFormat={}{0:N0} tokens}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+
+                        <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Home_UsageByAgent}" />
+                        <ItemsControl ItemsSource="{Binding UsageSnapshot.AgentStats}"
+                                      IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="usage:AgentCallStat">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <TextBlock Classes="BodyMedium" Text="{Binding AgentName}" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Classes="BodySmall"
+                                                   Text="{Binding Calls, StringFormat={}{0} 次调用}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                        <TextBlock Grid.Column="2" Classes="BodySmall"
+                                                   Text="{Binding Succeeded, StringFormat={}成功 {0} 次}"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}" />
+                    </StackPanel>
+                </theme:Card>
+
+                <theme:Card Classes="Elevated" MaxWidth="600">
+                    <StackPanel Margin="24" Spacing="12">
+                        <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_QuickStart}" />
+                        <TextBlock Classes="BodyMedium"
+                                   Text="{x:Static res:Strings.Home_QuickStartDesc}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                    </StackPanel>
+                </theme:Card>
+
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                    <Button Classes="FilledTonal" Content="{x:Static res:Strings.Home_ViewAgents}" />
+                    <Button Classes="Outlined" Content="{x:Static res:Strings.Home_ReadDocs}" />
                 </StackPanel>
-            </theme:Card>
-
-            <StackPanel Orientation="Horizontal" Spacing="12">
-                <Button Classes="FilledTonal" Content="{x:Static res:Strings.Home_ViewAgents}" />
-                <Button Classes="Outlined" Content="{x:Static res:Strings.Home_ReadDocs}" />
             </StackPanel>
-        </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </Grid>
 
 </UserControl>

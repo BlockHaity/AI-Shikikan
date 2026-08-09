@@ -27,6 +27,15 @@ public static class Strings
     public static string Home_QuickStartDesc => Get(nameof(Home_QuickStartDesc));
     public static string Home_ViewAgents => Get(nameof(Home_ViewAgents));
     public static string Home_ReadDocs => Get(nameof(Home_ReadDocs));
+    public static string Home_UsageTitle => Get(nameof(Home_UsageTitle));
+    public static string Home_UsageToday => Get(nameof(Home_UsageToday));
+    public static string Home_UsageTotal => Get(nameof(Home_UsageTotal));
+    public static string Home_UsageLlmCalls => Get(nameof(Home_UsageLlmCalls));
+    public static string Home_UsageAgentCalls => Get(nameof(Home_UsageAgentCalls));
+    public static string Home_UsageByModel => Get(nameof(Home_UsageByModel));
+    public static string Home_UsageBySession => Get(nameof(Home_UsageBySession));
+    public static string Home_UsageByAgent => Get(nameof(Home_UsageByAgent));
+    public static string Home_UsageEmpty => Get(nameof(Home_UsageEmpty));
     public static string Theme_ToggleTip => Get(nameof(Theme_ToggleTip));
     public static string Nav_CollapseTip => Get(nameof(Nav_CollapseTip));
     public static string Chat_NewSession => Get(nameof(Chat_NewSession));
