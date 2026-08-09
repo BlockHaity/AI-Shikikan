@@ -45,8 +45,22 @@ public class ThemeService
         }
     }
 
+    /// <summary>自定义界面字体族名(如 "CaskaydiaCove Nerd Font Mono"); 空字符串表示使用默认字体。</summary>
+    public string CustomFont
+    {
+        get => _prefs.CustomFont;
+        set
+        {
+            if (_prefs.CustomFont == value) return;
+            _prefs.CustomFont = value;
+            Save();
+            FontChanged?.Invoke(this, value);
+        }
+    }
+
     public event EventHandler<bool>? ThemeChanged;
     public event EventHandler<string?>? BackgroundChanged;
+    public event EventHandler<string?>? FontChanged;
 
     public ThemeService()
     {
@@ -96,5 +110,6 @@ public class ThemeService
         public bool IsDarkTheme { get; set; } = true;
         public string Language { get; set; } = "zh-CN";
         public string? BackgroundImagePath { get; set; }
+        public string CustomFont { get; set; } = string.Empty;
     }
 }
