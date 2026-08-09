@@ -11,6 +11,9 @@
     <Nullable>enable</Nullable>
     <PublishAot>true</PublishAot>
     <StripSymbols>true</StripSymbols>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
