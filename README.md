@@ -165,7 +165,9 @@ curl -X POST http://localhost:8090/api/tasks \
   }'
 ```
 
-## 内置 Agent
+## 默认 Agent
+
+首次启动会自动生成 `agents.toml`（含以下默认 Agent），可自由修改或删除；用户配置以文件为准，删除后不会恢复。
 
 | Agent | 可执行文件 | 专长 |
 |-------|-----------|------|
