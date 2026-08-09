@@ -4,7 +4,7 @@ param(
     [string]$App = "cli",
 
     [string]$Configuration = "Debug",
-    [string]$Version = "1.0.0",
+    [string]$Version = "",
 
     [ValidateSet("auto", "always", "off")]
     [string]$AotMode = "off",
@@ -16,6 +16,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $ProjectDir = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = (Get-Content -Raw -ErrorAction SilentlyContinue "$ProjectDir/VERSION")
+    if ($Version) { $Version = $Version.Trim() }
+}
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "1.0.0" }
 $OutputDir = Join-Path $ProjectDir "artifacts/debug"
 $CliProject = Join-Path $ProjectDir "src/AIShikikan.Cli/AIShikikan.Cli.csproj"
 $GuiProject = Join-Path $ProjectDir "src/AIShikikan.Gui/AIShikikan.Gui.csproj"

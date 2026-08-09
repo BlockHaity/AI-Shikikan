@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PROJECT_DIR/artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 1.0.0)}"
 AOT_MODE="${AOT_MODE:-auto}"
 ARCH="${ARCH:-both}"
 
