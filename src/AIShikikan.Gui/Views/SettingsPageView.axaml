@@ -79,7 +79,7 @@
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Providers}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
-                        <ListBox ItemsSource="{Binding LlmSettings.Providers}" SelectedItem="{Binding SelectedProvider}"
+                        <ListBox ItemsSource="{Binding ProviderItems}" SelectedItem="{Binding SelectedProvider}"
                                  MaxHeight="200">
                             <ListBox.ItemTemplate>
                                 <DataTemplate>
@@ -93,14 +93,9 @@
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
                         </ListBox>
-                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}">
-                            <Button Classes="FilledTonal" Content="{x:Static res:Strings.Settings_Activate}"
-                                    Command="{Binding SetActiveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
-                                    IsEnabled="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}"/>
-                            <Button Classes="Text" Content="{x:Static res:Strings.Settings_Remove}"
-                                    Command="{Binding RemoveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
-                                    Margin="8,0,0,0"/>
-                        </Grid>
+                        <Button Classes="Text" Content="{x:Static res:Strings.Settings_Remove}"
+                                Command="{Binding RemoveProviderCommand}" CommandParameter="{Binding SelectedProvider}"
+                                HorizontalAlignment="Right"/>
                         <theme:Divider />
                         <StackPanel Spacing="8" IsVisible="{Binding SelectedProvider, Converter={StaticResource NullToVisibilityConverter}}">
                             <Grid ColumnDefinitions="*,Auto">
@@ -199,12 +194,16 @@
                             </ListBox.ItemTemplate>
                         </ListBox>
                         <StackPanel Spacing="8" IsVisible="{Binding SelectedAgent, Converter={StaticResource NullToVisibilityConverter}}">
-                            <Grid ColumnDefinitions="*,Auto">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
                                 <TextBox Text="{Binding AgentExecutableEdit}"
                                          PlaceholderText="{x:Static res:Strings.Settings_AgentExecutable}" />
                                 <Button Grid.Column="1" Classes="FilledTonal" Margin="8,0,0,0"
                                         Content="{x:Static res:Strings.Settings_AgentSave}"
                                         Command="{Binding SaveAgentExecutableCommand}" />
+                                <Button Grid.Column="2" Classes="Text" Margin="8,0,0,0"
+                                        Content="{x:Static res:Strings.Settings_Remove}"
+                                        Command="{Binding RemoveAgentCommand}"
+                                        CommandParameter="{Binding SelectedAgent}" />
                             </Grid>
                             <TextBox Text="{Binding AgentArgsEdit}"
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}" />

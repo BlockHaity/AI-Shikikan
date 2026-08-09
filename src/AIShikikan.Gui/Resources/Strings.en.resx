@@ -123,7 +123,6 @@
   <data name="Settings_ProviderApiKey" xml:space="preserve"><value>API Key</value></data>
   <data name="Settings_ProviderModel" xml:space="preserve"><value>Default Model</value></data>
   <data name="Settings_ProviderKind" xml:space="preserve"><value>Type</value></data>
-  <data name="Settings_Activate" xml:space="preserve"><value>Set Active</value></data>
   <data name="Settings_Remove" xml:space="preserve"><value>Remove</value></data>
   <data name="Settings_Add" xml:space="preserve"><value>Add</value></data>
   <data name="Settings_Agents" xml:space="preserve"><value>Agent Programs</value></data>
