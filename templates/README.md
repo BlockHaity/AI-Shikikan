@@ -66,6 +66,7 @@ cp templates/config/roster.prompt.example  ~/.config/ai-shikikan/roster.prompt
   `Anthropic` = Anthropic。`apiKey` 留空时读环境变量
   `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`。
 - `agents.toml` 中 `injection` 为字符串: `None` 不注入 / `PromptFlag` 命令行参数 /
-  `MemoryFile` 记忆文件 / `Both` 两者。用户定义按 `id` 覆盖同名内置 Agent。
+  `MemoryFile` 记忆文件 / `Both` 两者。应用首次启动会自动生成默认 `providers.toml`
+  与 `agents.toml`, 用户以文件为准, 可自由增删任意条目。
 - `roster.prompt` 支持占位符: `{agents}` `{personas}` `{templates}`
   `{rules}` `{git}`。
