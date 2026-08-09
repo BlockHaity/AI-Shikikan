@@ -47,6 +47,8 @@
   <data name="Theme_ToggleTip" xml:space="preserve"><value>切换明暗主题</value></data>
   <data name="Nav_CollapseTip" xml:space="preserve"><value>折叠/展开导航</value></data>
   <data name="Chat_NewSession" xml:space="preserve"><value>新建会话</value></data>
+  <data name="Chat_SelectProvider" xml:space="preserve"><value>选择提供商</value></data>
+  <data name="Chat_SelectModel" xml:space="preserve"><value>选择模型</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>输入消息...</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
   <data name="Chat_NoSessions" xml:space="preserve"><value>暂无会话</value></data>
@@ -112,7 +114,10 @@
   <data name="Settings_About" xml:space="preserve"><value>关于</value></data>
   <data name="Settings_AppName" xml:space="preserve"><value>应用名称</value></data>
   <data name="Settings_Version" xml:space="preserve"><value>版本</value></data>
-  <data name="Settings_Font" xml:space="preserve"><value>字体</value></data>
+  <data name="Settings_FontStandard" xml:space="preserve"><value>标准字体</value></data>
+  <data name="Settings_FontMono" xml:space="preserve"><value>等宽字体</value></data>
+  <data name="Settings_FontCustomStandard" xml:space="preserve"><value>自定义字体名称(如 "MiSans")</value></data>
+  <data name="Settings_FontCustomMono" xml:space="preserve"><value>自定义字体名称(如 "JetBrains Mono")</value></data>
   <data name="Settings_Background" xml:space="preserve"><value>背景图</value></data>
   <data name="Settings_SelectBg" xml:space="preserve"><value>选择图片</value></data>
   <data name="Settings_ClearBg" xml:space="preserve"><value>清除背景</value></data>
@@ -128,8 +133,6 @@
   <data name="Settings_Agents" xml:space="preserve"><value>Agent 程序</value></data>
   <data name="Settings_AgentName" xml:space="preserve"><value>名称</value></data>
   <data name="Settings_AgentExecutable" xml:space="preserve"><value>可执行文件</value></data>
-  <data name="Settings_FontSelect" xml:space="preserve"><value>字体</value></data>
-  <data name="Settings_FontCustom" xml:space="preserve"><value>自定义字体名称(如 "JetBrains Mono")</value></data>
   <data name="Settings_ModelsTitle" xml:space="preserve"><value>模型管理</value></data>
   <data name="Settings_FetchModels" xml:space="preserve"><value>获取模型列表</value></data>
   <data name="Settings_Fetching" xml:space="preserve"><value>获取中…</value></data>

@@ -44,6 +44,8 @@ public static class Strings
     public static string Theme_ToggleTip => Get(nameof(Theme_ToggleTip));
     public static string Nav_CollapseTip => Get(nameof(Nav_CollapseTip));
     public static string Chat_NewSession => Get(nameof(Chat_NewSession));
+    public static string Chat_SelectProvider => Get(nameof(Chat_SelectProvider));
+    public static string Chat_SelectModel => Get(nameof(Chat_SelectModel));
     public static string Chat_InputPlaceholder => Get(nameof(Chat_InputPlaceholder));
     public static string Chat_Send => Get(nameof(Chat_Send));
     public static string Chat_NoSessions => Get(nameof(Chat_NoSessions));
@@ -109,7 +111,10 @@ public static class Strings
     public static string Settings_About => Get(nameof(Settings_About));
     public static string Settings_AppName => Get(nameof(Settings_AppName));
     public static string Settings_Version => Get(nameof(Settings_Version));
-    public static string Settings_Font => Get(nameof(Settings_Font));
+    public static string Settings_FontStandard => Get(nameof(Settings_FontStandard));
+    public static string Settings_FontMono => Get(nameof(Settings_FontMono));
+    public static string Settings_FontCustomStandard => Get(nameof(Settings_FontCustomStandard));
+    public static string Settings_FontCustomMono => Get(nameof(Settings_FontCustomMono));
     public static string Settings_Background => Get(nameof(Settings_Background));
     public static string Settings_SelectBg => Get(nameof(Settings_SelectBg));
     public static string Settings_ClearBg => Get(nameof(Settings_ClearBg));
@@ -125,8 +130,6 @@ public static class Strings
     public static string Settings_Agents => Get(nameof(Settings_Agents));
     public static string Settings_AgentName => Get(nameof(Settings_AgentName));
     public static string Settings_AgentExecutable => Get(nameof(Settings_AgentExecutable));
-    public static string Settings_FontSelect => Get(nameof(Settings_FontSelect));
-    public static string Settings_FontCustom => Get(nameof(Settings_FontCustom));
     public static string Settings_ModelsTitle => Get(nameof(Settings_ModelsTitle));
     public static string Settings_FetchModels => Get(nameof(Settings_FetchModels));
     public static string Settings_Fetching => Get(nameof(Settings_Fetching));
