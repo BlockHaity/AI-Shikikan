@@ -1,33 +1,17 @@
 # LLM Provider 默认配置(首次启动自动生成)
+# 默认不携带任何 Provider, 请按需添加(可参考 templates/config/providers.example.toml 或下方注释示例)。
 # kind: "OpenAi"(OpenAI 兼容, 含 DeepSeek 等) / "Anthropic"
 # api_key 留空时读取环境变量 OPENAI_API_KEY / ANTHROPIC_API_KEY
 # 可自由修改或删除任意 Provider
 
-active_provider_id = "openai"
+active_provider_id = ""
 
-[[providers]]
-id = "openai"
-name = "OpenAI"
-kind = "OpenAi"
-base_url = "https://api.openai.com/v1"
-api_key = ""
-default_model = "gpt-4o"
-enabled_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3"]
-
-[[providers]]
-id = "anthropic"
-name = "Anthropic"
-kind = "Anthropic"
-base_url = "https://api.anthropic.com"
-api_key = ""
-default_model = "claude-sonnet-4-20250514"
-enabled_models = ["claude-sonnet-4-20250514", "claude-sonnet-4-5-20250929", "claude-opus-4-20250514", "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022"]
-
-[[providers]]
-id = "deepseek"
-name = "DeepSeek"
-kind = "OpenAi"
-base_url = "https://api.deepseek.com/v1"
-api_key = ""
-default_model = "deepseek-chat"
-enabled_models = ["deepseek-chat", "deepseek-reasoner"]
+# 添加示例(取消注释并按需修改):
+# [[providers]]
+# id = "openai"
+# name = "OpenAI"
+# kind = "OpenAi"
+# base_url = "https://api.openai.com/v1"
+# api_key = ""
+# default_model = "gpt-4o"
+# enabled_models = ["gpt-4o", "gpt-4o-mini"]
