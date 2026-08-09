@@ -127,6 +127,12 @@ public partial class MainWindow : Window
             RailToggleBtn.HorizontalAlignment = vm.IsRail
                 ? HorizontalAlignment.Center
                 : HorizontalAlignment.Right;
+            ShellHeader.HorizontalAlignment = vm.IsRail
+                ? HorizontalAlignment.Center
+                : HorizontalAlignment.Left;
+            ShellHeader.Margin = vm.IsRail
+                ? new Thickness(0)
+                : new Thickness(16, 0, 24, 0);
         }
     }
 

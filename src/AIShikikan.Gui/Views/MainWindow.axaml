@@ -16,6 +16,73 @@
     </Design.DataContext>
 
     <Window.Resources>
+        <!-- 收缩栏导航项(圆形选中指示器): 覆盖库内 M3NavigationRailItem, 指示器由 56x32 胶囊改为 40x40 正圆 -->
+        <ControlTheme x:Key="M3NavigationRailItem" TargetType="ListBoxItem">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FontFamily" Value="{DynamicResource BodyFontFamily}" />
+            <Setter Property="MinHeight" Value="{DynamicResource NavItemHeight}" />
+            <Setter Property="Margin" Value="0,6" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <ControlTemplate TargetType="ListBoxItem">
+                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- 40x40 圆形选中指示器(仅图标区域, 常驻尺寸, 选中仅切换 Opacity) -->
+                        <Panel Width="40" Height="40" HorizontalAlignment="Center">
+                            <Border x:Name="SelectedLayer" CornerRadius="20"
+                                    Background="{DynamicResource SecondaryContainer}" Opacity="0" />
+                            <Border x:Name="StateLayer" CornerRadius="20"
+                                    Background="{DynamicResource OnSurface}" Opacity="0">
+                                <Border.Transitions>
+                                    <Transitions><DoubleTransition Property="Opacity" Duration="{DynamicResource MotionDurationShort2}" /></Transitions>
+                                </Border.Transitions>
+                            </Border>
+                            <ContentPresenter x:Name="PART_ContentPresenter"
+                                              Content="{TemplateBinding Content}"
+                                              ContentTemplate="{TemplateBinding ContentTemplate}"
+                                              TextElement.Foreground="{DynamicResource OnSurfaceVariant}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Panel>
+                        <TextBlock x:Name="RailLabel" Text="{TemplateBinding Tag}"
+                                   IsVisible="{TemplateBinding Tag, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   FontSize="{DynamicResource FontSizeLabelMedium}" FontWeight="Medium" LineHeight="16"
+                                   TextAlignment="Center" TextWrapping="Wrap" MaxLines="2"
+                                   Margin="0,4,0,0" HorizontalAlignment="Center" />
+                    </StackPanel>
+                </ControlTemplate>
+            </Setter>
+
+            <Style Selector="^:selected /template/ Border#SelectedLayer">
+                <Setter Property="Opacity" Value="1" />
+            </Style>
+            <Style Selector="^:selected /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource OnSecondaryContainer}" />
+            </Style>
+            <Style Selector="^:selected /template/ TextBlock#RailLabel">
+                <Setter Property="Foreground" Value="{DynamicResource OnSurface}" />
+            </Style>
+            <Style Selector="^:selected /template/ Border#StateLayer">
+                <Setter Property="Background" Value="{DynamicResource OnSecondaryContainer}" />
+            </Style>
+            <Style Selector="^:pointerover /template/ Border#StateLayer">
+                <Setter Property="Opacity" Value="0.08" />
+            </Style>
+            <Style Selector="^:pressed /template/ Border#StateLayer">
+                <Setter Property="Opacity" Value="0.10" />
+            </Style>
+            <Style Selector="^:disabled /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource OnSurface38}" />
+            </Style>
+            <Style Selector="^:disabled /template/ TextBlock#RailLabel">
+                <Setter Property="Foreground" Value="{DynamicResource OnSurface38}" />
+            </Style>
+            <Style Selector="^:selected:disabled /template/ Border#SelectedLayer">
+                <Setter Property="Background" Value="{DynamicResource OnSurface12}" />
+            </Style>
+        </ControlTheme>
+
         <StreamGeometry x:Key="IconHome">M160-120v-375l-57 43-47-63 424-321 424 321-47 64-57-44v375H540v-240H420v240H160Zm80-80h100v-240h240v240h100v-387L480-754 240-587v387Zm240-290Z</StreamGeometry>
         <StreamGeometry x:Key="IconSmartToy">M160-160v-40h-40q-33 0-56.5-23.5T40-280v-400q0-33 23.5-56.5T120-760h40v-40q0-33 23.5-56.5T260-880h440q33 0 56.5 23.5T780-800v40h40q33 0 56.5 23.5T900-680v400q0 33-23.5 56.5T820-180h-40v40q0 33-23.5 56.5T700-60H260q-33 0-56.5-23.5T180-140Zm-40-120h680v-400H120v400Zm140-40h360q17 0 28.5-11.5T660-360q0-17-11.5-28.5T620-400H260q-17 0-28.5 11.5T220-360q0 17 11.5 28.5T260-320Z</StreamGeometry>
         <StreamGeometry x:Key="IconSun">M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM200-440H40v-80h160v80Zm720 0H760v-80h160v80ZM440-760v-160h80v160h-80Zm0 720v-160h80v160h-80ZM256-650l-101-97 57-59 96 100-52 56Zm492 496-97-101 53-55 101 97-57 59Zm-98-550 97-101 59 57-100 96-56-52ZM154-212l101-97 55 53-97 101-59-57Zm326-268Z</StreamGeometry>
@@ -49,11 +116,14 @@
         <DrawerPage x:Name="Shell" DrawerBehavior="Locked" IsOpen="True" DrawerLength="220">
 
             <DrawerPage.DrawerHeader>
-                <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,16,12,8">
+                <!-- 与导航项同规格: 相同 Margin/行高, 图标 24px, 文字 LabelLarge -->
+                <StackPanel x:Name="ShellHeader" Orientation="Horizontal" Spacing="8"
+                            VerticalAlignment="Center"
+                            Height="{DynamicResource NavItemHeight}" Margin="16,0,24,0">
                     <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="24" Height="24"
                            Stretch="Uniform" VerticalAlignment="Center" />
-                    <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.App_Title}" VerticalAlignment="Center"
-                               IsVisible="{Binding !IsRail}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.App_Title}" VerticalAlignment="Center"
+                               IsVisible="{Binding !IsRail}" TextTrimming="CharacterEllipsis" MaxWidth="100" />
                 </StackPanel>
             </DrawerPage.DrawerHeader>
 
