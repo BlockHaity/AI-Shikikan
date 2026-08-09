@@ -14,13 +14,59 @@ on:
         description: '额外测试 Native AOT 构建 (AOT 文件名带 AOT 标识)'
         type: boolean
         default: false
+      skip-if-released:
+        description: '如果 v<version> 标签已存在则跳过构建'
+        type: boolean
+        default: false
 
 env:
   DOTNET_VERSION: '10.0.x'
 
 jobs:
+  check:
+    name: Check version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+      run_build: ${{ steps.decide.outputs.run_build }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version from VERSION file
+        id: read
+        run: |
+          FILE_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
+          if [ -z "$FILE_VERSION" ]; then
+            FILE_VERSION="1.0.0"
+            echo "::warning::VERSION file missing or empty, falling back to 1.0.0"
+          fi
+          echo "version=${FILE_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to build
+        id: decide
+        run: |
+          TAG="v${{ steps.read.outputs.version }}"
+          if [ "${{ inputs.skip-if-released }}" = "true" ] && \
+             git ls-remote --exit-code --tags origin "$TAG" > /dev/null 2>&1; then
+            RUN=false; REASON="tag $TAG already exists (skip-if-released)"
+          else
+            RUN=true; REASON="proceed"
+          fi
+          echo "run_build=${RUN}" >> "$GITHUB_OUTPUT"
+          echo "reason=${REASON}" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Version check"
+            echo ""
+            echo "- Version: \`${{ steps.read.outputs.version }}\` (from VERSION file)"
+            echo "- Tag: \`${TAG}\`"
+            echo "- Build: **${RUN}** — ${REASON}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build ${{ matrix.rid }}
+    needs: check
+    if: needs.check.outputs.run_build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -107,10 +153,10 @@ jobs:
         run: |
           mkdir -p dist
           chmod +x stage/*/AIShikikan.Cli stage/*/AIShikikan.Gui 2>/dev/null || true
-          tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz -C stage/dotnet .
-          tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz -C stage/selfcontained .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz -C stage/dotnet .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz -C stage/selfcontained .
           if [ "${{ inputs.aot }}" = "true" ]; then
-            tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz -C stage/aot .
+            tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz -C stage/aot .
           fi
 
       - name: Package artifacts (Windows)
@@ -118,10 +164,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.zip
-          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.zip
+          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.zip
+          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.zip
           if ('${{ inputs.aot }}' -eq 'true') {
-            Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.zip
+            Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.zip
           }
 
       - name: Upload to build artifacts
