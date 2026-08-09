@@ -147,12 +147,57 @@ public partial class SessionPanelViewModel : ViewModelBase
     private void Reload()
     {
         var currentId = _chatService.CurrentSession?.Id;
-        Sessions.Clear();
+
+        // 批量对账: 已有项原地更新, 仅增删真正变化的会话, 避免 Clear+重建触发主题过渡在
+        // 控件移除级联中的 Avalonia 内部 NRE(Avalonia 12.0.4 未修复)
+        var remaining = new Dictionary<string, SessionItemViewModel>(StringComparer.Ordinal);
+        foreach (var item in Sessions)
+        {
+            if (string.IsNullOrEmpty(item.Session.Id)) continue;
+            remaining[item.Session.Id] = item;
+        }
+
+        var desired = new List<SessionItemViewModel>(_chatService.Sessions.Count);
         foreach (var session in _chatService.Sessions)
         {
-            var item = new SessionItemViewModel(session);
+            // 防御: 损坏的会话文件可能带空 Id, 直接跳过
+            if (string.IsNullOrEmpty(session.Id)) continue;
+
+            if (remaining.Remove(session.Id, out var item))
+            {
+                item.Update(session);
+            }
+            else
+            {
+                item = new SessionItemViewModel(session);
+            }
+
             item.IsSelected = session.Id == currentId;
-            Sessions.Add(item);
+            desired.Add(item);
+        }
+
+        for (var i = Sessions.Count - 1; i >= 0; i--)
+        {
+            if (remaining.ContainsKey(Sessions[i].Session.Id))
+            {
+                Sessions.RemoveAt(i);
+            }
+        }
+
+        for (var i = 0; i < desired.Count; i++)
+        {
+            var item = desired[i];
+            if (i < Sessions.Count && ReferenceEquals(Sessions[i], item)) continue;
+
+            var idx = Sessions.IndexOf(item);
+            if (idx < 0)
+            {
+                Sessions.Insert(Math.Min(i, Sessions.Count), item);
+            }
+            else if (idx != i)
+            {
+                Sessions.Move(idx, i);
+            }
         }
     }
 
@@ -167,24 +212,16 @@ public partial class SessionPanelViewModel : ViewModelBase
 
     private void SyncOrder()
     {
-        // 会话按 UpdatedAt 降序: 若当前会话已不是最新, 重新排序
+        // 会话按 UpdatedAt 降序: 仅用 Move 调整顺序, 避免 Clear+重建销毁控件
         var expected = Sessions.OrderByDescending(s => s.Session.UpdatedAt).ToList();
-        var changed = false;
         for (var i = 0; i < expected.Count; i++)
         {
-            if (Sessions[i] != expected[i])
-            {
-                changed = true;
-                break;
-            }
-        }
+            if (Sessions[i] == expected[i]) continue;
 
-        if (changed)
-        {
-            Sessions.Clear();
-            foreach (var item in expected)
+            var idx = Sessions.IndexOf(expected[i]);
+            if (idx >= 0)
             {
-                Sessions.Add(item);
+                Sessions.Move(idx, i);
             }
         }
     }
