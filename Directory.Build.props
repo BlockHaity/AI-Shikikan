@@ -1,0 +1,11 @@
+<Project>
+
+  <!--
+    全局版本号来源: 根目录 VERSION 文件。
+    软件 (AssemblyInformationalVersion) 与 GitHub Actions 工作流共用此文件。
+  -->
+  <PropertyGroup>
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
+  </PropertyGroup>
+
+</Project>
