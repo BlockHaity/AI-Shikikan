@@ -1,0 +1,132 @@
+name: Debug Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      configuration:
+        description: '构建配置'
+        type: choice
+        options:
+          - Debug
+          - Release
+        default: Debug
+      aot:
+        description: '额外测试 Native AOT 构建 (AOT 文件名带 AOT 标识)'
+        type: boolean
+        default: false
+
+env:
+  DOTNET_VERSION: '10.0.x'
+
+jobs:
+  build:
+    name: Build ${{ matrix.rid }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            rid: linux-x64
+            ext: tar.gz
+          - os: ubuntu-24.04-arm
+            rid: linux-arm64
+            ext: tar.gz
+          - os: windows-latest
+            rid: win-x64
+            ext: zip
+          - os: macos-15-intel
+            rid: osx-x64
+            ext: tar.gz
+          - os: macos-15
+            rid: osx-arm64
+            ext: tar.gz
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
+
+      - name: Install Linux AOT toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang zlib1g-dev
+
+      - name: Publish regular dotnet (framework-dependent)
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} \
+            -p:PublishAot=false -o stage/dotnet
+          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} \
+            -p:PublishAot=false -o stage/dotnet
+
+      - name: Publish self-contained (with .NET runtime)
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=false -p:PublishSingleFile=true \
+            -p:PublishTrimmed=true -p:TrimMode=partial \
+            -p:IncludeNativeLibrariesForSelfExtract=true -o stage/selfcontained
+          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=false -p:PublishSingleFile=true \
+            -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true \
+            -o stage/selfcontained
+
+      - name: Publish Native AOT (test)
+        if: inputs.aot
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
+            -o stage/aot
+          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:PublishSingleFile=true \
+            -o stage/aot
+
+      - name: Package artifacts (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          mkdir -p dist
+          chmod +x stage/*/AIShikikan.Cli stage/*/AIShikikan.Gui 2>/dev/null || true
+          tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz -C stage/dotnet .
+          tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz -C stage/selfcontained .
+          if [ "${{ inputs.aot }}" = "true" ]; then
+            tar czf dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz -C stage/aot .
+          fi
+
+      - name: Package artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.zip
+          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.zip
+          if ('${{ inputs.aot }}' -eq 'true') {
+            Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.zip
+          }
+
+      - name: Upload to build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}
+          path: dist/*
+          if-no-files-found: error
