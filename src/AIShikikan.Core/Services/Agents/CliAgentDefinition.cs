@@ -4,14 +4,6 @@ using System.Text.Json.Serialization;
 
 namespace AIShikikan.Core.Services.Agents;
 
-public enum InjectionMode
-{
-    None,
-    PromptFlag,
-    MemoryFile,
-    Both
-}
-
 public record CliAgentDefinition
 {
     public string Id { get; set; } = string.Empty;
@@ -21,11 +13,6 @@ public record CliAgentDefinition
     /// <summary>参数模板, 支持 {prompt} 占位符。</summary>
     public List<string> Args { get; set; } = [];
 
-    /// <summary>记忆文件名(如 CLAUDE.md / AGENTS.md / GEMINI.md), 用于 MemoryFile 注入。</summary>
-    public string? MemoryFile { get; set; }
-
-    public InjectionMode Injection { get; set; } = InjectionMode.Both;
-
     /// <summary>"sync" 常规阻塞 | "async" 异步后台。</summary>
     public string DefaultMode { get; set; } = "sync";
 
@@ -34,8 +21,6 @@ public record CliAgentDefinition
     public bool RequireApproval { get; set; } = true;
 
     public int TimeoutMinutes { get; set; } = 30;
-
-    public List<string> Expertise { get; set; } = [];
 
     public string Description { get; set; } = string.Empty;
 
