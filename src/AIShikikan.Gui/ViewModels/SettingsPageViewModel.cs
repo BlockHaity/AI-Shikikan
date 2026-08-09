@@ -76,12 +76,10 @@ public partial class SettingsPageViewModel : ViewModelBase
 
     public IReadOnlyList<string> ProviderKindOptions { get; } = ["OpenAI 兼容", "Anthropic"];
 
-    public IReadOnlyList<string> FontOptions { get; } =
-    [
-        "HarmonyOS Sans SC",
-        "CaskaydiaCove Nerd Font Mono",
-        "系统默认"
-    ];
+    // 字体(标准 + 等宽两个可配置项)
+    public IReadOnlyList<string> StandardFontOptions { get; } = ["系统默认", "自定义"];
+
+    public IReadOnlyList<string> MonoFontOptions { get; } = ["系统默认", "自定义"];
 
     [ObservableProperty]
     private int _languageIndex;
@@ -150,13 +148,22 @@ public partial class SettingsPageViewModel : ViewModelBase
 
     // 字体
     [ObservableProperty]
-    private int _selectedFontIndex;
+    private int _selectedStandardFontIndex;
 
     [ObservableProperty]
-    private string _customFontText = string.Empty;
+    private string _standardCustomFontText = string.Empty;
+
+    [ObservableProperty]
+    private int _selectedMonoFontIndex;
+
+    [ObservableProperty]
+    private string _monoCustomFontText = string.Empty;
 
     [ObservableProperty]
     private string _fontInfo = string.Empty;
+
+    [ObservableProperty]
+    private string _monoFontInfo = string.Empty;
 
     // Agent 管理
     [ObservableProperty]
@@ -193,33 +200,49 @@ public partial class SettingsPageViewModel : ViewModelBase
             ProviderItems.Add(p);
         }
 
-        InitFont();
+        InitFonts();
         SyncDefaultModelSelection();
 
         _themeService.ThemeChanged += (_, isDark) => IsDarkTheme = isDark;
     }
 
-    private void InitFont()
+    /// <summary>根据已保存的字体偏好初始化标准/等宽两个下拉框状态。</summary>
+    private void InitFonts()
     {
-        var current = _themeService.CustomFont;
-        if (string.IsNullOrWhiteSpace(current) || current.StartsWith("avares://", StringComparison.Ordinal))
+        var std = _themeService.CustomFont;
+        if (string.IsNullOrWhiteSpace(std))
         {
-            SelectedFontIndex = 0;
+            SelectedStandardFontIndex = 0;
             FontInfo = "HarmonyOS Sans SC";
-            return;
         }
-
-        var idx = FontOptions.ToList().FindIndex(f => f.Equals(current, StringComparison.OrdinalIgnoreCase));
-        if (idx >= 0)
+        else if (std == "系统默认")
         {
-            SelectedFontIndex = idx;
-            FontInfo = FontOptions[idx];
+            SelectedStandardFontIndex = 0;
+            FontInfo = "系统默认";
         }
         else
         {
-            CustomFontText = current;
-            SelectedFontIndex = 2;
-            FontInfo = current;
+            StandardCustomFontText = std;
+            SelectedStandardFontIndex = 1;
+            FontInfo = std;
+        }
+
+        var mono = _themeService.MonoFont;
+        if (string.IsNullOrWhiteSpace(mono))
+        {
+            SelectedMonoFontIndex = 0;
+            MonoFontInfo = "CaskaydiaCove Nerd Font Mono";
+        }
+        else if (mono == "系统默认")
+        {
+            SelectedMonoFontIndex = 0;
+            MonoFontInfo = "系统默认";
+        }
+        else
+        {
+            MonoCustomFontText = mono;
+            SelectedMonoFontIndex = 1;
+            MonoFontInfo = mono;
         }
     }
 
@@ -249,33 +272,38 @@ public partial class SettingsPageViewModel : ViewModelBase
         IsRestartHintVisible = value != _currentLanguageIndex;
     }
 
-    partial void OnSelectedFontIndexChanged(int value)
+    partial void OnSelectedStandardFontIndexChanged(int value)
     {
-        if (value == 0)
-        {
-            _themeService.CustomFont = string.Empty;
-            FontInfo = "HarmonyOS Sans SC";
-        }
-        else if (value == 1)
-        {
-            _themeService.CustomFont = "CaskaydiaCove Nerd Font Mono";
-            FontInfo = "CaskaydiaCove Nerd Font Mono";
-        }
-        else
-        {
-            var font = string.IsNullOrWhiteSpace(CustomFontText) ? "Default" : CustomFontText.Trim();
-            _themeService.CustomFont = font == "Default" ? "系统默认" : font;
-            FontInfo = font == "Default" ? "系统默认" : font;
-        }
+        if (value == 1) return; // 自定义: 由文本输入即时应用
+
+        _themeService.CustomFont = string.Empty;
+        FontInfo = "HarmonyOS Sans SC";
     }
 
-    partial void OnCustomFontTextChanged(string value)
+    partial void OnStandardCustomFontTextChanged(string value)
     {
-        if (SelectedFontIndex == 2 && !string.IsNullOrWhiteSpace(value))
-        {
-            _themeService.CustomFont = value.Trim();
-            FontInfo = value.Trim();
-        }
+        if (SelectedStandardFontIndex != 1 || string.IsNullOrWhiteSpace(value)) return;
+
+        var font = value.Trim();
+        _themeService.CustomFont = font;
+        FontInfo = font;
+    }
+
+    partial void OnSelectedMonoFontIndexChanged(int value)
+    {
+        if (value == 1) return; // 自定义: 由文本输入即时应用
+
+        _themeService.MonoFont = string.Empty;
+        MonoFontInfo = "CaskaydiaCove Nerd Font Mono";
+    }
+
+    partial void OnMonoCustomFontTextChanged(string value)
+    {
+        if (SelectedMonoFontIndex != 1 || string.IsNullOrWhiteSpace(value)) return;
+
+        var font = value.Trim();
+        _themeService.MonoFont = font;
+        MonoFontInfo = font;
     }
 
     partial void OnSelectedProviderChanged(ProviderConfig? value)
