@@ -122,7 +122,6 @@ default_model = "claude-sonnet-4-20250514"
 **agents.toml 示例：**
 ```toml
 rules = "优先选择专长与任务匹配的 Agent"
-roster_enabled = true
 
 [[agents]]
 id = "claude"

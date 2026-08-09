@@ -68,6 +68,17 @@ public static class Strings
     public static string Panel_AssignToolTip => Get(nameof(Panel_AssignToolTip));
     public static string Panel_GitToolTip => Get(nameof(Panel_GitToolTip));
     public static string Panel_ToggleTip => Get(nameof(Panel_ToggleTip));
+    public static string Panel_StatusTool => Get(nameof(Panel_StatusTool));
+    public static string Panel_StatusToolTip => Get(nameof(Panel_StatusToolTip));
+    public static string Status_Context => Get(nameof(Status_Context));
+    public static string Status_Cost => Get(nameof(Status_Cost));
+    public static string Status_RefreshPrice => Get(nameof(Status_RefreshPrice));
+    public static string Status_Project => Get(nameof(Status_Project));
+    public static string Status_Branch => Get(nameof(Status_Branch));
+    public static string Status_UnknownModel => Get(nameof(Status_UnknownModel));
+    public static string Status_PriceSourceManual => Get(nameof(Status_PriceSourceManual));
+    public static string Status_PriceSourceApi => Get(nameof(Status_PriceSourceApi));
+    public static string Status_PriceSourceUnknown => Get(nameof(Status_PriceSourceUnknown));
     public static string SubAgent_Title => Get(nameof(SubAgent_Title));
     public static string SubAgent_Add => Get(nameof(SubAgent_Add));
     public static string SubAgent_AddName => Get(nameof(SubAgent_AddName));
@@ -82,7 +93,6 @@ public static class Strings
     public static string SubAgent_SessionOverride => Get(nameof(SubAgent_SessionOverride));
     public static string SubAgent_ToGlobal => Get(nameof(SubAgent_ToGlobal));
     public static string SubAgent_NoAgents => Get(nameof(SubAgent_NoAgents));
-    public static string SubAgent_RosterSwitch => Get(nameof(SubAgent_RosterSwitch));
     public static string SubAgent_CommanderTitle => Get(nameof(SubAgent_CommanderTitle));
     public static string SubAgent_CommanderDesc => Get(nameof(SubAgent_CommanderDesc));
     public static string SubAgent_UseCommanderPersona => Get(nameof(SubAgent_UseCommanderPersona));

@@ -69,9 +69,6 @@ public partial class AgentPanelViewModel : ViewModelBase
     private bool _isAssigning;
 
     [ObservableProperty]
-    private bool _rosterEnabled;
-
-    [ObservableProperty]
     private bool _addFormVisible;
 
     [ObservableProperty]
@@ -132,14 +129,11 @@ public partial class AgentPanelViewModel : ViewModelBase
 
     public AgentPanelViewModel()
     {
-        _rosterEnabled = true;
         RefreshAll();
         _shell.DataChanged += () => Dispatcher.UIThread.Post(RefreshAll);
         _runtime.Assignments.AssignmentChanged += _ =>
             Dispatcher.UIThread.Post(RefreshAssignments);
     }
-
-    partial void OnRosterEnabledChanged(bool value) => PushRoster();
 
     /// <summary>延迟到调度器下一轮再重建子 Agent 列表, 避免在输入事件级联中同步增删
     /// ItemsControl 项: Material 主题模板内部的 Transitions(如 Button 的 Opacity 过渡,
@@ -280,12 +274,6 @@ public partial class AgentPanelViewModel : ViewModelBase
 
     private void PushRoster()
     {
-        if (!RosterEnabled)
-        {
-            _runtime.SetRosterEntries([]);
-            return;
-        }
-
         var entries = SubAgents.Where(e => e.Enabled)
             .Select(e => new AgentRosterEntry
             {

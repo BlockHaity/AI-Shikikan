@@ -9,9 +9,6 @@ public class AgentConfigFile
 
     /// <summary>Roster 分派规则描述(自定义), 会注入 {rules} 占位符。</summary>
     public string Rules { get; set; } = string.Empty;
-
-    /// <summary>是否向对话注入 Agent Roster。</summary>
-    public bool RosterEnabled { get; set; } = true;
 }
 
 public static class AgentConfigService
@@ -132,13 +129,6 @@ public static class AgentConfigService
     {
         var file = LoadUserFile();
         file.Rules = rules;
-        SaveFile(file);
-    }
-
-    public static void SaveRosterEnabled(bool enabled)
-    {
-        var file = LoadUserFile();
-        file.RosterEnabled = enabled;
         SaveFile(file);
     }
 

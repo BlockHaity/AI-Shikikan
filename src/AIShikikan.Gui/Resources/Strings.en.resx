@@ -71,6 +71,17 @@
   <data name="Panel_AssignToolTip" xml:space="preserve"><value>Assignment: sub-agent list &amp; quick assign</value></data>
   <data name="Panel_GitToolTip" xml:space="preserve"><value>Source control: git changes &amp; step checkpoints</value></data>
   <data name="Panel_ToggleTip" xml:space="preserve"><value>Collapse/Expand panel</value></data>
+  <data name="Panel_StatusTool" xml:space="preserve"><value>Status</value></data>
+  <data name="Panel_StatusToolTip" xml:space="preserve"><value>Status: context usage &amp; cost</value></data>
+  <data name="Status_Context" xml:space="preserve"><value>Context window</value></data>
+  <data name="Status_Cost" xml:space="preserve"><value>Session cost</value></data>
+  <data name="Status_RefreshPrice" xml:space="preserve"><value>Refresh prices</value></data>
+  <data name="Status_Project" xml:space="preserve"><value>Project</value></data>
+  <data name="Status_Branch" xml:space="preserve"><value>Git branch</value></data>
+  <data name="Status_UnknownModel" xml:space="preserve"><value>Model not indexed; configure in models.toml</value></data>
+  <data name="Status_PriceSourceManual" xml:space="preserve"><value>Prices: models.toml</value></data>
+  <data name="Status_PriceSourceApi" xml:space="preserve"><value>Prices: API</value></data>
+  <data name="Status_PriceSourceUnknown" xml:space="preserve"><value>Prices: unknown</value></data>
   <data name="SubAgent_Title" xml:space="preserve"><value>Sub-agents</value></data>
   <data name="SubAgent_Add" xml:space="preserve"><value>Add sub-agent</value></data>
   <data name="SubAgent_AddName" xml:space="preserve"><value>Name</value></data>
@@ -85,7 +96,6 @@
   <data name="SubAgent_SessionOverride" xml:space="preserve"><value>Session override</value></data>
   <data name="SubAgent_ToGlobal" xml:space="preserve"><value>Use global</value></data>
   <data name="SubAgent_NoAgents" xml:space="preserve"><value>No sub-agents, add one above</value></data>
-  <data name="SubAgent_RosterSwitch" xml:space="preserve"><value>Enable roster injection</value></data>
   <data name="SubAgent_CommanderTitle" xml:space="preserve"><value>Dialogue Expert</value></data>
   <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>Choose the commander persona for this conversation</value></data>
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>Pass persona to sub-agents</value></data>

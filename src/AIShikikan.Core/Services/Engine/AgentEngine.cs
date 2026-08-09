@@ -264,17 +264,13 @@ public sealed class AgentEngine
             parts.Add(_personaText);
         }
 
-        var configFile = AgentConfigService.LoadUserFile();
-        if (configFile.RosterEnabled)
+        var roster = RosterBuilder.Build(_agents, _personas, _templates,
+            AgentConfigService.LoadUserFile().Rules, _git,
+            rosterEntries: _rosterEntries,
+            enabled: true);
+        if (!string.IsNullOrWhiteSpace(roster))
         {
-            var roster = RosterBuilder.Build(_agents, _personas, _templates,
-                configFile.Rules, _git,
-                rosterEntries: _rosterEntries,
-                enabled: true);
-            if (!string.IsNullOrWhiteSpace(roster))
-            {
-                parts.Add(roster);
-            }
+            parts.Add(roster);
         }
 
         if (!string.IsNullOrWhiteSpace(_options.SystemExtra))
