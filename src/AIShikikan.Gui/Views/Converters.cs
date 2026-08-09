@@ -47,20 +47,6 @@ public class NotEmptyToVisibilityConverter : IValueConverter
     }
 }
 
-/// <summary>int 索引 → bool: 值等于 2(自定义字体项)时显示。</summary>
-public class FontCustomVisibilityConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        return value is 2;
-    }
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        throw new NotSupportedException();
-    }
-}
-
 /// <summary>int → bool: 值等于 parameter 时显示, 否则隐藏。</summary>
 public class IntEqualsConverter : IValueConverter
 {
