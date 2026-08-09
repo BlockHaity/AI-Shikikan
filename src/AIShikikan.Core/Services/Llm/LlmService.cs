@@ -47,25 +47,15 @@ public class LlmService
         }
 
         // 不为空才写入（避免覆盖环境变量退路）
-        var effective = provider.Kind == ProviderKind.Anthropic
-            ? new ProviderConfig
-            {
-                Id = provider.Id,
-                Name = provider.Name,
-                Kind = provider.Kind,
-                BaseUrl = provider.BaseUrl,
-                ApiKey = key,
-                DefaultModel = provider.DefaultModel
-            }
-            : new ProviderConfig
-            {
-                Id = provider.Id,
-                Name = provider.Name,
-                Kind = provider.Kind,
-                BaseUrl = provider.BaseUrl,
-                ApiKey = key,
-                DefaultModel = provider.DefaultModel
-            };
+        var effective = new ProviderConfig
+        {
+            Id = provider.Id,
+            Name = provider.Name,
+            Kind = provider.Kind,
+            BaseUrl = provider.BaseUrl,
+            ApiKey = key,
+            DefaultModel = provider.DefaultModel
+        };
 
         IChatCompletionsClient client = effective.Kind == ProviderKind.Anthropic
             ? new AnthropicChatCompletionsClient(effective)

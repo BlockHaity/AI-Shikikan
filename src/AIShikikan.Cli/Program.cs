@@ -68,7 +68,7 @@ static async Task<int> RunApiAsync(string[] args)
         _ = server.StopAsync();
     };
 
-    await Task.Delay(Timeout.Infinite);
+    await server.WaitForShutdownAsync();
     return 0;
 }
 
