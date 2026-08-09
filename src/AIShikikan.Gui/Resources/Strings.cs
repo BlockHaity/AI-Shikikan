@@ -112,4 +112,15 @@ public static class Strings
     public static string Settings_Agents => Get(nameof(Settings_Agents));
     public static string Settings_AgentName => Get(nameof(Settings_AgentName));
     public static string Settings_AgentExecutable => Get(nameof(Settings_AgentExecutable));
+    public static string Settings_FontSelect => Get(nameof(Settings_FontSelect));
+    public static string Settings_FontCustom => Get(nameof(Settings_FontCustom));
+    public static string Settings_ModelsTitle => Get(nameof(Settings_ModelsTitle));
+    public static string Settings_FetchModels => Get(nameof(Settings_FetchModels));
+    public static string Settings_Fetching => Get(nameof(Settings_Fetching));
+    public static string Settings_EnableAll => Get(nameof(Settings_EnableAll));
+    public static string Settings_DisableAll => Get(nameof(Settings_DisableAll));
+    public static string Settings_ProviderDefaultModel => Get(nameof(Settings_ProviderDefaultModel));
+    public static string Settings_AgentSave => Get(nameof(Settings_AgentSave));
+    public static string Settings_AgentEditHint => Get(nameof(Settings_AgentEditHint));
+    public static string Chat_Model => Get(nameof(Chat_Model));
 }
