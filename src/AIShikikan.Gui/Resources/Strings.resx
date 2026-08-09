@@ -71,6 +71,17 @@
   <data name="Panel_AssignToolTip" xml:space="preserve"><value>分配工具: 子Agent 列表与快速分配</value></data>
   <data name="Panel_GitToolTip" xml:space="preserve"><value>源代码管理: Git 变更与步骤检查点</value></data>
   <data name="Panel_ToggleTip" xml:space="preserve"><value>收起/展开侧栏</value></data>
+  <data name="Panel_StatusTool" xml:space="preserve"><value>状态</value></data>
+  <data name="Panel_StatusToolTip" xml:space="preserve"><value>状态: 上下文占用与成本</value></data>
+  <data name="Status_Context" xml:space="preserve"><value>上下文窗口</value></data>
+  <data name="Status_Cost" xml:space="preserve"><value>当前会话成本</value></data>
+  <data name="Status_RefreshPrice" xml:space="preserve"><value>刷新价格</value></data>
+  <data name="Status_Project" xml:space="preserve"><value>项目</value></data>
+  <data name="Status_Branch" xml:space="preserve"><value>Git 分支</value></data>
+  <data name="Status_UnknownModel" xml:space="preserve"><value>未收录模型, 可在 models.toml 配置</value></data>
+  <data name="Status_PriceSourceManual" xml:space="preserve"><value>价格来源: models.toml</value></data>
+  <data name="Status_PriceSourceApi" xml:space="preserve"><value>价格来源: API</value></data>
+  <data name="Status_PriceSourceUnknown" xml:space="preserve"><value>价格来源: 未收录</value></data>
   <data name="SubAgent_Title" xml:space="preserve"><value>子Agent</value></data>
   <data name="SubAgent_Add" xml:space="preserve"><value>添加子Agent</value></data>
   <data name="SubAgent_AddName" xml:space="preserve"><value>名称</value></data>
@@ -85,7 +96,6 @@
   <data name="SubAgent_SessionOverride" xml:space="preserve"><value>会话覆盖</value></data>
   <data name="SubAgent_ToGlobal" xml:space="preserve"><value>添加到全局</value></data>
   <data name="SubAgent_NoAgents" xml:space="preserve"><value>暂无子 Agent</value></data>
-  <data name="SubAgent_RosterSwitch" xml:space="preserve"><value>编目模式</value></data>
   <data name="SubAgent_CommanderTitle" xml:space="preserve"><value>注入专家到子代理</value></data>
   <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>子代理执行时将携带当前专家人设</value></data>
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>同步专家到子代理</value></data>

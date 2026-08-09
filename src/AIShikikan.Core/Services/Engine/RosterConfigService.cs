@@ -7,7 +7,6 @@ namespace AIShikikan.Core.Services.Engine;
 /// <summary>Session 级别的 Agent 编目配置, 存储在 sessions/{sessionId}/roster.json。</summary>
 public class RosterConfig
 {
-    public bool RosterEnabled { get; set; } = true;
     public List<AgentRosterEntry> Entries { get; set; } = [];
 }
 

@@ -58,15 +58,10 @@
 
             <!-- 子Agent -->
             <StackPanel Spacing="6">
-                <Grid ColumnDefinitions="*,Auto,Auto">
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="{x:Static res:Strings.SubAgent_Title}" Classes="secTitle"/>
-                        <TextBlock Text="{x:Static res:Strings.SubAgent_RosterSwitch}" Classes="badge"
-                                   IsVisible="{Binding RosterEnabled}"/>
-                    </StackPanel>
-                    <ToggleSwitch Grid.Column="1" IsChecked="{Binding RosterEnabled}"
-                                  VerticalAlignment="Center" Margin="0,0,8,0"/>
-                    <Button Grid.Column="2" Classes="FilledTonal" Content="＋"
+                <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{x:Static res:Strings.SubAgent_Title}" Classes="secTitle"
+                               VerticalAlignment="Center"/>
+                    <Button Grid.Column="1" Classes="FilledTonal" Content="＋"
                             Command="{Binding ToggleAddFormCommand}"
                             ToolTip.Tip="{x:Static res:Strings.SubAgent_Add}"/>
                 </Grid>

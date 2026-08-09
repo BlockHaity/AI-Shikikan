@@ -4,7 +4,6 @@
 # 用户定义按 id 覆盖或作为独立条目
 
 rules = "优先选择专长与任务匹配的 Agent; 涉及多个领域时先拆分子任务再分配。"
-roster_enabled = true
 
 [[agents]]
 id = "claude"
