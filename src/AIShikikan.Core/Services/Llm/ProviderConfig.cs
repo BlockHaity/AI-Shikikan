@@ -35,84 +35,67 @@ public class LlmSettings
         !string.IsNullOrEmpty(ActiveModel) ? ActiveModel : ActiveProvider?.DefaultModel ?? string.Empty;
 }
 
-public static class ProviderDefaults
-{
-    public static LlmSettings CreateDefaultSettings() => new()
-    {
-        ActiveProviderId = "openai",
-        Providers =
-        [
-            new ProviderConfig
-            {
-                Id = "openai",
-                Name = "OpenAI",
-                Kind = ProviderKind.OpenAi,
-                BaseUrl = "https://api.openai.com/v1",
-                DefaultModel = "gpt-4o",
-                EnabledModels = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3"]
-            },
-            new ProviderConfig
-            {
-                Id = "anthropic",
-                Name = "Anthropic",
-                Kind = ProviderKind.Anthropic,
-                BaseUrl = "https://api.anthropic.com",
-                DefaultModel = "claude-sonnet-4-20250514",
-                EnabledModels =
-                [
-                    "claude-sonnet-4-20250514",
-                    "claude-sonnet-4-5-20250929",
-                    "claude-opus-4-20250514",
-                    "claude-3-7-sonnet-20250219",
-                    "claude-3-5-sonnet-20241022"
-                ]
-            },
-            new ProviderConfig
-            {
-                Id = "deepseek",
-                Name = "DeepSeek",
-                Kind = ProviderKind.OpenAi,
-                BaseUrl = "https://api.deepseek.com/v1",
-                DefaultModel = "deepseek-chat",
-                EnabledModels = ["deepseek-chat", "deepseek-reasoner"]
-            }
-        ]
-    };
-}
-
 public static class ProviderSettingsService
 {
+    /// <summary>首次启动时生成默认提供商配置(仅当用户文件不存在)。</summary>
+    public static void EnsureDefaultExists()
+    {
+        DefaultConfig.WriteIfMissing(AppPaths.ProvidersPath, DefaultConfig.ProvidersResource);
+    }
+
     public static LlmSettings Load()
     {
-        try
+        if (File.Exists(AppPaths.ProvidersPath))
         {
-            if (File.Exists(AppPaths.ProvidersPath))
+            try
             {
                 var content = File.ReadAllText(AppPaths.ProvidersPath);
                 var settings = TomlBridge.Deserialize<LlmSettings>(content);
-                if (settings is { Providers.Count: > 0 })
+                if (settings is not null)
                 {
+                    // 用户文件为准: 即使删光了 Provider 也保持原样, 不恢复默认
                     return settings;
                 }
             }
+            catch
+            {
+            }
 
-            // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 providers.json
-            var legacyPath = Path.ChangeExtension(AppPaths.ProvidersPath, ".json");
-            if (File.Exists(legacyPath))
+            // 文件存在但解析失败: 不覆盖用户文件, 按空配置运行
+            return new LlmSettings();
+        }
+
+        // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 providers.json
+        var legacyPath = Path.ChangeExtension(AppPaths.ProvidersPath, ".json");
+        if (File.Exists(legacyPath))
+        {
+            try
             {
                 var settings = JsonSerializer.Deserialize(
                     File.ReadAllText(legacyPath), AppJsonContext.Default.LlmSettings);
-                if (settings is { Providers.Count: > 0 })
+                if (settings is not null)
                 {
                     return settings;
                 }
             }
+            catch
+            {
+            }
+
+            return new LlmSettings();
+        }
+
+        // 首次启动: 生成默认配置文件后再读取
+        EnsureDefaultExists();
+        try
+        {
+            var content = File.ReadAllText(AppPaths.ProvidersPath);
+            return TomlBridge.Deserialize<LlmSettings>(content) ?? new LlmSettings();
         }
         catch
         {
+            return new LlmSettings();
         }
-
-        return ProviderDefaults.CreateDefaultSettings();
     }
 
     public static void Save(LlmSettings settings)
