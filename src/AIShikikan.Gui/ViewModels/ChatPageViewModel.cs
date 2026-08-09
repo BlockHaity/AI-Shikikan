@@ -69,6 +69,8 @@ public partial class ChatPageViewModel : ViewModelBase
 
     public GitPanelViewModel GitPanel { get; }
 
+    public SessionPanelViewModel SessionPanel { get; }
+
     public bool IsAssignmentMode => PanelMode == RightPanelMode.Assignment;
 
     public bool IsGitMode => PanelMode == RightPanelMode.Git;
@@ -85,6 +87,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         AgentPanel = new AgentPanelViewModel();
         GitPanel = new GitPanelViewModel();
+        SessionPanel = new SessionPanelViewModel(_chatService);
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
 
         _chatService.CurrentSessionChanged += (_, session) =>
@@ -309,12 +312,64 @@ public partial class ChatPageViewModel : ViewModelBase
         var content = InputText;
         InputText = string.Empty;
 
+        var isFirstMessage = CurrentSession!.Messages.Count == 0;
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
         Messages = CurrentSession.Messages;
         Sessions = _chatService.Sessions;
 
+        if (isFirstMessage)
+        {
+            _ = AutoGenerateTitleAsync(CurrentSession, content);
+        }
+
         IsSending = true;
         _ = RespondAsync(content);
+    }
+
+    /// <summary>首条消息后调用 LLM 为会话生成简洁标题(异步, 失败时静默保留默认标题)。</summary>
+    private async Task AutoGenerateTitleAsync(ChatSession session, string userMessage)
+    {
+        try
+        {
+            var provider = _runtime.Llm.GetProvider();
+            if (provider is null) return;
+
+            var request = new ChatRequest
+            {
+                Model = _runtime.Llm.ResolveModel(),
+                MaxTokens = 32,
+                Temperature = 0.3,
+                System = "你是一个会话标题生成助手。根据用户的消息生成一个简洁的中文标题(不超过20个字符), 只输出标题本身, 不要引号、不要标点、不要多余说明。",
+                Messages =
+                [
+                    new ChatTurnMessage
+                    {
+                        Role = ChatMsgRole.User,
+                        Content = userMessage.Length > 200 ? userMessage[..200] : userMessage
+                    }
+                ]
+            };
+
+            var response = await _runtime.Llm.GetClient(provider.Id).CompleteAsync(request);
+            if (response.IsError || string.IsNullOrWhiteSpace(response.Content)) return;
+
+            var title = CleanGeneratedTitle(response.Content);
+            if (title.Length > 0)
+            {
+                _chatService.RenameSession(session.Id, title);
+            }
+        }
+        catch
+        {
+            // 标题生成失败不影响主流程
+        }
+    }
+
+    private static string CleanGeneratedTitle(string text)
+    {
+        var title = text.Trim().Trim('"', '\'', '“', '”', '「', '」', '【', '】', '。', '：', ':');
+        if (title.Length <= 24) return title;
+        return title[..24].TrimEnd('…', '.', '。') + "...";
     }
 
     private async Task RespondAsync(string userMessage)
