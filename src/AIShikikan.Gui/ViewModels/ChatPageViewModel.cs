@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using AIShikikan.Core.Models;
@@ -48,6 +49,12 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private string _activeModelText = string.Empty;
 
+    [ObservableProperty]
+    private IReadOnlyList<string> _availableModels = [];
+
+    [ObservableProperty]
+    private string _selectedModel = string.Empty;
+
     public AgentPanelViewModel AgentPanel { get; }
 
     public GitPanelViewModel GitPanel { get; }
@@ -88,6 +95,18 @@ public partial class ChatPageViewModel : ViewModelBase
         AppShell.Instance.DataChanged += OnShellDataChanged;
 
         RefreshActiveModel();
+        RefreshModels();
+    }
+
+    partial void OnSelectedModelChanged(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var settings = _runtime.Llm.Settings;
+        if (string.Equals(settings.ActiveModel, value, StringComparison.Ordinal)) return;
+
+        settings.ActiveModel = value;
+        AIShikikan.Core.Services.Llm.ProviderSettingsService.Save(settings);
+        RefreshActiveModel();
     }
 
     partial void OnPanelModeChanged(RightPanelMode value)
@@ -105,6 +124,33 @@ public partial class ChatPageViewModel : ViewModelBase
         ActiveModelText = $"{_runtime.Llm.ResolveModel()} @ {_runtime.Llm.GetProvider()?.Id ?? "-"}";
     }
 
+    private void RefreshModels()
+    {
+        var settings = _runtime.Llm.Settings;
+        var provider = settings.ActiveProvider;
+        if (provider is null)
+        {
+            AvailableModels = [];
+            return;
+        }
+
+        var list = provider.EnabledModels is { Count: > 0 }
+            ? provider.EnabledModels
+            : [provider.DefaultModel];
+
+        AvailableModels = list
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var current = !string.IsNullOrEmpty(settings.ActiveModel)
+            ? settings.ActiveModel
+            : provider.DefaultModel;
+        SelectedModel = AvailableModels.Contains(current, StringComparer.OrdinalIgnoreCase)
+            ? AvailableModels.First(m => m.Equals(current, StringComparison.OrdinalIgnoreCase))
+            : AvailableModels.FirstOrDefault() ?? string.Empty;
+    }
+
     private void OnShellDataChanged()
     {
         if (!Dispatcher.UIThread.CheckAccess())
@@ -119,6 +165,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private void RefreshShellDataChanged()
     {
         RefreshActiveModel();
+        RefreshModels();
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
     }

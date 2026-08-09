@@ -10,6 +10,7 @@
              x:DataType="vm:ChatPageViewModel">
 
     <UserControl.Resources>
+        <v:ModelListVisibilityConverter x:Key="ModelListVisibilityConverter"/>
         <StreamGeometry x:Key="IconChevronRight">M9.29,6.71a1,1,0,0,0,0,1.41L13.17,12l-3.88,3.88a1,1,0,1,0,1.41,1.41l4.59-4.59a1,1,0,0,0,0-1.41L10.7,6.71A1,1,0,0,0,9.29,6.71Z</StreamGeometry>
         <StreamGeometry x:Key="IconChevronDown">M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6l-6-6L7.41,8.59Z</StreamGeometry>
         <StreamGeometry x:Key="IconCaretRight">M8.59,7.41L10,6l6,6l-6,6l-1.41-1.41L13.17,12L8.59,7.41Z</StreamGeometry>
@@ -42,6 +43,9 @@
                 <StackPanel Orientation="Horizontal" Spacing="12">
                     <TextBlock Classes="TitleSmall" VerticalAlignment="Center"
                                Text="{Binding ActiveModelText}" TextTrimming="CharacterEllipsis"/>
+                    <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}"
+                              MinWidth="180" VerticalAlignment="Center"
+                              IsVisible="{Binding AvailableModels.Count, Converter={StaticResource ModelListVisibilityConverter}}" />
                     <Button Classes="Text" Content="{x:Static res:Strings.Chat_ClearSession}"
                             Command="{Binding ClearMessagesCommand}" IsEnabled="{Binding !IsSending}"/>
                 </StackPanel>
