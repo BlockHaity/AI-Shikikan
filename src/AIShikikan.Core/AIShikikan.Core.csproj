@@ -10,7 +10,6 @@
   <ItemGroup>
     <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
     <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
-    <PackageReference Include="Tomlyn" Version="0.13.0" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 

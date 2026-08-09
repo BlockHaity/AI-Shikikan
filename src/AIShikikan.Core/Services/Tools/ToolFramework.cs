@@ -39,7 +39,7 @@ public class ToolRegistry
 
     public void Register(ITool tool) => _tools[tool.Name] = tool;
 
-    public bool TryGet(string name, out ITool? tool) => _tools.TryGetValue(name, out tool);
+    public bool TryGet(string name, out ITool tool) => _tools.TryGetValue(name, out tool!);
 
     public ITool Get(string name) =>
         _tools.TryGetValue(name, out var tool) ? tool : throw new KeyNotFoundException($"未知工具: {name}");

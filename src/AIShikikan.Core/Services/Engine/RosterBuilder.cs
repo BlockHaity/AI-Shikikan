@@ -141,7 +141,7 @@ public static class RosterBuilder
                (pending.Count > 0 ? $"\n待合并步骤: {string.Join(", ", pending.Select(p => $"{p.StepId}({p.Label})"))} " : "");
     }
 
-    private static string LoadTemplate()
+    private static string? LoadTemplate()
     {
         try
         {

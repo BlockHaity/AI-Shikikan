@@ -250,7 +250,7 @@ public class CommandService
             .AddColumn(new TableColumn("[bold]ID[/]"))
             .AddColumn(new TableColumn("[bold]名称[/]"))
             .AddColumn(new TableColumn("[bold]模式[/]"))
-            .AddColumn(new TableColumn("[bold]模型[/]"))
+            .AddColumn(new TableColumn("[bold]可执行文件[/]"))
             .AddColumn(new TableColumn("[bold]说明[/]"));
 
         foreach (var a in _runtime.Agents)

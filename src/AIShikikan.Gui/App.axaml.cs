@@ -28,9 +28,11 @@ public partial class App : Application
 
         ThemeService = new ThemeService();
         I18nService = new I18nService();
+        I18nService.LanguageChanged += (_, culture) => AIShikikan.Gui.Resources.Strings.Culture = culture;
 
         RequestedThemeVariant = ThemeService.IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
         I18nService.SetLanguage(ThemeService.Language);
+        AIShikikan.Gui.Resources.Strings.Culture = I18nService.CurrentCulture;
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {

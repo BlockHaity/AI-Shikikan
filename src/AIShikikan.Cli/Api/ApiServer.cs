@@ -17,6 +17,7 @@ public sealed class ApiServer
     private readonly CommanderRuntime _runtime;
     private readonly HttpListener _listener = new();
     private readonly CancellationTokenSource _shutdown = new();
+    private readonly TaskCompletionSource _stopped = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private Task? _loop;
 
     public ApiServer(CommanderRuntime runtime, int port = 8090, string host = "localhost")
@@ -35,6 +36,11 @@ public sealed class ApiServer
 
     public async Task StopAsync()
     {
+        if (_shutdown.IsCancellationRequested)
+        {
+            return;
+        }
+
         _shutdown.Cancel();
         _listener.Stop();
         if (_loop is not null)
@@ -47,6 +53,14 @@ public sealed class ApiServer
             {
             }
         }
+
+        _stopped.TrySetResult();
+    }
+
+    /// <summary>等待服务停止(Ctrl+C 或外部调用 StopAsync 时返回)。</summary>
+    public async Task WaitForShutdownAsync()
+    {
+        await _stopped.Task;
     }
 
     private async Task LoopAsync()

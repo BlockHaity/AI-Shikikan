@@ -11,8 +11,7 @@ public class AgentRosterEntry : INotifyPropertyChanged
     private string _description = string.Empty;
     private string? _personaId;
     private bool _enabled = true;
-    private bool _isExpanded = false;
-    private string _personaDisplayName = string.Empty;
+    private bool _isExpanded;
 
     public string AgentId
     {
@@ -39,10 +38,6 @@ public class AgentRosterEntry : INotifyPropertyChanged
         {
             _personaId = value;
             OnPropertyChanged();
-            if (!string.IsNullOrEmpty(value))
-            {
-                // 这里设置 DisplayName 会在 ViewModel 中更新
-            }
         }
     }
 
@@ -56,14 +51,6 @@ public class AgentRosterEntry : INotifyPropertyChanged
     {
         get => _isExpanded;
         set { _isExpanded = value; OnPropertyChanged(); }
-    }
-
-    public bool IsCollapsed => !_isExpanded;
-
-    public string PersonaDisplayName
-    {
-        get => _personaDisplayName;
-        set { _personaDisplayName = value; OnPropertyChanged(); }
     }
 
     public string DisplayText => string.IsNullOrEmpty(Display) ? AgentId : Display;

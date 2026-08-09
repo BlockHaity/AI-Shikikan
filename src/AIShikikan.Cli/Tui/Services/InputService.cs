@@ -28,18 +28,4 @@ public class InputService
 
         return input;
     }
-
-    public string? GetPreviousFromHistory()
-    {
-        if (_historyIndex <= 0) return null;
-        _historyIndex--;
-        return _history[_historyIndex];
-    }
-
-    public string? GetNextFromHistory()
-    {
-        if (_historyIndex >= _history.Count - 1) return null;
-        _historyIndex++;
-        return _history[_historyIndex];
-    }
 }
