@@ -52,38 +52,6 @@ public static class PersonaService
             }
         }
 
-        // 兼容旧 Markdown(YAML frontmatter)格式
-        foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.md"))
-        {
-            try
-            {
-                var content = File.ReadAllText(file);
-                var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
-
-                if (!frontmatter.TryGetValue("id", out var id) || string.IsNullOrWhiteSpace(id)) continue;
-
-                var persona = new Persona
-                {
-                    Id = id,
-                    Name = frontmatter.GetValueOrDefault("name", id),
-                    Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
-                        ? kind : PersonaKind.Expert,
-                    Description = frontmatter.GetValueOrDefault("description", string.Empty),
-                    SystemPrompt = string.IsNullOrWhiteSpace(body)
-                        ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
-                        : body.Trim()
-                };
-
-                if (!string.IsNullOrWhiteSpace(persona.Name))
-                {
-                    list.Add(persona);
-                }
-            }
-            catch
-            {
-            }
-        }
-
         return list;
     }
 
@@ -99,7 +67,7 @@ public static class PersonaService
         File.WriteAllText(path, TomlBridge.Serialize(persona));
     }
 
-    /// <summary>从外部文件导入专家/人格, 支持 .toml(推荐)、.json/.md(旧格式兼容), 校验后保存到配置目录。</summary>
+    /// <summary>从外部文件导入专家/人格, 支持 .toml(推荐)、.json(旧格式兼容), 校验后保存到配置目录。</summary>
     public static (Persona? Persona, string? Error) ImportFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -126,26 +94,7 @@ public static class PersonaService
             }
             else
             {
-                // 兼容旧 Markdown(YAML frontmatter)格式
-                var content = File.ReadAllText(path);
-                var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
-
-                if (!frontmatter.TryGetValue("id", out var id) || string.IsNullOrWhiteSpace(id))
-                {
-                    return (null, "缺少 id 字段, 无法导入。");
-                }
-
-                persona = new Persona
-                {
-                    Id = id,
-                    Name = frontmatter.GetValueOrDefault("name", id),
-                    Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
-                        ? kind : PersonaKind.Expert,
-                    Description = frontmatter.GetValueOrDefault("description", string.Empty),
-                    SystemPrompt = string.IsNullOrWhiteSpace(body)
-                        ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
-                        : body.Trim()
-                };
+                return (null, $"不支持的文件格式: {ext}(仅支持 .toml / .json)。");
             }
         }
         catch (InvalidDataException)
