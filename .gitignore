@@ -45,3 +45,6 @@ Thumbs.db
 # misc
 *.orig
 *.rej
+
+# OpenCode
+.opencode
