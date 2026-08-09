@@ -74,11 +74,11 @@
                 <!-- 添加表单 -->
                 <StackPanel IsVisible="{Binding AddFormVisible}" Spacing="4">
                     <TextBox Text="{Binding NewAgentName}"
-                             Watermark="{x:Static res:Strings.SubAgent_AddName}" FontSize="12"/>
+                             PlaceholderText="{x:Static res:Strings.SubAgent_AddName}" FontSize="12"/>
                     <TextBox Text="{Binding NewAgentExecutable}"
-                             Watermark="{x:Static res:Strings.SubAgent_AddExec}" FontSize="12"/>
+                             PlaceholderText="{x:Static res:Strings.SubAgent_AddExec}" FontSize="12"/>
                     <TextBox Text="{Binding NewAgentDescription}"
-                             Watermark="{x:Static res:Strings.SubAgent_AddDesc}" FontSize="12"
+                             PlaceholderText="{x:Static res:Strings.SubAgent_AddDesc}" FontSize="12"
                              AcceptsReturn="True" MinHeight="48" TextWrapping="Wrap"/>
                     <TextBlock Text="{x:Static res:Strings.SubAgent_AddHint}" FontSize="11" Opacity="0.6"/>
                     <Grid ColumnDefinitions="*,Auto">
@@ -124,7 +124,7 @@
 
                                     <StackPanel IsVisible="{Binding IsExpanded}" Margin="8,0,8,8" Spacing="6">
                                         <TextBox Text="{Binding Description}"
-                                                 Watermark="{x:Static res:Strings.SubAgent_DescPlaceholder}"
+                                                 PlaceholderText="{x:Static res:Strings.SubAgent_DescPlaceholder}"
                                                  AcceptsReturn="True" MinHeight="56" TextWrapping="Wrap" FontSize="12"/>
                                         <StackPanel Spacing="2">
                                             <TextBlock Text="{x:Static res:Strings.SubAgent_Expert}" Classes="secTitle"/>
@@ -169,7 +169,7 @@
                     </ComboBox.ItemTemplate>
                 </ComboBox>
                 <TextBox Text="{Binding AssignTaskText}"
-                         Watermark="{x:Static res:Strings.Chat_AssignTaskWatermark}"
+                         PlaceholderText="{x:Static res:Strings.Chat_AssignTaskWatermark}"
                          AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
                 <Grid ColumnDefinitions="*,Auto">
                     <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"

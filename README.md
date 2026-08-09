@@ -96,51 +96,43 @@ AOT_MODE=off ./build.sh linux
 
 | 文件 | 说明 |
 |------|------|
-| `providers.json` | LLM Provider 配置（API Key、模型、端点） |
-| `agents.json` | Agent 定义（可执行文件、参数、专长） |
-| `personas/` | 人格/专家 JSON 文件目录 |
-| `templates/` | 任务模板 JSON 文件目录 |
+| `providers.toml` | LLM Provider 配置（API Key、模型、端点） |
+| `agents.toml` | Agent 定义（可执行文件、参数、专长） |
+| `personas/` | 人格/专家 Markdown(YAML frontmatter) 文件目录 |
+| `templates/` | 任务模板 TOML 文件目录 |
 | `roster.prompt` | Roster 注入模板 |
 
 ### 示例配置
 
 参考 `templates/config/` 目录中的示例文件。
 
-**providers.json 示例：**
-```json
-{
-  "activeProviderId": "anthropic",
-  "providers": [
-    {
-      "id": "anthropic",
-      "name": "Anthropic",
-      "kind": 1,
-      "baseUrl": "https://api.anthropic.com",
-      "apiKey": "sk-ant-...",
-      "defaultModel": "claude-sonnet-4-20250514"
-    }
-  ]
-}
+**providers.toml 示例：**
+```toml
+active_provider_id = "anthropic"
+
+[[providers]]
+id = "anthropic"
+name = "Anthropic"
+kind = "Anthropic"
+base_url = "https://api.anthropic.com"
+api_key = "sk-ant-..."
+default_model = "claude-sonnet-4-20250514"
 ```
 
-**agents.json 示例：**
-```json
-{
-  "agents": [
-    {
-      "id": "claude",
-      "name": "Claude Code",
-      "executable": "claude",
-      "args": ["-p", "{prompt}"],
-      "memoryFile": "CLAUDE.md",
-      "injection": 3,
-      "expertise": ["编码", "重构", "测试"],
-      "description": "Anthropic 官方编码 Agent"
-    }
-  ],
-  "rules": "优先选择专长与任务匹配的 Agent",
-  "rosterEnabled": true
-}
+**agents.toml 示例：**
+```toml
+rules = "优先选择专长与任务匹配的 Agent"
+roster_enabled = true
+
+[[agents]]
+id = "claude"
+name = "Claude Code"
+executable = "claude"
+args = ["-p", "{prompt}"]
+memory_file = "CLAUDE.md"
+injection = "Both"
+expertise = ["编码", "重构", "测试"]
+description = "Anthropic 官方编码 Agent"
 ```
 
 ## REST API

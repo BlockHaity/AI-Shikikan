@@ -3,7 +3,6 @@
         xmlns:vm="using:AIShikikan.Gui.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:theme="using:CCSWE.Avalonia.Material"
         xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="760"
         x:Class="AIShikikan.Gui.Views.MainWindow"

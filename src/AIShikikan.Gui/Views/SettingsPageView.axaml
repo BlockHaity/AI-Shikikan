@@ -94,6 +94,8 @@
                                            Foreground="{DynamicResource OnSurfaceVariant}"
                                            Margin="8,0,0,0"/>
                             </Grid>
+                            <TextBox PlaceholderText="provider-id(留空自动生成)"
+                                     Text="{Binding NewProviderId}" />
                             <TextBox PlaceholderText="https://api.example.com/v1"
                                      Text="{Binding NewProviderBaseUrl}" />
                              <TextBox
@@ -103,8 +105,7 @@
                                      Text="{Binding NewProviderDefaultModel}" />
                             <ComboBox PlaceholderText="类型"
                                       SelectedIndex="{Binding NewProviderKindIndex}"
-                                      ItemsSource="{Binding LanguageOptions}"
-                                      IsVisible="False"/>
+                                      ItemsSource="{Binding ProviderKindOptions}"/>
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddProviderCommand}"/>
                         </StackPanel>

@@ -1,0 +1,19 @@
+# 自定义 Agent 定义 + 分派规则模板
+# injection: "None" 不注入 / "PromptFlag" 命令行参数 / "MemoryFile" 记忆文件 / "Both" 两者
+# 用户定义按 id 覆盖同名内置 Agent
+
+rules = "优先选择专长与任务匹配的 Agent; 涉及多个领域时先拆分子任务再分配。"
+roster_enabled = true
+
+[[agents]]
+id = "my-codex"
+name = "我的 Codex"
+executable = "codex"
+args = []
+injection = "PromptFlag"
+default_mode = "sync"
+max_concurrent = 1
+require_approval = true
+timeout_minutes = 30
+expertise = ["coding", "debugging", "refactor"]
+description = "基于内置 codex 的自定义 Agent 示例"

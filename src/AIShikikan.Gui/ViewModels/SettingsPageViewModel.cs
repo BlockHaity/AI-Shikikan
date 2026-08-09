@@ -1,10 +1,6 @@
 using System;
-using System.Collections.ObjectModel;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Windows.Input;
 using System.Threading.Tasks;
 using AIShikikan.Core;
 using AIShikikan.Core.Services;
@@ -18,7 +14,7 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AIShikikan.Gui.ViewModels;
 
-public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChanged
+public partial class SettingsPageViewModel : ViewModelBase
 {
     private readonly ThemeService _themeService;
 
@@ -27,6 +23,8 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
     public string FontInfo { get; } = "HarmonyOS Sans SC";
 
     public IReadOnlyList<string> LanguageOptions { get; } = ["简体中文", "English"];
+
+    public IReadOnlyList<string> ProviderKindOptions { get; } = ["OpenAI 兼容", "Anthropic"];
 
     [ObservableProperty]
     private int _languageIndex;
@@ -86,12 +84,11 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
         _isDarkTheme = themeService.IsDarkTheme;
         _currentLanguageIndex = themeService.Language == "zh-CN" ? 0 : 1;
         _languageIndex = _currentLanguageIndex;
-        _llmSettings = ProviderSettingsService.Load();
-        _userAgents = AgentConfigService.LoadUserFile().Agents.ToList();
+        LlmSettings = ProviderSettingsService.Load();
+        UserAgents = AgentConfigService.LoadUserFile().Agents.ToList();
 
         _themeService.ThemeChanged += (_, isDark) => IsDarkTheme = isDark;
     }
-
     partial void OnIsDarkThemeChanged(bool value)
     {
         _themeService.IsDarkTheme = value;
@@ -107,11 +104,12 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
     {
         var lang = value == 0 ? "zh-CN" : "en-US";
         _themeService.Language = lang;
+        App.I18nService.SetLanguage(lang);
         IsRestartHintVisible = value != _currentLanguageIndex;
     }
 
     [RelayCommand]
-    private async void SelectBackground()
+    private async Task SelectBackground()
     {
         var topLevel = TopLevel.GetTopLevel(null);
         if (topLevel is null) return;
@@ -145,12 +143,15 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
     [RelayCommand]
     private void AddProvider()
     {
-        if (string.IsNullOrWhiteSpace(NewProviderId) || string.IsNullOrWhiteSpace(NewProviderName)) return;
+        if (string.IsNullOrWhiteSpace(NewProviderName)) return;
 
+        var id = string.IsNullOrWhiteSpace(NewProviderId)
+            ? NewProviderName.Trim().ToLowerInvariant().Replace(" ", "-")
+            : NewProviderId.Trim();
         var kind = NewProviderKindIndex == 0 ? ProviderKind.OpenAi : ProviderKind.Anthropic;
         var provider = new ProviderConfig
         {
-            Id = NewProviderId.Trim(),
+            Id = id,
             Name = NewProviderName.Trim(),
             Kind = kind,
             BaseUrl = NewProviderBaseUrl.Trim(),
@@ -158,8 +159,8 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
             DefaultModel = NewProviderDefaultModel.Trim()
         };
 
-        _llmSettings.Providers.Add(provider);
-        ProviderSettingsService.Save(_llmSettings);
+        LlmSettings.Providers.Add(provider);
+        ProviderSettingsService.Save(LlmSettings);
 
         NewProviderId = string.Empty;
         NewProviderName = string.Empty;
@@ -172,15 +173,15 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
     [RelayCommand]
     private void RemoveProvider(ProviderConfig provider)
     {
-        _llmSettings.Providers.Remove(provider);
-        ProviderSettingsService.Save(_llmSettings);
+        LlmSettings.Providers.Remove(provider);
+        ProviderSettingsService.Save(LlmSettings);
     }
 
     [RelayCommand]
     private void SetActiveProvider(ProviderConfig provider)
     {
-        _llmSettings.ActiveProviderId = provider.Id;
-        ProviderSettingsService.Save(_llmSettings);
+        LlmSettings.ActiveProviderId = provider.Id;
+        ProviderSettingsService.Save(LlmSettings);
     }
 
     // Agent 管理
@@ -205,7 +206,7 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
         };
 
         AgentConfigService.SaveUserAgent(agent);
-        _userAgents = AgentConfigService.LoadUserFile().Agents.ToList();
+        UserAgents = AgentConfigService.LoadUserFile().Agents.ToList();
         NewAgentName = string.Empty;
         NewAgentExecutable = string.Empty;
     }
@@ -214,7 +215,7 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
     private void RemoveAgent(CliAgentDefinition agent)
     {
         AgentConfigService.RemoveUserAgent(agent.Id);
-        _userAgents = AgentConfigService.LoadUserFile().Agents.ToList();
+        UserAgents = AgentConfigService.LoadUserFile().Agents.ToList();
     }
 
     public void UpdateBackgroundPreview(string? path)
@@ -236,12 +237,5 @@ public partial class SettingsPageViewModel : ViewModelBase, INotifyPropertyChang
             BackgroundPreview = null;
             HasBackground = false;
         }
-    }
-
-    public event PropertyChangedEventHandler? PropertyChanged;
-
-    protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-    {
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }

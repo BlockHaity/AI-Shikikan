@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Personas;
@@ -10,6 +11,7 @@ public class Persona
     public string Description { get; set; } = string.Empty;
     public string SystemPrompt { get; set; } = string.Empty;
 
+    [JsonIgnore]
     public string Display => string.IsNullOrEmpty(Name) ? Id : Name;
 }
 
@@ -25,26 +27,38 @@ public static class PersonaService
     {
         var list = new List<Persona>();
         Directory.CreateDirectory(AppPaths.PersonasDir);
+
+        // 主格式: Markdown(YAML frontmatter)
         foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.md"))
         {
             try
             {
-                var content = File.ReadAllText(file);
-                var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
-
-                if (!frontmatter.TryGetValue("id", out var id) || string.IsNullOrWhiteSpace(id)) continue;
-
-                var persona = new Persona
+                var persona = LoadMarkdown(file);
+                if (persona is not null)
                 {
-                    Id = id,
-                    Name = frontmatter.GetValueOrDefault("name", id),
-                    Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
-                        ? kind : PersonaKind.Expert,
-                    Description = frontmatter.GetValueOrDefault("description", string.Empty),
-                    SystemPrompt = string.IsNullOrWhiteSpace(body)
-                        ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
-                        : body.Trim()
-                };
+                    list.Add(persona);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // 兼容旧 TOML 格式
+        foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.toml"))
+        {
+            try
+            {
+                var persona = TomlBridge.Deserialize<Persona>(File.ReadAllText(file));
+                if (persona is null || string.IsNullOrWhiteSpace(persona.Id))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(persona.Name))
+                {
+                    persona.Name = persona.Id;
+                }
 
                 if (!string.IsNullOrWhiteSpace(persona.Name))
                 {
@@ -59,6 +73,32 @@ public static class PersonaService
         return list;
     }
 
+    /// <summary>从 Markdown(YAML frontmatter) 文件解析 Persona, 正文作为系统提示词。</summary>
+    private static Persona? LoadMarkdown(string file)
+    {
+        var content = File.ReadAllText(file);
+        var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
+
+        if (!frontmatter.TryGetValue("id", out var id) || string.IsNullOrWhiteSpace(id))
+        {
+            return null;
+        }
+
+        var persona = new Persona
+        {
+            Id = id,
+            Name = frontmatter.GetValueOrDefault("name", id),
+            Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
+                ? kind : PersonaKind.Expert,
+            Description = frontmatter.GetValueOrDefault("description", string.Empty),
+            SystemPrompt = string.IsNullOrWhiteSpace(body)
+                ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
+                : body.Trim()
+        };
+
+        return string.IsNullOrWhiteSpace(persona.Name) ? null : persona;
+    }
+
     public static Persona? Find(string? idOrName, IReadOnlyList<Persona> personas) =>
         personas.FirstOrDefault(p =>
             string.Equals(p.Id, idOrName, StringComparison.OrdinalIgnoreCase) ||
@@ -68,10 +108,10 @@ public static class PersonaService
     {
         Directory.CreateDirectory(AppPaths.PersonasDir);
         var path = Path.Combine(AppPaths.PersonasDir, $"{persona.Id}.md");
-        File.WriteAllText(path, YamlFrontmatterParser.Build(persona, persona.SystemPrompt));
+        File.WriteAllText(path, YamlFrontmatterParser.Build(persona));
     }
 
-    /// <summary>从外部文件导入专家/人格, 支持 .json 和 .md 两种格式, 校验后保存到配置目录。</summary>
+    /// <summary>从外部文件导入专家/人格, 支持 .md(YAML frontmatter, 推荐)、.json(旧格式兼容), 校验后保存到配置目录。</summary>
     public static (Persona? Persona, string? Error) ImportFile(string path)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -106,12 +146,16 @@ public static class PersonaService
                         : body.Trim()
                 };
             }
-            else
+            else if (ext == ".json")
             {
                 // 兼容旧 JSON 格式
                 persona = System.Text.Json.JsonSerializer.Deserialize(
                     File.ReadAllText(path), AppJsonContext.Default.Persona)
                     ?? throw new InvalidDataException("文件内容不是有效的专家文件。");
+            }
+            else
+            {
+                return (null, $"不支持的文件格式: {ext}(仅支持 .md / .json)。");
             }
         }
         catch (InvalidDataException)

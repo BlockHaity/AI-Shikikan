@@ -16,7 +16,7 @@ namespace AIShikikan.Gui.ViewModels;
 
 public sealed record PersonaOption(Persona? Value, string Label);
 
-/// <summary>子 Agent 列表项: 全局定义(agents.json)为基准, 会话覆盖(roster.json)优先。</summary>
+/// <summary>子 Agent 列表项: 全局定义(agents.toml)为基准, 会话覆盖(roster.json)优先。</summary>
 public partial class SubAgentItemViewModel : ViewModelBase
 {
     public CliAgentDefinition Agent { get; }
@@ -284,7 +284,7 @@ public partial class AgentPanelViewModel : ViewModelBase
         item.IsExpanded = !item.IsExpanded;
     }
 
-    /// <summary>保存描述/专家: 会话覆盖(条目已有自定义) → 写会话; 否则 → 写全局(agents.json)。</summary>
+    /// <summary>保存描述/专家: 会话覆盖(条目已有自定义) → 写会话; 否则 → 写全局(agents.toml)。</summary>
     [RelayCommand]
     private void SaveEntry(SubAgentItemViewModel item)
     {

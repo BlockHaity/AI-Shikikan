@@ -57,9 +57,20 @@ public class ThemeService
     {
         try
         {
-            if (!File.Exists(ConfigPath)) return;
-            var json = File.ReadAllText(ConfigPath);
-            _prefs = JsonSerializer.Deserialize(json, AppJsonContext.Default.Preferences) ?? new Preferences();
+            if (File.Exists(ConfigPath))
+            {
+                var content = File.ReadAllText(ConfigPath);
+                _prefs = TomlBridge.Deserialize<Preferences>(content) ?? new Preferences();
+                return;
+            }
+
+            // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 preferences.json
+            var legacyPath = Path.ChangeExtension(ConfigPath, ".json");
+            if (File.Exists(legacyPath))
+            {
+                var content = File.ReadAllText(legacyPath);
+                _prefs = JsonSerializer.Deserialize(content, AppJsonContext.Default.Preferences) ?? new Preferences();
+            }
         }
         catch
         {
@@ -72,8 +83,8 @@ public class ThemeService
         try
         {
             Directory.CreateDirectory(ConfigDir);
-            var json = JsonSerializer.Serialize(_prefs, AppJsonContext.Default.Preferences);
-            File.WriteAllText(ConfigPath, json);
+            var toml = TomlBridge.Serialize(_prefs);
+            File.WriteAllText(ConfigPath, toml);
         }
         catch
         {
