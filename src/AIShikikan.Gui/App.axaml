@@ -17,5 +17,6 @@
 
     <Application.Resources>
         <FontFamily x:Key="ContentControlThemeFontFamily">avares://AIShikikan.Gui/Assets/Fonts/#HarmonyOS Sans SC</FontFamily>
+        <FontFamily x:Key="MonoThemeFontFamily">avares://AIShikikan.Gui/Assets/Fonts/#CaskaydiaCove Nerd Font Mono</FontFamily>
     </Application.Resources>
 </Application>
