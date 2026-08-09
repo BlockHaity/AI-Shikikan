@@ -6,6 +6,7 @@ using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
+using AIShikikan.Core.Services.Usage;
 using Tomlyn;
 using Tomlyn.Model;
 
@@ -24,6 +25,8 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(Persona))]
 [JsonSerializable(typeof(AgentTemplate))]
 [JsonSerializable(typeof(ThemeService.Preferences))]
+[JsonSerializable(typeof(ModelConfigFile))]
+[JsonSerializable(typeof(ModelPriceConfig))]
 internal sealed partial class TomlJsonContext : JsonSerializerContext;
 
 /// <summary>JSON ↔ TOML 双向桥接: 利用 System.Text.Json 源生成(与 AOT/裁剪兼容)

@@ -33,4 +33,6 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(UsageData))]
 [JsonSerializable(typeof(LlmUsageEntry))]
 [JsonSerializable(typeof(AgentCallEntry))]
+[JsonSerializable(typeof(ModelProfileCache))]
+[JsonSerializable(typeof(ApiModelProfile))]
 public sealed partial class AppJsonContext : JsonSerializerContext;
