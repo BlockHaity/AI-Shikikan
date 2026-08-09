@@ -61,6 +61,23 @@ public class FontCustomVisibilityConverter : IValueConverter
     }
 }
 
+/// <summary>int → bool: 值等于 parameter 时显示, 否则隐藏。</summary>
+public class IntEqualsConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not int v || parameter is null) return false;
+        return parameter is int p
+            ? v == p
+            : int.TryParse(parameter.ToString(), out var p2) && v == p2;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
 /// <summary>bool → 文案: 获取中/获取模型列表。</summary>
 public class FetchingToTextConverter : IValueConverter
 {
