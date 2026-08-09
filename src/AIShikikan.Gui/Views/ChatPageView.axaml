@@ -39,10 +39,22 @@
 
         <v:PageBackground ThemeService="{Binding ThemeService}" ScrimOpacity="0.7" />
 
-        <Grid ColumnDefinitions="*,Auto,Auto">
+        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+
+        <!-- 会话列表侧栏(最左侧) -->
+        <Border Grid.Column="0" Width="220" BorderBrush="{DynamicResource OutlineVariant}"
+                BorderThickness="0,0,1,0" Background="{DynamicResource SurfaceContainerLow}">
+            <ContentControl Content="{Binding SessionPanel}">
+                <ContentControl.ContentTemplate>
+                    <DataTemplate x:DataType="vm:SessionPanelViewModel">
+                        <v:SessionPanelView/>
+                    </DataTemplate>
+                </ContentControl.ContentTemplate>
+            </ContentControl>
+        </Border>
 
         <!-- 聊天区 -->
-        <Grid Grid.Column="0" RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
 
             <Border Grid.Row="0" Padding="16,8" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1">
                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -100,8 +112,9 @@
 
         </Grid>
 
+        <!-- 会话列表侧栏已移至最左 -->
         <!-- 右侧工具面板 -->
-        <Border Grid.Column="1" Width="300" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
+        <Border Grid.Column="2" Width="300" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
                 IsVisible="{Binding IsRightPanelVisible}">
             <Panel>
                 <ContentControl Content="{Binding AgentPanel}" IsVisible="{Binding IsAssignmentMode}">
@@ -122,7 +135,7 @@
         </Border>
 
         <!-- 图标栏(最右侧) -->
-        <Border Grid.Column="2" Width="44" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
+        <Border Grid.Column="3" Width="44" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1,0,0,0"
                 Background="{DynamicResource SurfaceContainerLow}">
             <Panel>
                 <StackPanel Margin="2">

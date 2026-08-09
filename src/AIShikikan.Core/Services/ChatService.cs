@@ -26,6 +26,7 @@ public class ChatService
 
     public event EventHandler<ChatSession?>? CurrentSessionChanged;
     public event EventHandler<ChatMessage>? MessageAdded;
+    public event EventHandler<ChatSession>? SessionRenamed;
 
     public ChatService()
     {
@@ -73,6 +74,21 @@ public class ChatService
         {
             CurrentSession = session;
         }
+    }
+
+    public bool RenameSession(string sessionId, string newTitle)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+
+        var title = newTitle?.Trim();
+        if (string.IsNullOrEmpty(title)) return false;
+
+        session.Title = title;
+        session.UpdatedAt = DateTime.Now;
+        SaveSession(session);
+        SessionRenamed?.Invoke(this, session);
+        return true;
     }
 
     public ChatMessage AddMessage(string sessionId, MessageRole role, string content)
