@@ -98,7 +98,7 @@ AOT_MODE=off ./build.sh linux
 |------|------|
 | `providers.toml` | LLM Provider 配置（API Key、模型、端点） |
 | `agents.toml` | Agent 定义（可执行文件、参数、专长） |
-| `personas/` | 人格/专家 TOML 文件目录 |
+| `personas/` | 人格/专家 Markdown(YAML frontmatter) 文件目录 |
 | `templates/` | 任务模板 TOML 文件目录 |
 | `roster.prompt` | Roster 注入模板 |
 

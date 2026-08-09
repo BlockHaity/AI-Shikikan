@@ -12,18 +12,34 @@ templates/
 │   ├── agents.example.toml         自定义 Agent 定义 + 分派规则
 │   └── roster.prompt.example       分派 Roster 提示词模板
 └── personas/     人格文件模板(可通过 UI/CLI 直接导入)
-    ├── expert.example.toml         专家人格模板
-    └── roleplay.example.toml      角色扮演人格模板
+    ├── expert.example.md           专家人格模板(YAML frontmatter + Markdown)
+    └── roleplay.example.md         角色扮演人格模板(YAML frontmatter + Markdown)
 ```
 
 ## 快速开始
 
 ### 1. 使用人格/专家文件(推荐: 直接导入)
 
-- GUI: 设置页 → 专家与模板 → 导入专家文件, 选择 personas/*.toml
-- CLI: `/persona import templates/personas/expert.example.toml`
+- GUI: 设置页 → 专家与模板 → 导入专家文件, 选择 personas/*.md
+- CLI: `/persona import templates/personas/expert.example.md`
 - 导入后可在聊天会话面板选择该专家
 - id 冲突时自动追加后缀, 不会覆盖已有文件
+
+人格文件采用 **带 YAML frontmatter 的 Markdown** 格式:
+frontmatter 存放元数据, Markdown 正文作为系统提示词(system prompt)。
+
+```markdown
+---
+id: "expert-example"
+name: "专家示例"
+kind: "Expert"
+description: "专家人格文件模板"
+---
+
+你是一位资深专家。请遵循：
+1. 先理解需求背景与目标
+2. 采用结构化的方式输出（步骤、要点、结论）
+```
 
 | 字段 | 说明 |
 |------|------|
@@ -31,7 +47,9 @@ templates/
 | name | 显示名称(必填) |
 | kind | `Expert` 专家 / `Roleplay` 角色扮演 |
 | description | 列表里展示的说明 |
-| system_prompt | 系统提示词(必填), 支持多行文本(TOML 三引号) |
+| 正文 | 系统提示词(必填), 支持任意多行文本 |
+
+> 兼容性: 仍可读取/导入旧 `.json` 与 `.toml` 人格文件, 导入后统一保存为 `.md`。
 
 ### 2. 使用配置文件模板(手动复制)
 
