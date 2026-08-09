@@ -10,6 +10,7 @@ templates/
 ├── config/       配置模板(对应 ~/.config/ai-shikikan/ 下的文件)
 │   ├── providers.example.toml      LLM Provider 配置
 │   ├── agents.example.toml         自定义 Agent 定义 + 分派规则
+│   ├── models.example.toml         模型价格与上下文窗口配置(可选)
 │   └── roster.prompt.example       分派 Roster 提示词模板
 └── personas/     人格文件模板(可通过 UI/CLI 直接导入)
     ├── expert.example.md           专家人格模板(YAML frontmatter + Markdown)
@@ -70,3 +71,6 @@ cp templates/config/roster.prompt.example  ~/.config/ai-shikikan/roster.prompt
   `providers.toml` 与 `agents.toml`, 用户以文件为准, 可自由增删任意条目。
 - `roster.prompt` 支持占位符: `{agents}` `{personas}` `{templates}`
   `{rules}` `{git}`。
+- `models.toml` 可选: 配置模型上下文窗口与价格(USD/百万 token), 键支持
+  精确 id 或 `"前缀*"` 通配; 未配置时尝试从 Provider 的 `/v1/models`
+  (OpenRouter 兼容端点)拉取。价格影响 GUI 右侧「状态」面板的成本统计。

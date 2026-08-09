@@ -68,6 +68,7 @@ public sealed class SessionUsageStat
     public int Calls { get; set; }
     public int InputTokens { get; set; }
     public int OutputTokens { get; set; }
+    public int CachedTokens { get; set; }
 
     public int TotalTokens => InputTokens + OutputTokens;
 }
@@ -200,6 +201,45 @@ public static class UsageStatsService
                 Succeeded = succeeded
             });
             Save();
+        }
+    }
+
+    /// <summary>聚合指定会话的用量(调用次数 + 输入/输出/缓存 token)。</summary>
+    public static SessionUsageStat GetSessionStat(string sessionId)
+    {
+        lock (Lock)
+        {
+            var stat = new SessionUsageStat { SessionId = sessionId };
+            foreach (var e in Data.LlmEntries)
+            {
+                if (!string.Equals(e.SessionId, sessionId, StringComparison.OrdinalIgnoreCase)) continue;
+
+                stat.Calls++;
+                stat.InputTokens += e.InputTokens;
+                stat.OutputTokens += e.OutputTokens;
+                stat.CachedTokens += e.CachedInputTokens;
+            }
+
+            return stat;
+        }
+    }
+
+    /// <summary>最近一次 LLM 调用的输入 token 数, 即当前上下文占用(含系统提示/历史/工具)。</summary>
+    public static int GetLastContextTokens(string sessionId)
+    {
+        lock (Lock)
+        {
+            LlmUsageEntry? last = null;
+            foreach (var e in Data.LlmEntries)
+            {
+                if (!string.Equals(e.SessionId, sessionId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (last is null || e.Timestamp >= last.Timestamp)
+                {
+                    last = e;
+                }
+            }
+
+            return last?.InputTokens ?? 0;
         }
     }
 
