@@ -151,24 +151,6 @@ public static class AgentExecutor
 
         var finalPrompt = BuildFinalPrompt(task, personaText);
 
-        var memoryFilePath = (agent.Injection is InjectionMode.MemoryFile or InjectionMode.Both)
-            && !string.IsNullOrEmpty(agent.MemoryFile)
-            && personaText.Length > 0
-                ? Path.Combine(workDirAbs, agent.MemoryFile!)
-                : null;
-
-        if (memoryFilePath is not null)
-        {
-            try
-            {
-                await File.WriteAllTextAsync(memoryFilePath, personaText, ct);
-            }
-            catch
-            {
-                memoryFilePath = null;
-            }
-        }
-
         var assignment = assignments.Create(agent, task,
             templateId: GetOpt(args, "templateId"),
             personaId: GetOpt(args, "personaId"),
@@ -231,8 +213,9 @@ public class AgentExecutionTool : ITool
 
     public string Name => $"run_{_agent.Id}";
 
-    public string Description => $"调用命令行 Agent「{_agent.Display}」执行子任务。{_agent.Description} " +
-        $"专长: {string.Join("/", _agent.Expertise)}。mode: \"sync\"(等待完成返回结果) | \"async\"(后台运行, 之后用 assignment_status 查询)。";
+    public string Description => string.IsNullOrWhiteSpace(_agent.Description)
+        ? $"调用命令行 Agent「{_agent.Display}」执行子任务。"
+        : _agent.Description;
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
@@ -296,8 +279,8 @@ public class AssignTaskTool : ITool
 
     public string Name => "assign_task";
 
-    public string Description => "把任务分派给最合适的 Agent: 可显式指定 agentId / templateId / personaId(专家), " +
-        "未指定时按任务内容与 Agent 专长自动路由并自动附带推荐专家。返回 assignmentId。";
+    public string Description => "把任务分派给合适的 Agent: 可显式指定 agentId / templateId / personaId(专家), " +
+        "未指定时自动选择可用 Agent 并自动附带推荐专家。返回 assignmentId。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
@@ -359,19 +342,7 @@ public class AssignTaskTool : ITool
             }
         }
 
-        CliAgentDefinition? best = null;
-        var bestScore = 0;
-        foreach (var agent in _agents)
-        {
-            var score = agent.Expertise.Count(k => task.Contains(k, StringComparison.OrdinalIgnoreCase));
-            if (score > bestScore)
-            {
-                best = agent;
-                bestScore = score;
-            }
-        }
-
-        return bestScore > 0 ? best : _agents.FirstOrDefault();
+        return _agents.FirstOrDefault();
     }
 
     private static string? Get(JsonElement args, string name)
