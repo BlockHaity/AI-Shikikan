@@ -115,4 +115,15 @@
   <data name="Settings_Agents" xml:space="preserve"><value>Agent Programs</value></data>
   <data name="Settings_AgentName" xml:space="preserve"><value>Name</value></data>
   <data name="Settings_AgentExecutable" xml:space="preserve"><value>Executable</value></data>
+  <data name="Settings_FontSelect" xml:space="preserve"><value>Font</value></data>
+  <data name="Settings_FontCustom" xml:space="preserve"><value>Custom font family name (e.g. "JetBrains Mono")</value></data>
+  <data name="Settings_ModelsTitle" xml:space="preserve"><value>Model Management</value></data>
+  <data name="Settings_FetchModels" xml:space="preserve"><value>Fetch Models</value></data>
+  <data name="Settings_Fetching" xml:space="preserve"><value>Fetching…</value></data>
+  <data name="Settings_EnableAll" xml:space="preserve"><value>Enable All</value></data>
+  <data name="Settings_DisableAll" xml:space="preserve"><value>Disable All</value></data>
+  <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>Default Model</value></data>
+  <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
+  <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
+  <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
 </root>
