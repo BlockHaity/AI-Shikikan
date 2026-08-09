@@ -120,7 +120,6 @@ public static class Strings
     public static string Settings_ProviderApiKey => Get(nameof(Settings_ProviderApiKey));
     public static string Settings_ProviderModel => Get(nameof(Settings_ProviderModel));
     public static string Settings_ProviderKind => Get(nameof(Settings_ProviderKind));
-    public static string Settings_Activate => Get(nameof(Settings_Activate));
     public static string Settings_Remove => Get(nameof(Settings_Remove));
     public static string Settings_Add => Get(nameof(Settings_Add));
     public static string Settings_Agents => Get(nameof(Settings_Agents));

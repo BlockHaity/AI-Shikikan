@@ -102,6 +102,9 @@ public partial class SettingsPageViewModel : ViewModelBase
     [ObservableProperty]
     private LlmSettings _llmSettings;
 
+    /// <summary>提供商列表(可观察集合, 增删即时刷新 UI)。</summary>
+    public ObservableCollection<ProviderConfig> ProviderItems { get; } = [];
+
     [ObservableProperty]
     private ProviderConfig? _selectedProvider;
 
@@ -185,6 +188,10 @@ public partial class SettingsPageViewModel : ViewModelBase
         _languageIndex = _currentLanguageIndex;
         LlmSettings = AppShell.Instance.Runtime.Llm.Settings;
         UserAgents = AgentConfigService.LoadAll().ToList();
+        foreach (var p in LlmSettings.Providers)
+        {
+            ProviderItems.Add(p);
+        }
 
         InitFont();
         SyncDefaultModelSelection();
@@ -381,8 +388,10 @@ public partial class SettingsPageViewModel : ViewModelBase
         }
 
         LlmSettings.Providers.Add(provider);
+        ProviderItems.Add(provider);
         ProviderSettingsService.Save(LlmSettings);
         AppShell.Instance.NotifyDataChanged();
+        SelectedProvider = provider;
 
         NewProviderName = string.Empty;
         NewProviderBaseUrl = string.Empty;
@@ -397,15 +406,16 @@ public partial class SettingsPageViewModel : ViewModelBase
     [RelayCommand]
     private void RemoveProvider(ProviderConfig provider)
     {
-        LlmSettings.Providers.Remove(provider);
-        ProviderSettingsService.Save(LlmSettings);
-        AppShell.Instance.NotifyDataChanged();
-    }
+        if (string.Equals(LlmSettings.ActiveProviderId, provider.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            // 删除的是默认 Provider: 清空标记, 避免指向不存在的 Provider
+            LlmSettings.ActiveProviderId = string.Empty;
+            LlmSettings.ActiveModel = null;
+        }
 
-    [RelayCommand]
-    private void SetActiveProvider(ProviderConfig provider)
-    {
-        LlmSettings.ActiveProviderId = provider.Id;
+        LlmSettings.Providers.Remove(provider);
+        ProviderItems.Remove(provider);
+        SelectedProvider = null;
         ProviderSettingsService.Save(LlmSettings);
         AppShell.Instance.NotifyDataChanged();
     }
@@ -574,6 +584,7 @@ public partial class SettingsPageViewModel : ViewModelBase
     {
         AgentConfigService.RemoveUserAgent(agent.Id);
         UserAgents = AgentConfigService.LoadAll().ToList();
+        SelectedAgent = null;
         AppShell.Instance.NotifyDataChanged();
     }
 
