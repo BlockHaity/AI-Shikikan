@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Engine;
+using AIShikikan.Core.Services.Llm;
+using AIShikikan.Core.Services.Usage;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -24,6 +26,8 @@ public partial class ChatPageViewModel : ViewModelBase
     private readonly CommanderRuntime _runtime;
     private readonly StringBuilder _toolLog = new();
     private string? _currentSessionId;
+
+    public ThemeService ThemeService { get; }
 
     [ObservableProperty]
     private bool _isRightPanelVisible = true;
@@ -50,6 +54,12 @@ public partial class ChatPageViewModel : ViewModelBase
     private string _activeModelText = string.Empty;
 
     [ObservableProperty]
+    private IReadOnlyList<ProviderConfig> _availableProviders = [];
+
+    [ObservableProperty]
+    private ProviderConfig? _selectedProvider;
+
+    [ObservableProperty]
     private IReadOnlyList<string> _availableModels = [];
 
     [ObservableProperty]
@@ -63,8 +73,9 @@ public partial class ChatPageViewModel : ViewModelBase
 
     public bool IsGitMode => PanelMode == RightPanelMode.Git;
 
-    public ChatPageViewModel()
+    public ChatPageViewModel(ThemeService themeService)
     {
+        ThemeService = themeService;
         _chatService = new ChatService();
         _runtime = AppShell.Instance.Runtime;
         Sessions = _chatService.Sessions;
@@ -92,10 +103,12 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime.Assignments.AssignmentChanged += _ =>
             Dispatcher.UIThread.Post(() => AgentPanel.RefreshAssignments());
 
+        _runtime.Engine.OnEvent += OnEngineUsageRecorded;
+
         AppShell.Instance.DataChanged += OnShellDataChanged;
 
         RefreshActiveModel();
-        RefreshModels();
+        RefreshProviders();
     }
 
     partial void OnSelectedModelChanged(string value)
@@ -124,10 +137,21 @@ public partial class ChatPageViewModel : ViewModelBase
         ActiveModelText = $"{_runtime.Llm.ResolveModel()} @ {_runtime.Llm.GetProvider()?.Id ?? "-"}";
     }
 
+    private void RefreshProviders()
+    {
+        var settings = _runtime.Llm.Settings;
+        AvailableProviders = settings.Providers.ToList();
+
+        var current = settings.ActiveProvider;
+        SelectedProvider = AvailableProviders.FirstOrDefault(p =>
+            p.Id.Equals(current?.Id, StringComparison.OrdinalIgnoreCase))
+            ?? AvailableProviders.FirstOrDefault();
+    }
+
     private void RefreshModels()
     {
         var settings = _runtime.Llm.Settings;
-        var provider = settings.ActiveProvider;
+        var provider = SelectedProvider;
         if (provider is null)
         {
             AvailableModels = [];
@@ -149,6 +173,28 @@ public partial class ChatPageViewModel : ViewModelBase
         SelectedModel = AvailableModels.Contains(current, StringComparer.OrdinalIgnoreCase)
             ? AvailableModels.First(m => m.Equals(current, StringComparison.OrdinalIgnoreCase))
             : AvailableModels.FirstOrDefault() ?? string.Empty;
+
+        if (!string.Equals(settings.ActiveModel, SelectedModel, StringComparison.Ordinal))
+        {
+            settings.ActiveModel = SelectedModel;
+            ProviderSettingsService.Save(settings);
+        }
+
+        RefreshActiveModel();
+    }
+
+    partial void OnSelectedProviderChanged(ProviderConfig? value)
+    {
+        var settings = _runtime.Llm.Settings;
+        if (value is not null &&
+            !string.Equals(settings.ActiveProviderId, value.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            settings.ActiveProviderId = value.Id;
+            ProviderSettingsService.Save(settings);
+            RefreshActiveModel();
+        }
+
+        RefreshModels();
     }
 
     private void OnShellDataChanged()
@@ -162,10 +208,21 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshShellDataChanged();
     }
 
+    private void OnEngineUsageRecorded(AgentEngineEvent e)
+    {
+        if (e is not EngineUsageRecorded usage) return;
+
+        var title = CurrentSession?.DisplayTitle ?? "未知会话";
+        UsageStatsService.RecordLlmUsage(
+            _currentSessionId ?? "unknown", title,
+            usage.Provider, usage.Model,
+            usage.Usage.InputTokens, usage.Usage.OutputTokens);
+    }
+
     private void RefreshShellDataChanged()
     {
         RefreshActiveModel();
-        RefreshModels();
+        RefreshProviders();
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
     }

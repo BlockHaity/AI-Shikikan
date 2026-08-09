@@ -18,7 +18,10 @@
         <local:IntEqualsConverter x:Key="IntEqualsConverter"/>
     </UserControl.Resources>
 
-    <ScrollViewer>
+    <Grid>
+        <local:PageBackground ThemeService="{Binding ThemeService}" />
+
+        <ScrollViewer>
         <StackPanel Margin="32,24" Spacing="24">
             <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Settings_Title}" />
 
@@ -239,6 +242,7 @@
                 </StackPanel>
             </theme:Card>
         </StackPanel>
-    </ScrollViewer>
+        </ScrollViewer>
+    </Grid>
 
 </UserControl>

@@ -17,9 +17,6 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private ViewModelBase _currentPage;
 
-    [ObservableProperty]
-    private bool _hasBackgroundImage;
-
     private readonly HomePageViewModel _homePage;
     private readonly ChatPageViewModel _chatPage;
     private readonly SettingsPageViewModel _settingsPage;
@@ -29,17 +26,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel(ThemeService themeService)
     {
         ThemeService = themeService;
-        _homePage = new HomePageViewModel();
-        _chatPage = new ChatPageViewModel();
+        _homePage = new HomePageViewModel(themeService);
+        _chatPage = new ChatPageViewModel(themeService);
         _settingsPage = new SettingsPageViewModel(themeService);
         _currentPage = _homePage;
         _selectedIndex = 0;
-        _hasBackgroundImage = themeService.BackgroundImagePath is not null;
-
-        themeService.BackgroundChanged += (_, path) =>
-        {
-            HasBackgroundImage = path is not null;
-        };
     }
 
     partial void OnSelectedIndexChanged(int value)

@@ -67,6 +67,8 @@ public partial class SettingsPageViewModel : ViewModelBase
     private readonly ThemeService _themeService;
     private readonly int _currentLanguageIndex;
 
+    public ThemeService ThemeService => _themeService;
+
     public string AppName { get; } = AppInfo.Name;
     public string AppVersion { get; } = AppInfo.Version;
 
