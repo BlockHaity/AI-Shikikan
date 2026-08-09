@@ -1,0 +1,10 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="AIShikikan.Gui.Views.PageBackground">
+
+    <Grid>
+        <Image x:Name="BgImage" Stretch="UniformToFill" Opacity="0.45" IsVisible="False" />
+        <Border x:Name="Scrim" Background="{DynamicResource Surface}" Opacity="0.6" />
+    </Grid>
+
+</UserControl>
