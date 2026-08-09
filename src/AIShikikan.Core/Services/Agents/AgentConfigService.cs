@@ -19,7 +19,13 @@ public static class AgentConfigService
     private static readonly object Sync = new();
     private static IReadOnlyList<CliAgentDefinition>? _cache;
 
-    /// <summary>内置 + 用户自定义合并; 用户定义按 Id 覆盖内置。</summary>
+    /// <summary>首次启动时生成默认 Agent 定义(仅当用户文件不存在)。</summary>
+    public static void EnsureDefaultExists()
+    {
+        DefaultConfig.WriteIfMissing(AppPaths.AgentsPath, DefaultConfig.AgentsResource);
+    }
+
+    /// <summary>加载用户 Agent 定义; 无任何配置文件时初始化默认配置。</summary>
     public static IReadOnlyList<CliAgentDefinition> LoadAll()
     {
         lock (Sync)
@@ -30,45 +36,38 @@ public static class AgentConfigService
             }
 
             var file = LoadUserFile();
-            var map = new Dictionary<string, CliAgentDefinition>(StringComparer.OrdinalIgnoreCase);
-
-            foreach (var def in BuiltinCliAgents.All)
-            {
-                map[def.Id] = def;
-            }
-
-            foreach (var def in file.Agents)
-            {
-                if (string.IsNullOrWhiteSpace(def.Id))
-                {
-                    continue;
-                }
-
-                map[def.Id] = def;
-            }
-
-            _cache = map.Values.ToList();
+            _cache = file.Agents.ToList();
             return _cache;
         }
     }
 
     public static AgentConfigFile LoadUserFile()
     {
-        try
+        if (File.Exists(AppPaths.AgentsPath))
         {
-            if (File.Exists(AppPaths.AgentsPath))
+            try
             {
                 var content = File.ReadAllText(AppPaths.AgentsPath);
                 var file = TomlBridge.Deserialize<AgentConfigFile>(content);
                 if (file is not null)
                 {
+                    // 用户文件为准: 即使删光了 Agent 也保持原样, 不恢复默认
                     return file;
                 }
             }
+            catch
+            {
+            }
 
-            // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 agents.json
-            var legacyPath = Path.ChangeExtension(AppPaths.AgentsPath, ".json");
-            if (File.Exists(legacyPath))
+            // 文件存在但解析失败: 不覆盖用户文件, 按空配置运行
+            return new AgentConfigFile();
+        }
+
+        // 兼容旧 JSON 配置: 若 TOML 不存在, 回退读取 agents.json
+        var legacyPath = Path.ChangeExtension(AppPaths.AgentsPath, ".json");
+        if (File.Exists(legacyPath))
+        {
+            try
             {
                 var file = JsonSerializer.Deserialize(
                     File.ReadAllText(legacyPath), AppJsonContext.Default.AgentConfigFile);
@@ -77,12 +76,24 @@ public static class AgentConfigService
                     return file;
                 }
             }
+            catch
+            {
+            }
+
+            return new AgentConfigFile();
+        }
+
+        // 首次启动: 生成默认配置文件后再读取
+        EnsureDefaultExists();
+        try
+        {
+            var content = File.ReadAllText(AppPaths.AgentsPath);
+            return TomlBridge.Deserialize<AgentConfigFile>(content) ?? new AgentConfigFile();
         }
         catch
         {
+            return new AgentConfigFile();
         }
-
-        return new AgentConfigFile();
     }
 
     public static CliAgentDefinition? Find(string? id, IReadOnlyList<CliAgentDefinition>? agents = null)
