@@ -8,6 +8,7 @@ using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
+using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Serialization;
 
@@ -29,4 +30,7 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(ChatMessage))]
 [JsonSerializable(typeof(RosterConfig))]
 [JsonSerializable(typeof(AgentRosterEntry))]
+[JsonSerializable(typeof(UsageData))]
+[JsonSerializable(typeof(LlmUsageEntry))]
+[JsonSerializable(typeof(AgentCallEntry))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

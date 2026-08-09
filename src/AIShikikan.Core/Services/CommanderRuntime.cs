@@ -7,6 +7,7 @@ using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Runtime;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Tools;
+using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services;
 
@@ -50,6 +51,17 @@ public sealed class CommanderRuntime
         var llm = new LlmService();
         var git = new GitStepService(root);
         var assignments = new AssignmentManager(git);
+
+        // 子 Agent 终态时记录调用统计(Completed 视为成功)
+        assignments.AssignmentChanged += a =>
+        {
+            if (a.Status is SubagentStatus.Completed or SubagentStatus.Failed
+                or SubagentStatus.Cancelled or SubagentStatus.TimedOut)
+            {
+                UsageStatsService.RecordAgentCall(a.AgentId, a.AgentName,
+                    a.Status == SubagentStatus.Completed);
+            }
+        };
 
         var registry = new ToolRegistry();
         foreach (var tool in AgentToolFactory.Create(agentsList, personasList, templatesList, git, assignments))

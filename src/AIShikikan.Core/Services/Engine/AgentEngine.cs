@@ -27,6 +27,8 @@ public sealed record EngineDone(string? Content, string? Error) : AgentEngineEve
 
 public sealed record EngineAssignmentChanged(Assignment Assignment) : AgentEngineEvent;
 
+public sealed record EngineUsageRecorded(string Provider, string Model, ChatUsage Usage) : AgentEngineEvent;
+
 public sealed class EngineOptions
 {
     public int MaxTurns { get; set; } = 10;
@@ -136,6 +138,11 @@ public sealed class AgentEngine
                 };
 
                 var response = await _llm.GetClient(_options.ProviderId).CompleteAsync(request, ct);
+
+                if (response.Usage is { InputTokens: > 0 } or { OutputTokens: > 0 })
+                {
+                    OnEvent?.Invoke(new EngineUsageRecorded(provider.Id, model, response.Usage));
+                }
 
                 if (response.IsError)
                 {
