@@ -206,6 +206,8 @@
                                         Content="{x:Static res:Strings.Settings_AgentSave}"
                                         Command="{Binding SaveAgentExecutableCommand}" />
                             </Grid>
+                            <TextBox Text="{Binding AgentArgsEdit}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}" />
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_AgentEditHint}"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                         </StackPanel>
@@ -215,6 +217,8 @@
                                      Text="{Binding NewAgentName}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentExecutable}"
                                      Text="{Binding NewAgentExecutable}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}"
+                                     Text="{Binding NewAgentArgs}" />
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddAgentCommand}"/>
                         </StackPanel>
