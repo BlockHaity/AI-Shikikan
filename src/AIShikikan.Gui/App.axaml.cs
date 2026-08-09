@@ -36,7 +36,9 @@ public partial class App : Application
         AIShikikan.Gui.Resources.Strings.Culture = I18nService.CurrentCulture;
 
         ThemeService.FontChanged += (_, font) => ApplyCustomFont(font);
+        ThemeService.MonoFontChanged += (_, font) => ApplyMonoFont(font);
         ApplyCustomFont(ThemeService.CustomFont);
+        ApplyMonoFont(ThemeService.MonoFont);
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
@@ -49,7 +51,7 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>应用自定义字体: 以逗号分隔的 fallback 列表, 保证中文字形回退到 HarmonyOS Sans SC。</summary>
+    /// <summary>应用自定义字体(标准字体): 以逗号分隔的 fallback 列表, 保证中文字形回退到 HarmonyOS Sans SC。</summary>
     private static void ApplyCustomFont(string? font)
     {
         if (Application.Current is not { } app) return;
@@ -59,5 +61,17 @@ public partial class App : Application
             : $"{font}, HarmonyOS Sans SC";
 
         app.Resources["ContentControlThemeFontFamily"] = new FontFamily(family);
+    }
+
+    /// <summary>应用自定义等宽字体: 默认使用内置 CaskaydiaCove Nerd Font Mono, 中文字形回退 HarmonyOS Sans SC。</summary>
+    private static void ApplyMonoFont(string? font)
+    {
+        if (Application.Current is not { } app) return;
+
+        var family = string.IsNullOrWhiteSpace(font) || font == "系统默认"
+            ? "avares://AIShikikan.Gui/Assets/Fonts/#CaskaydiaCove Nerd Font Mono"
+            : $"{font}, HarmonyOS Sans SC, monospace";
+
+        app.Resources["MonoThemeFontFamily"] = new FontFamily(family);
     }
 }
