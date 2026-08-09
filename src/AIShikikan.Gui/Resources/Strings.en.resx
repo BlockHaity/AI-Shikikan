@@ -140,5 +140,14 @@
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Session_Panel_Title" xml:space="preserve"><value>Sessions</value></data>
+  <data name="Session_New" xml:space="preserve"><value>New Session</value></data>
+  <data name="Session_Messages" xml:space="preserve"><value>{0} messages</value></data>
+  <data name="Session_Rename" xml:space="preserve"><value>Rename</value></data>
+  <data name="Session_Delete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Session_DeleteConfirm" xml:space="preserve"><value>Delete this session?</value></data>
+  <data name="Session_AgoJustNow" xml:space="preserve"><value>just now</value></data>
+  <data name="Session_NewTitle" xml:space="preserve"><value>New Session</value></data>
+  <data name="Session_Empty" xml:space="preserve"><value>No sessions</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
 </root>

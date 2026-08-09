@@ -137,5 +137,14 @@ public static class Strings
     public static string Settings_AgentSave => Get(nameof(Settings_AgentSave));
     public static string Settings_AgentEditHint => Get(nameof(Settings_AgentEditHint));
     public static string Chat_Model => Get(nameof(Chat_Model));
+    public static string Session_Panel_Title => Get(nameof(Session_Panel_Title));
+    public static string Session_New => Get(nameof(Session_New));
+    public static string Session_Messages => Get(nameof(Session_Messages));
+    public static string Session_Rename => Get(nameof(Session_Rename));
+    public static string Session_Delete => Get(nameof(Session_Delete));
+    public static string Session_DeleteConfirm => Get(nameof(Session_DeleteConfirm));
+    public static string Session_AgoJustNow => Get(nameof(Session_AgoJustNow));
+    public static string Session_NewTitle => Get(nameof(Session_NewTitle));
+    public static string Session_Empty => Get(nameof(Session_Empty));
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
 }
