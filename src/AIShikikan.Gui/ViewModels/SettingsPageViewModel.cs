@@ -171,6 +171,12 @@ public partial class SettingsPageViewModel : ViewModelBase
     [ObservableProperty]
     private string _agentExecutableEdit = string.Empty;
 
+    [ObservableProperty]
+    private string _agentArgsEdit = string.Empty;
+
+    [ObservableProperty]
+    private string _newAgentArgs = string.Empty;
+
     public SettingsPageViewModel(ThemeService themeService)
     {
         _themeService = themeService;
@@ -297,6 +303,7 @@ public partial class SettingsPageViewModel : ViewModelBase
     partial void OnSelectedAgentChanged(CliAgentDefinition? value)
     {
         AgentExecutableEdit = value?.Executable ?? string.Empty;
+        AgentArgsEdit = value is { Args.Count: > 0 } ? string.Join(" ", value.Args) : string.Empty;
     }
 
     private void OnModelConfigChanged()
@@ -523,6 +530,7 @@ public partial class SettingsPageViewModel : ViewModelBase
             Id = id,
             Name = name,
             Executable = string.IsNullOrWhiteSpace(NewAgentExecutable) ? id : NewAgentExecutable.Trim(),
+            Args = ParseArgs(NewAgentArgs),
             DefaultMode = "sync",
             MaxConcurrent = 1,
             RequireApproval = true,
@@ -535,6 +543,14 @@ public partial class SettingsPageViewModel : ViewModelBase
         AppShell.Instance.NotifyDataChanged();
         NewAgentName = string.Empty;
         NewAgentExecutable = string.Empty;
+        NewAgentArgs = string.Empty;
+    }
+
+    /// <summary>把空格分隔的参数模板解析为参数列表(支持 {prompt} 占位符)。</summary>
+    private static List<string> ParseArgs(string input)
+    {
+        var parts = input.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length > 0 ? parts.ToList() : [];
     }
 
     [RelayCommand]
@@ -546,6 +562,7 @@ public partial class SettingsPageViewModel : ViewModelBase
         SelectedAgent.Executable = string.IsNullOrWhiteSpace(AgentExecutableEdit)
             ? SelectedAgent.Id
             : AgentExecutableEdit.Trim();
+        SelectedAgent.Args = ParseArgs(AgentArgsEdit);
 
         AgentConfigService.SaveUserAgent(SelectedAgent);
         UserAgents = AgentConfigService.LoadAll().ToList();
