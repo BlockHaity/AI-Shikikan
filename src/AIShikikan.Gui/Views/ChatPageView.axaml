@@ -11,6 +11,8 @@
              x:DataType="vm:ChatPageViewModel">
 
     <UserControl.Resources>
+        <v:MessageBgConverter x:Key="MessageBgConverter"/>
+        <v:MessageAlignConverter x:Key="MessageAlignConverter"/>
         <StreamGeometry x:Key="IconChevronRight">M9.29,6.71a1,1,0,0,0,0,1.41L13.17,12l-3.88,3.88a1,1,0,1,0,1.41,1.41l4.59-4.59a1,1,0,0,0,0-1.41L10.7,6.71A1,1,0,0,0,9.29,6.71Z</StreamGeometry>
         <StreamGeometry x:Key="IconChevronDown">M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6l-6-6L7.41,8.59Z</StreamGeometry>
         <StreamGeometry x:Key="IconCaretRight">M8.59,7.41L10,6l6,6l-6,6l-1.41-1.41L13.17,12L8.59,7.41Z</StreamGeometry>
@@ -54,7 +56,7 @@
         </Border>
 
         <!-- 聊天区 -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto">
 
             <Border Grid.Row="0" Padding="16,8" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1">
                 <StackPanel Orientation="Horizontal" Spacing="12">
@@ -90,7 +92,7 @@
                                     <TextBlock Classes="LabelSmall"
                                                Text="{Binding RoleLabel}"
                                                Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                    <TextBlock Classes="BodyMedium" Text="{Binding Content}" TextWrapping="Wrap"/>
+                                    <SelectableTextBlock Classes="BodyMedium" Text="{Binding Content}" TextWrapping="Wrap"/>
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
@@ -98,7 +100,58 @@
                 </ItemsControl>
             </ScrollViewer>
 
-            <Border Grid.Row="2" Padding="16,8"
+            <!-- 工具栏: 思考深度 / 工作目录 / Plan-Build 模式 -->
+            <Border Grid.Row="2" Padding="12,4" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource SurfaceContainerLow}">
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <!-- 思考深度 -->
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Classes="LabelSmall" Text="{x:Static res:Strings.Chat_ThinkingDepth}"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource OnSurfaceVariant}"/>
+                        <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_ThinkingDepthLow}"
+                                CommandParameter="0" Click="OnThinkingDepthClick"
+                                IsEnabled="{Binding !IsSending}" MinWidth="36"/>
+                        <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_ThinkingDepthMedium}"
+                                CommandParameter="1" Click="OnThinkingDepthClick"
+                                IsEnabled="{Binding !IsSending}" MinWidth="36"/>
+                        <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_ThinkingDepthHigh}"
+                                CommandParameter="2" Click="OnThinkingDepthClick"
+                                IsEnabled="{Binding !IsSending}" MinWidth="36"/>
+                    </StackPanel>
+
+                    <Border Width="1" Background="{DynamicResource OutlineVariant}" Margin="4,2"/>
+
+                    <!-- 工作目录 -->
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <TextBlock Classes="LabelSmall" Text="{x:Static res:Strings.Chat_WorkDir}"
+                                   VerticalAlignment="Center" Foreground="{DynamicResource OnSurfaceVariant}"/>
+                        <Button Classes="Outlined" Click="OnWorkDirClick"
+                                IsEnabled="{Binding !IsSending}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <PathIcon Data="{StaticResource IconSourceTree}" Width="14" Height="14"/>
+                                <TextBlock Classes="BodySmall"
+                                           Text="{Binding WorkDir, Converter={x:Static StringConverters.IsNotNullOrEmpty}, FallbackValue={x:Static res:Strings.Chat_WorkDirDefault}}"
+                                           MaxWidth="160" TextTrimming="CharacterEllipsis"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Width="1" Background="{DynamicResource OutlineVariant}" Margin="4,2"/>
+
+                    <!-- Plan / Build 模式 -->
+                    <ToggleButton Classes="Filled" IsChecked="{Binding IsPlanMode}"
+                                  IsEnabled="{Binding !IsSending}"
+                                  ToolTip.Tip="{x:Static res:Strings.Chat_ModeBuildTip}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Chat_ModePlan}"/>
+                            <TextBlock Classes="BodySmall" Text="/" Foreground="{DynamicResource OnSurfaceVariant}"/>
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Chat_ModeBuild}"/>
+                        </StackPanel>
+                    </ToggleButton>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Row="3" Padding="16,8"
                     BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0">
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
