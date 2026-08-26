@@ -1,0 +1,34 @@
+# 模型价格与上下文窗口配置模板(可选)
+# 本文件可选: 不创建时, 模型档案从 Provider API 的 /v1/models 获取(OpenRouter 兼容端点);
+# Anthropic 官方 API 不提供价格与上下文信息, 建议手动配置常用模型。
+# 手动配置优先级高于 API 获取。
+# 键支持精确模型 id 或 "前缀*" 通配(按长度优先匹配)。
+# 价格统一为 USD / 每百万 token。
+
+[model."claude-sonnet-4*"]
+context_tokens = 200000
+input_price_per_1m = 3.0
+output_price_per_1m = 15.0
+cached_input_price_per_1m = 0.3
+
+[model."claude-opus-4*"]
+context_tokens = 200000
+input_price_per_1m = 15.0
+output_price_per_1m = 75.0
+cached_input_price_per_1m = 1.5
+
+[model."gpt-4o*"]
+context_tokens = 128000
+input_price_per_1m = 2.5
+output_price_per_1m = 10.0
+cached_input_price_per_1m = 1.25
+
+[model."deepseek-chat*"]
+context_tokens = 128000
+input_price_per_1m = 0.27
+output_price_per_1m = 1.1
+
+[model."gemini-2.5-pro*"]
+context_tokens = 1000000
+input_price_per_1m = 1.25
+output_price_per_1m = 10.0

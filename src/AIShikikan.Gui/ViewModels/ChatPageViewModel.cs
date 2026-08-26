@@ -17,7 +17,8 @@ namespace AIShikikan.Gui.ViewModels;
 public enum RightPanelMode
 {
     Assignment,
-    Git
+    Git,
+    Status
 }
 
 public partial class ChatPageViewModel : ViewModelBase
@@ -69,11 +70,15 @@ public partial class ChatPageViewModel : ViewModelBase
 
     public GitPanelViewModel GitPanel { get; }
 
+    public StatusPanelViewModel StatusPanel { get; }
+
     public SessionPanelViewModel SessionPanel { get; }
 
     public bool IsAssignmentMode => PanelMode == RightPanelMode.Assignment;
 
     public bool IsGitMode => PanelMode == RightPanelMode.Git;
+
+    public bool IsStatusMode => PanelMode == RightPanelMode.Status;
 
     public ChatPageViewModel(ThemeService themeService)
     {
@@ -87,8 +92,10 @@ public partial class ChatPageViewModel : ViewModelBase
 
         AgentPanel = new AgentPanelViewModel();
         GitPanel = new GitPanelViewModel();
+        StatusPanel = new StatusPanelViewModel();
         SessionPanel = new SessionPanelViewModel(_chatService);
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        StatusPanel.SetSession(_currentSessionId ?? string.Empty);
 
         _chatService.CurrentSessionChanged += (_, session) =>
         {
@@ -96,6 +103,7 @@ public partial class ChatPageViewModel : ViewModelBase
             Messages = session?.Messages ?? [];
             _currentSessionId = session?.Id;
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+            StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
         _chatService.MessageAdded += (_, _) =>
         {
@@ -129,6 +137,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(IsAssignmentMode));
         OnPropertyChanged(nameof(IsGitMode));
+        OnPropertyChanged(nameof(IsStatusMode));
         if (value == RightPanelMode.Git)
         {
             GitPanel.Refresh();
@@ -229,6 +238,7 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshProviders();
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
+        StatusPanel.Refresh();
     }
 
     [RelayCommand]
@@ -260,6 +270,21 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void OpenStatusPanel()
+    {
+        if (PanelMode == RightPanelMode.Status)
+        {
+            ToggleRightPanel();
+        }
+        else
+        {
+            PanelMode = RightPanelMode.Status;
+            IsRightPanelVisible = true;
+            StatusPanel.Refresh();
+        }
+    }
+
+    [RelayCommand]
     private void ToggleRightPanel()
     {
         IsRightPanelVisible = !IsRightPanelVisible;
@@ -273,6 +298,7 @@ public partial class ChatPageViewModel : ViewModelBase
         Messages = CurrentSession?.Messages ?? [];
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        StatusPanel.SetSession(_currentSessionId ?? string.Empty);
     }
 
     [RelayCommand]
@@ -283,6 +309,7 @@ public partial class ChatPageViewModel : ViewModelBase
         Messages = CurrentSession?.Messages ?? [];
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        StatusPanel.SetSession(_currentSessionId ?? string.Empty);
     }
 
     [RelayCommand]
@@ -329,47 +356,11 @@ public partial class ChatPageViewModel : ViewModelBase
     /// <summary>首条消息后调用 LLM 为会话生成简洁标题(异步, 失败时静默保留默认标题)。</summary>
     private async Task AutoGenerateTitleAsync(ChatSession session, string userMessage)
     {
-        try
+        var title = await ChatTitleService.GenerateAsync(_runtime.Llm, userMessage);
+        if (!string.IsNullOrEmpty(title))
         {
-            var provider = _runtime.Llm.GetProvider();
-            if (provider is null) return;
-
-            var request = new ChatRequest
-            {
-                Model = _runtime.Llm.ResolveModel(),
-                MaxTokens = 32,
-                Temperature = 0.3,
-                System = "你是一个会话标题生成助手。根据用户的消息生成一个简洁的中文标题(不超过20个字符), 只输出标题本身, 不要引号、不要标点、不要多余说明。",
-                Messages =
-                [
-                    new ChatTurnMessage
-                    {
-                        Role = ChatMsgRole.User,
-                        Content = userMessage.Length > 200 ? userMessage[..200] : userMessage
-                    }
-                ]
-            };
-
-            var response = await _runtime.Llm.GetClient(provider.Id).CompleteAsync(request);
-            if (response.IsError || string.IsNullOrWhiteSpace(response.Content)) return;
-
-            var title = CleanGeneratedTitle(response.Content);
-            if (title.Length > 0)
-            {
-                _chatService.RenameSession(session.Id, title);
-            }
+            _chatService.RenameSession(session.Id, title);
         }
-        catch
-        {
-            // 标题生成失败不影响主流程
-        }
-    }
-
-    private static string CleanGeneratedTitle(string text)
-    {
-        var title = text.Trim().Trim('"', '\'', '“', '”', '「', '」', '【', '】', '。', '：', ':');
-        if (title.Length <= 24) return title;
-        return title[..24].TrimEnd('…', '.', '。') + "...";
     }
 
     private async Task RespondAsync(string userMessage)
