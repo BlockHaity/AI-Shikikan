@@ -162,4 +162,14 @@
   <data name="Session_NewTitle" xml:space="preserve"><value>New Session</value></data>
   <data name="Session_Empty" xml:space="preserve"><value>No sessions</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
+  <data name="Chat_ThinkingDepth" xml:space="preserve"><value>Thinking Depth</value></data>
+  <data name="Chat_ThinkingDepthLow" xml:space="preserve"><value>Low</value></data>
+  <data name="Chat_ThinkingDepthMedium" xml:space="preserve"><value>Medium</value></data>
+  <data name="Chat_ThinkingDepthHigh" xml:space="preserve"><value>High</value></data>
+  <data name="Chat_WorkDir" xml:space="preserve"><value>Work Dir</value></data>
+  <data name="Chat_WorkDirDefault" xml:space="preserve"><value>Default</value></data>
+  <data name="Chat_ModePlan" xml:space="preserve"><value>Plan</value></data>
+  <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
+  <data name="Chat_ModePlanTip" xml:space="preserve"><value>Plan mode: analyze requirements and create a plan</value></data>
+  <data name="Chat_ModeBuildTip" xml:space="preserve"><value>Build mode: execute tasks and generate code</value></data>
 </root>

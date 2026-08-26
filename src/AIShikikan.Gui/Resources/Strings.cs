@@ -161,4 +161,14 @@ public static class Strings
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
+    public static string Chat_ThinkingDepth => Get(nameof(Chat_ThinkingDepth));
+    public static string Chat_ThinkingDepthLow => Get(nameof(Chat_ThinkingDepthLow));
+    public static string Chat_ThinkingDepthMedium => Get(nameof(Chat_ThinkingDepthMedium));
+    public static string Chat_ThinkingDepthHigh => Get(nameof(Chat_ThinkingDepthHigh));
+    public static string Chat_WorkDir => Get(nameof(Chat_WorkDir));
+    public static string Chat_WorkDirDefault => Get(nameof(Chat_WorkDirDefault));
+    public static string Chat_ModePlan => Get(nameof(Chat_ModePlan));
+    public static string Chat_ModeBuild => Get(nameof(Chat_ModeBuild));
+    public static string Chat_ModePlanTip => Get(nameof(Chat_ModePlanTip));
+    public static string Chat_ModeBuildTip => Get(nameof(Chat_ModeBuildTip));
 }
