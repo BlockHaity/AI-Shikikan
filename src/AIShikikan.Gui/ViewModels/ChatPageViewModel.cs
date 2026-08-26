@@ -66,6 +66,15 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private string _selectedModel = string.Empty;
 
+    [ObservableProperty]
+    private int _thinkingDepth = 1;
+
+    [ObservableProperty]
+    private string _workDir = string.Empty;
+
+    [ObservableProperty]
+    private bool _isPlanMode;
+
     public AgentPanelViewModel AgentPanel { get; }
 
     public GitPanelViewModel GitPanel { get; }
@@ -87,7 +96,7 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime = AppShell.Instance.Runtime;
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
-        Messages = CurrentSession?.Messages ?? [];
+        Messages = CurrentSession?.Messages.ToList() ?? [];
         _currentSessionId = CurrentSession?.Id;
 
         AgentPanel = new AgentPanelViewModel();
@@ -100,14 +109,14 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.CurrentSessionChanged += (_, session) =>
         {
             CurrentSession = session;
-            Messages = session?.Messages ?? [];
+            Messages = session?.Messages.ToList() ?? [];
             _currentSessionId = session?.Id;
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
         _chatService.MessageAdded += (_, _) =>
         {
-            Messages = CurrentSession?.Messages ?? [];
+            Messages = CurrentSession?.Messages.ToList() ?? [];
             Sessions = _chatService.Sessions;
         };
 
@@ -295,7 +304,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         _chatService.CreateSession();
         Sessions = _chatService.Sessions;
-        Messages = CurrentSession?.Messages ?? [];
+        Messages = CurrentSession?.Messages.ToList() ?? [];
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -306,7 +315,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         _chatService.DeleteSession(sessionId);
         Sessions = _chatService.Sessions;
-        Messages = CurrentSession?.Messages ?? [];
+        Messages = CurrentSession?.Messages.ToList() ?? [];
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -323,7 +332,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         if (CurrentSession is null) return;
         _chatService.ClearMessages(CurrentSession.Id);
-        Messages = CurrentSession.Messages;
+        Messages = CurrentSession.Messages.ToList();
         _runtime.Engine.ClearConversation();
     }
 
@@ -341,7 +350,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         var isFirstMessage = CurrentSession!.Messages.Count == 0;
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
-        Messages = CurrentSession.Messages;
+        Messages = CurrentSession.Messages.ToList();
         Sessions = _chatService.Sessions;
 
         if (isFirstMessage)
@@ -365,12 +374,28 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private async Task RespondAsync(string userMessage)
     {
+        var streamingMsg = new ChatMessage { Role = MessageRole.Assistant, Content = "" };
+        Messages = CurrentSession!.Messages.ToList().Append(streamingMsg).ToList();
+
         var sb = new StringBuilder();
+        var uiUpdatePending = false;
 
         void OnEngineEvent(AgentEngineEvent e)
         {
             switch (e)
             {
+                case EngineTextDelta delta:
+                    streamingMsg.Content += delta.Text;
+                    if (!uiUpdatePending)
+                    {
+                        uiUpdatePending = true;
+                        Dispatcher.UIThread.Post(() =>
+                        {
+                            uiUpdatePending = false;
+                            Messages = CurrentSession!.Messages.ToList().Append(streamingMsg).ToList();
+                        });
+                    }
+                    break;
                 case EngineToolStarted started:
                     _toolLog.AppendLine($"[tool] {started.ToolName} {started.Arguments}");
                     break;
@@ -386,6 +411,10 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime.Engine.OnEvent += OnEngineEvent;
         try
         {
+            _runtime.Engine.Options.ThinkingDepth = ThinkingDepth;
+            _runtime.Engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
+            _runtime.Engine.Options.IsPlanMode = IsPlanMode;
+
             var reply = await _runtime.Engine.RunTurnAsync(userMessage);
             if (_toolLog.Length > 0)
             {
@@ -409,7 +438,7 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, sb.ToString());
-        Messages = CurrentSession.Messages;
+        Messages = CurrentSession.Messages.ToList();
         IsSending = false;
     }
 }
