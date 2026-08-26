@@ -1,0 +1,105 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:AIShikikan.Gui.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
+             x:Class="AIShikikan.Gui.Views.StatusPanelView"
+             x:DataType="vm:StatusPanelViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.secTitle">
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+        <Style Selector="Border.infoRow">
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,2"/>
+            <Setter Property="Padding" Value="8,6"/>
+        </Style>
+        <Style Selector="TextBlock.monoVal">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontFamily" Value="{DynamicResource MonoThemeFontFamily}"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="12" Spacing="10">
+
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Panel_StatusTool}"
+                           VerticalAlignment="Center"/>
+                <Button Grid.Column="1" Classes="FilledTonal" Content="{x:Static res:Strings.Chat_Refresh}"
+                        Command="{Binding RefreshCommand}"/>
+            </Grid>
+
+            <!-- 上下文窗口 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.Status_Context}" Classes="secTitle"/>
+                <Border Classes="infoRow">
+                    <StackPanel Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding ModelText}" Classes="monoVal"
+                                       FontWeight="Medium" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ContextPercentText}" FontSize="12"
+                                       Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ProgressBar Minimum="0" Maximum="{Binding ContextTotal}" Value="{Binding ContextUsed}"
+                                     Height="8" CornerRadius="4"
+                                     IsVisible="{Binding HasContextInfo}"/>
+                        <TextBlock Text="{Binding ContextTokensText}" Classes="monoVal"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   IsVisible="{Binding HasContextInfo}"/>
+                        <TextBlock Text="{Binding UnknownModelText}" FontSize="12" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource OnSurfaceVariant}"
+                                   IsVisible="{Binding !HasContextInfo}"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- 费用 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.Status_Cost}" Classes="secTitle"/>
+                <Border Classes="infoRow">
+                    <StackPanel Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding CostText}" Classes="monoVal" FontSize="16" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Column="1" Text="{Binding CallsText}" FontSize="12"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" VerticalAlignment="Center"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="{Binding PriceSourceText}" FontSize="11" Opacity="0.6"
+                                       VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Classes="Text"
+                                    Content="{x:Static res:Strings.Status_RefreshPrice}"
+                                    Command="{Binding RefreshPricesCommand}"
+                                    IsEnabled="{Binding !IsFetchingPrices}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+            <!-- 项目 -->
+            <StackPanel Spacing="4">
+                <TextBlock Text="{x:Static res:Strings.Status_Project}" Classes="secTitle"/>
+                <Border Classes="infoRow">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding WorkspaceRoot}" Classes="monoVal"/>
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{x:Static res:Strings.Status_Branch}" FontSize="12"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding BranchText}" Classes="monoVal"
+                                       FontWeight="Medium" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

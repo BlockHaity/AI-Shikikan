@@ -19,6 +19,7 @@
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.*" />
     <PackageReference Include="Spectre.Console.Json" Version="0.*" />
+    <PackageReference Include="Terminal.Gui" Version="2.4.*" />
   </ItemGroup>
 
 </Project>
