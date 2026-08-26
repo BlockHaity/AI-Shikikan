@@ -10,15 +10,14 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 
 ## 架构
 
-三个项目，位于 `src/`：
+单一项目，位于 `src/AIShikikan.Gui/`：
 
 ```
-AIShikikan.Core    - 核心逻辑（无 UI 依赖，AOT 兼容）
-AIShikikan.Cli     - 终端界面 (Spectre.Console) + REST API 服务器
 AIShikikan.Gui     - 图形界面 (Avalonia + CommunityToolkit.Mvvm)
+  Core/            - 核心逻辑（AOT 兼容，原 AIShikikan.Core）
 ```
 
-`Core` 内部结构（`src/AIShikikan.Core/Services/`）：
+`Core/Services/` 内部结构：
 
 ```
 Engine/      - Agent 调度引擎 (AgentEngine, AssignmentManager, RosterBuilder)
@@ -31,7 +30,7 @@ Git/         - Git 步骤管理 (自动分支/回滚/合并)
 Runtime/     - 工具工厂 (AgentToolFactory)
 ```
 
-启动外观：`CommanderRuntime.Boot()`（`src/AIShikikan.Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、所有服务与工具集，CLI/GUI 共用。
+启动外观：`CommanderRuntime.Boot()`（`src/AIShikikan.Gui/Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、所有服务与工具集。
 
 ## 文件索引
 
@@ -42,13 +41,34 @@ Runtime/     - 工具工厂 (AgentToolFactory)
 | `VERSION` | 单一版本源（软件与 CI 共用，勿在代码中硬编码） |
 | `Directory.Build.props` | 全局 MSBuild 属性（target、版本注入等） |
 | `build.sh` | 发布构建脚本（`./build.sh linux` / `all`，支持 `ARCH` / `AOT_MODE`） |
-| `debug.sh` | Debug 构建并运行 CLI / GUI（本地开发最常用） |
+| `debug.sh` | Debug 构建并运行 GUI（本地开发最常用） |
 | `templates/config/` | 配置 example 文件（providers.toml / agents.toml / roster.prompt） |
 | `templates/personas/` | 人格 example Markdown |
 | `.github/workflows/release.yml` | 手动触发的 GitHub Release 发布流程 |
 | `.github/workflows/debug.yml` | 仅构建产物的辅助 workflow |
 
-### AIShikikan.Core（核心逻辑，AOT 兼容）
+### AIShikikan.Gui（图形界面 + 核心逻辑）
+
+#### GUI 层
+
+| 文件 | 说明 |
+|------|------|
+| `Program.cs` / `App.axaml(.cs)` | Avalonia 启动与应用配置，支持 `--version` / `doctor` 命令行参数 |
+| `ViewLocator.cs` | VM ↔ View 映射（MVVM 约定） |
+| `ViewModels/ViewModelBase.cs` | 所有 VM 基类（ObservableObject） |
+| `ViewModels/AppShell.cs` / `MainWindowViewModel.cs` | 主窗口 / 页面导航壳 |
+| `ViewModels/HomePageViewModel.cs` | 首页（状态概览） |
+| `ViewModels/ChatPageViewModel.cs` | 聊天页 |
+| `ViewModels/SettingsPageViewModel.cs` | 设置页 |
+| `ViewModels/AgentPanelViewModel.cs` | Agent 信息面板 |
+| `ViewModels/SessionPanelViewModel.cs` | 会话列表面板 |
+| `ViewModels/StatusPanelViewModel.cs` | 状态面板 |
+| `ViewModels/GitPanelViewModel.cs` | Git 面板 |
+| `Views/` | 对应 XAML 视图 + code-behind（`MainWindow` / `ChatPageView` / `HomePageView` / `SettingsPageView` / 各 PanelView / `Converters.cs` / `PageBackground.axaml`） |
+| `Services/DynamicThemeService.cs` | 动态主题（配合 Core 的 ColorExtraction/Theme） |
+| `Resources/Strings.cs` | 资源字符串访问器 |
+
+#### Core 层（`Core/`）
 
 | 文件 | 说明 |
 |------|------|
@@ -82,41 +102,6 @@ Runtime/     - 工具工厂 (AgentToolFactory)
 | `Services/Usage/UsageStatsService.cs` | LLM 与子 Agent 调用用量统计持久化 |
 | `Services/Usage/ModelProfileService.cs` | 模型档案（上下文窗口 / 价格） |
 
-### AIShikikan.Cli（TUI + REST API）
-
-| 文件 | 说明 |
-|------|------|
-| `Program.cs` | 入口：解析命令行（TUI / api / doctor / --persona） |
-| `Api/ApiServer.cs` | 内嵌 REST API 服务器（任务提交等） |
-| `Api/ApiModels.cs` | API 请求/响应模型 |
-| `Api/ApiJsonContext.cs` | API 的源生成 JSON 上下文 |
-| `Tui/TuiApp.cs` | Terminal.Gui 主界面装配 |
-| `Tui/Services/InputService.cs` | 输入读取与历史记录 |
-| `Tui/Services/CommandService.cs` | `/` 前缀命令分发 |
-| `Tui/Services/Commands/` | 命令处理器：`AgentCommandHandler`（/agent）、`AgentConfigCommandHandler`、`GitCommandHandler`（/git）、`ProviderCommandHandler`（/provider）、`SessionCommandHandler`（/session）、`StatusCommandHandler`（/status）、`UsageCommandHandler`（/usage）、`ICommandHandler`（接口）、`CommandUi`（公共工具） |
-| `Tui/Ui/` | Terminal.Gui 视图：`ChatLogView`（聊天日志）、`InputBar`、`SidebarView` + `AgentTabView` / `StatusTabView` / `GitTabView`、`StatusSnapshot`（与 GUI /status 共用数据）、`TuiUiOutput`（`IUiOutput` 实现）、`UiTheme` / `MarkupConverter` / `MarkupLabelView`（着色渲染） |
-| `Tui/Renderers/` | `MessageRenderer` / `StatusBarRenderer` |
-| `Models/` | `Message` / `MessageRole`（TUI 聊天模型） |
-
-### AIShikikan.Gui（Avalonia 图形界面，MVVM）
-
-| 文件 | 说明 |
-|------|------|
-| `Program.cs` / `App.axaml(.cs)` | Avalonia 启动与应用配置 |
-| `ViewLocator.cs` | VM ↔ View 映射（MVVM 约定） |
-| `ViewModels/ViewModelBase.cs` | 所有 VM 基类（ObservableObject） |
-| `ViewModels/AppShell.cs` / `MainWindowViewModel.cs` | 主窗口 / 页面导航壳 |
-| `ViewModels/HomePageViewModel.cs` | 首页（状态概览） |
-| `ViewModels/ChatPageViewModel.cs` | 聊天页 |
-| `ViewModels/SettingsPageViewModel.cs` | 设置页 |
-| `ViewModels/AgentPanelViewModel.cs` | Agent 信息面板 |
-| `ViewModels/SessionPanelViewModel.cs` | 会话列表面板 |
-| `ViewModels/StatusPanelViewModel.cs` | 状态面板（与 CLI StatusSnapshot 同数据源） |
-| `ViewModels/GitPanelViewModel.cs` | Git 面板 |
-| `Views/` | 对应 XAML 视图 + code-behind（`MainWindow` / `ChatPageView` / `HomePageView` / `SettingsPageView` / 各 PanelView / `Converters.cs` / `PageBackground.axaml`） |
-| `Services/DynamicThemeService.cs` | 动态主题（配合 Core 的 ColorExtraction/Theme） |
-| `Resources/Strings.cs` | 资源字符串访问器 |
-
 ## 常用命令
 
 ```bash
@@ -127,9 +112,9 @@ ARCH=arm64 ./build.sh linux
 AOT_MODE=off ./build.sh linux
 
 # Debug 构建并运行（最常用的本地开发方式）
-./debug.sh cli            # 构建 Debug 版 CLI 并运行
-./debug.sh cli api --port 8090
-./debug.sh gui            # 构建 Debug 版 GUI 并运行
+./debug.sh                # 构建 Debug 版 GUI 并运行
+./debug.sh --version      # 查看版本
+./debug.sh doctor         # 环境诊断
 
 # 版本来源：根目录 VERSION 文件（单一版本源，软件与 CI 共用）
 # 环境变量可覆盖：CONFIGURATION / VERSION / ARCH / AOT_MODE
@@ -138,16 +123,14 @@ AOT_MODE=off ./build.sh linux
 ## 运行方式
 
 ```bash
-./AIShikikan.Cli                     # TUI 聊天界面
-./AIShikikan.Cli --persona <id>      # 指定人格
-./AIShikikan.Cli api --port 8090     # REST API 服务器
-./AIShikikan.Cli doctor              # 环境诊断
-./AIShikikan.Gui                     # Avalonia 图形界面
+./AIShikikan.Gui           # Avalonia 图形界面
+./AIShikikan.Gui --version # 查看版本
+./AIShikikan.Gui doctor    # 环境诊断
 ```
 
 ## 配置与数据路径
 
-用户配置在用户目录（`AppPaths`，见 `src/AIShikikan.Core/AppPaths.cs`）：
+用户配置在用户目录（`AppPaths`，见 `src/AIShikikan.Gui/Core/AppPaths.cs`）：
 
 | 平台 | 配置目录 |
 |------|----------|
@@ -170,7 +153,7 @@ AOT_MODE=off ./build.sh linux
 ## 编码约定
 
 - 语言：**C#**，target `net10.0`，`Nullable` + `ImplicitUsings` 开启。
-- `Core` 必须保持 **AOT 兼容**（`IsAotCompatible=true`）：禁用反射式序列化等 AOT 不安全写法；JSON 序列化用源生成 `System.Text.Json` 上下文（`Serialization/AppJsonContext.cs`），TOML 用 `Tomlyn`，YAML 用 `YamlDotNet`。
+- `Core` 必须保持 **AOT 兼容**（`IsAotCompatible=true`）：禁用反射式序列化等 AOT 不安全写法；JSON 序列化用源生成 `System.Text.Json` 上下文（`Core/Serialization/AppJsonContext.cs`），TOML 用 `Tomlyn`，YAML 用 `YamlDotNet`。
 - 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配。
 - 代码注释使用中文（与现有代码一致）。
 - GUI 遵循 MVVM：ViewModels 继承 `ViewModelBase`，视图绑定 `Views/*.axaml`，资源字符串在 `Resources/Strings.resx`。
@@ -183,7 +166,7 @@ AOT_MODE=off ./build.sh linux
 
 ```
 feat(core): 描述
-fix(cli): 描述
+fix(gui): 描述
 build: 构建脚本/CI 相关
 ci: GitHub Actions 相关
 ```
@@ -198,4 +181,4 @@ ci: GitHub Actions 相关
 
 - 不要直接提交 `artifacts/`、`bin/`、`obj/`（已在 `.gitignore` 中）。
 - 不要提交用户配置（`providers.toml` 等含 API Key）。
-- CLI 的 Native AOT 交叉编译受限：`AOT_MODE=auto` 下仅对宿主 RID 使用 AOT，其余目标回退到单文件裁剪发布，这是预期行为，不要"修复"。
+- Native AOT 交叉编译受限：`AOT_MODE=auto` 下仅对宿主 RID 使用 AOT，其余目标回退到单文件裁剪发布，这是预期行为，不要"修复"。

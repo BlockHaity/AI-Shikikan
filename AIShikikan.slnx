@@ -1,7 +1,5 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/AIShikikan.Cli/AIShikikan.Cli.csproj" />
-    <Project Path="src/AIShikikan.Core/AIShikikan.Core.csproj" />
     <Project Path="src/AIShikikan.Gui/AIShikikan.Gui.csproj" />
   </Folder>
 </Solution>

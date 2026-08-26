@@ -113,9 +113,6 @@ jobs:
       - name: Publish regular dotnet (framework-dependent)
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
-            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} \
-            -p:PublishAot=false -o stage/dotnet
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c ${{ inputs.configuration }} -r ${{ matrix.rid }} \
             -p:PublishAot=false -o stage/dotnet
@@ -123,28 +120,19 @@ jobs:
       - name: Publish self-contained (with .NET runtime)
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
+          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=false -p:PublishSingleFile=true \
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true -o stage/selfcontained
-          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
-            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=false -p:PublishSingleFile=true \
-            -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true \
-            -o stage/selfcontained
 
       - name: Publish Native AOT (test)
         if: inputs.aot
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
-            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
-            -o stage/aot
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:PublishSingleFile=true \
+            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
             -o stage/aot
 
       - name: Package artifacts (Unix)
@@ -152,7 +140,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          chmod +x stage/*/AIShikikan.Cli stage/*/AIShikikan.Gui 2>/dev/null || true
+          chmod +x stage/*/AIShikikan.Gui 2>/dev/null || true
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz -C stage/dotnet .
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz -C stage/selfcontained .
           if [ "${{ inputs.aot }}" = "true" ]; then

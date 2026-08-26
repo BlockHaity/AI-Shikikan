@@ -18,7 +18,7 @@
 
 ## 它是什么
 
-AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统一指挥调度这些 Agent 的终端/图形程序。
+AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统一指挥调度这些 Agent 的图形程序。
 
 你可以把它理解为：**一个 AI 指挥官，能调度 Claude Code、OpenCode、Reasonix 等工具协同完成复杂任务。**
 
@@ -34,8 +34,6 @@ AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统
 - **可配置模型**：为不同 Agent 使用不同的模型完成对应任务
 - **人格/专家注入**：对指挥官自身/Agent 程序注入角色扮演或专家文件
 - **Git 步骤管理**：自动创建步骤分支，支持回滚与合并
-- **REST API**：提供 HTTP 接口远程提交任务、查询状态
-- **双界面**：CLI (TUI) + GUI (Avalonia) 两种运行模式
 
 ## 支持的 LLM API
 
@@ -60,26 +58,17 @@ ARCH=arm64 ./build.sh linux
 AOT_MODE=off ./build.sh linux
 ```
 
-### 运行 CLI
+### 运行
 
 ```bash
-# 启动终端界面
-./AIShikikan.Cli
+# 启动图形界面
+./AIShikikan.Gui
 
-# 指定人格
-./AIShikikan.Cli --persona senior-architect
-
-# 启动 REST API 服务器
-./AIShikikan.Cli api --port 8090
+# 查看版本
+./AIShikikan.Gui --version
 
 # 诊断环境
-./AIShikikan.Cli doctor
-```
-
-### 运行 GUI
-
-```bash
-./AIShikikan.Gui
+./AIShikikan.Gui doctor
 ```
 
 ## 配置
@@ -131,36 +120,6 @@ args = ["-p", "{prompt}"]
 description = "Anthropic 官方编码 Agent"
 ```
 
-## REST API
-
-启动 API 服务器：
-```bash
-./AIShikikan.Cli api --port 8090
-```
-
-### 端点
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/status` | 运行时状态 |
-| GET | `/api/tasks` | 任务列表 |
-| POST | `/api/tasks` | 提交任务 |
-| GET | `/api/tasks/{id}` | 查询任务详情 |
-| POST | `/api/tasks/{id}/cancel` | 取消任务 |
-
-### 提交任务示例
-
-```bash
-curl -X POST http://localhost:8090/api/tasks \
-  -H "Content-Type: application/json" \
-  -d '{
-    "task": "实现一个用户登录功能",
-    "agentId": "claude",
-    "mode": "async",
-    "personaId": "senior-architect"
-  }'
-```
-
 ## 默认 Agent
 
 首次启动会自动生成 `agents.toml`（含以下默认 Agent），可自由修改或删除；用户配置以文件为准，删除后不会恢复。
@@ -176,36 +135,33 @@ curl -X POST http://localhost:8090/api/tasks \
 ## 架构
 
 ```
-AIShikikan.Cli     - 终端界面 (Spectre.Console) + REST API
-AIShikikan.Gui     - 图形界面 (Avalonia)
-AIShikikan.Core    - 核心逻辑
-  ├── Services/Engine    - Agent 调度引擎
-  ├── Services/Agents    - Agent 定义与配置
-  ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)
-  ├── Services/Personas  - 人格/专家管理
-  ├── Services/Templates - 任务模板
-  └── Services/Tools     - 内置工具集
+AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
+  ├── Core/                - 核心逻辑（AOT 兼容）
+  │   ├── Services/Engine    - Agent 调度引擎
+  │   ├── Services/Agents    - Agent 定义与配置
+  │   ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)
+  │   ├── Services/Personas  - 人格/专家管理
+  │   ├── Services/Templates - 任务模板
+  │   └── Services/Tools     - 内置工具集
+  ├── ViewModels/          - MVVM 视图模型
+  └── Views/               - Avalonia XAML 视图
 ```
 
 ## 鸣谢
 
 ### 库
 
-**AIShikikan.Cli**
-- [Spectre.Console](https://www.nuget.org/packages/Spectre.Console/)
-- [Spectre.Console.Json](https://www.nuget.org/packages/Spectre.Console.Json/)
-
-**AIShikikan.Core**
 - [Anthropic.SDK](https://www.nuget.org/packages/Anthropic.SDK/)
 - [Azure.AI.OpenAI](https://www.nuget.org/packages/Azure.AI.OpenAI/)
-
-**AIShikikan.Gui**
 - [Avalonia](https://www.nuget.org/packages/Avalonia/)
 - [Avalonia.Desktop](https://www.nuget.org/packages/Avalonia.Desktop/)
 - [AvaloniaUI.DiagnosticsSupport](https://www.nuget.org/packages/AvaloniaUI.DiagnosticsSupport/)
 - [CCSWE.Avalonia.Material](https://www.nuget.org/packages/CCSWE.Avalonia.Material/)
 - [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm/)
 - [Material.Icons.Avalonia](https://www.nuget.org/packages/Material.Icons.Avalonia/)
+- [ScottPlot.Avalonia](https://www.nuget.org/packages/ScottPlot.Avalonia/)
+- [Tomlyn](https://www.nuget.org/packages/Tomlyn/)
+- [YamlDotNet](https://www.nuget.org/packages/YamlDotNet/)
 
 ### 字体
 

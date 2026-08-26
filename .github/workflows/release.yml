@@ -118,25 +118,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang zlib1g-dev
 
-      - name: Publish AOT (Native AOT, CLI + GUI)
+      - name: Publish AOT (Native AOT)
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
-            -c Release -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
-            -p:Version=${{ needs.check.outputs.version }} -o stage/aot
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:PublishSingleFile=true \
+            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/aot
 
       - name: Publish regular dotnet (framework-dependent)
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
-            -c Release -r ${{ matrix.rid }} \
-            -p:PublishAot=false \
-            -p:Version=${{ needs.check.outputs.version }} -o stage/dotnet
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} \
             -p:PublishAot=false \
@@ -145,16 +137,11 @@ jobs:
       - name: Publish self-contained (with .NET runtime)
         shell: bash
         run: |
-          dotnet publish src/AIShikikan.Cli/AIShikikan.Cli.csproj \
+          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
             -c Release -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=false -p:PublishSingleFile=true \
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true \
-            -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
-          dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
-            -c Release -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=false -p:PublishSingleFile=true \
-            -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
 
       - name: Package artifacts (Unix)
@@ -162,7 +149,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          chmod +x stage/*/AIShikikan.Cli stage/*/AIShikikan.Gui 2>/dev/null || true
+          chmod +x stage/*/AIShikikan.Gui 2>/dev/null || true
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz -C stage/aot .
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz -C stage/dotnet .
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz -C stage/selfcontained .
