@@ -40,7 +40,7 @@ public abstract class ChatCompletionsClientBase : IChatCompletionsClient
                 bool more;
                 try
                 {
-                    more = await enumerator.MoveNextAsync();
+                    more = await enumerator.MoveNextAsync().ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -58,7 +58,7 @@ public abstract class ChatCompletionsClientBase : IChatCompletionsClient
         }
         finally
         {
-            await enumerator.DisposeAsync();
+            await enumerator.DisposeAsync().ConfigureAwait(false);
         }
 
         if (error is not null)

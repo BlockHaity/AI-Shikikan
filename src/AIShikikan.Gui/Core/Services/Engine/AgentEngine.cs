@@ -37,6 +37,9 @@ public sealed class EngineOptions
     public string? ProviderId { get; set; }
     public int MaxHistoryMessages { get; set; } = 40;
     public string? SystemExtra { get; set; }
+    public int ThinkingDepth { get; set; } = 1;
+    public string? WorkDir { get; set; }
+    public bool IsPlanMode { get; set; }
 }
 
 /// <summary>对话引擎: 组装 system(人格 + Roster) → LLM → 工具(批准/只读/子代理) → 循环至完成。</summary>
@@ -83,6 +86,8 @@ public sealed class AgentEngine
     }
 
     public event Action<AgentEngineEvent>? OnEvent;
+
+    public EngineOptions Options => _options;
 
     public AssignmentManager Assignments => _assignments;
 
@@ -137,7 +142,27 @@ public sealed class AgentEngine
                         .ToList()
                 };
 
-                var response = await _llm.GetClient(_options.ProviderId).CompleteAsync(request, ct);
+                var client = _llm.GetClient(_options.ProviderId);
+                ChatCompletionResult? response = null;
+
+                await foreach (var sse in client.StreamAsync(request, ct).ConfigureAwait(false))
+                {
+                    switch (sse.Kind)
+                    {
+                        case StreamEventKind.TextDelta:
+                            OnEvent?.Invoke(new EngineTextDelta(sse.Text ?? ""));
+                            break;
+                        case StreamEventKind.Error:
+                            var sErr = $"流式错误: {sse.Error}";
+                            OnEvent?.Invoke(new EngineDone(null, sErr));
+                            return $"模型调用失败: {sErr}";
+                        case StreamEventKind.Done:
+                            response = sse.Final;
+                            break;
+                    }
+                }
+
+                response ??= new ChatCompletionResult { IsError = true, Error = "未收到模型响应" };
 
                 if (response.Usage is { InputTokens: > 0 } or { OutputTokens: > 0 })
                 {
@@ -180,7 +205,6 @@ public sealed class AgentEngine
                     Content = content
                 });
 
-                OnEvent?.Invoke(new EngineTextDelta(content));
                 OnEvent?.Invoke(new EngineDone(content, null));
                 return content;
             }
@@ -276,6 +300,39 @@ public sealed class AgentEngine
         if (!string.IsNullOrWhiteSpace(_options.SystemExtra))
         {
             parts.Add(_options.SystemExtra);
+        }
+
+        var directives = new List<string>();
+        switch (_options.ThinkingDepth)
+        {
+            case 0:
+                directives.Add("思考深度: 低。直接回答, 无需深入分析。");
+                break;
+            case 2:
+                directives.Add("思考深度: 高。进行深入、全面的分析后再回答。");
+                break;
+            default:
+                directives.Add("思考深度: 中。适度分析后回答。");
+                break;
+        }
+
+        if (_options.IsPlanMode)
+        {
+            directives.Add("当前模式: Plan(计划)。分析需求、拆解任务、制定方案, 但不要直接执行代码修改。");
+        }
+        else
+        {
+            directives.Add("当前模式: Build(构建)。直接执行任务、编写代码、完成目标。");
+        }
+
+        if (!string.IsNullOrWhiteSpace(_options.WorkDir))
+        {
+            directives.Add($"工作目录: {_options.WorkDir}");
+        }
+
+        if (directives.Count > 0)
+        {
+            parts.Add(string.Join("\n", directives));
         }
 
         return parts.Count == 0
