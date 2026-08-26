@@ -164,4 +164,14 @@
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
   <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>
   <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
+  <data name="Chat_ThinkingDepth" xml:space="preserve"><value>思考深度</value></data>
+  <data name="Chat_ThinkingDepthLow" xml:space="preserve"><value>低</value></data>
+  <data name="Chat_ThinkingDepthMedium" xml:space="preserve"><value>中</value></data>
+  <data name="Chat_ThinkingDepthHigh" xml:space="preserve"><value>高</value></data>
+  <data name="Chat_WorkDir" xml:space="preserve"><value>工作目录</value></data>
+  <data name="Chat_WorkDirDefault" xml:space="preserve"><value>默认</value></data>
+  <data name="Chat_ModePlan" xml:space="preserve"><value>Plan</value></data>
+  <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
+  <data name="Chat_ModePlanTip" xml:space="preserve"><value>计划模式: 分析需求并制定方案</value></data>
+  <data name="Chat_ModeBuildTip" xml:space="preserve"><value>构建模式: 执行任务并生成代码</value></data>
 </root>
