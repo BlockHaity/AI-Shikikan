@@ -8,7 +8,6 @@ CONFIGURATION="${CONFIGURATION:-Debug}"
 VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 1.0.0)}"
 AOT_MODE="${AOT_MODE:-off}"
 
-CLI_PROJECT="$PROJECT_DIR/src/AIShikikan.Cli/AIShikikan.Cli.csproj"
 GUI_PROJECT="$PROJECT_DIR/src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 detect_host_rid() {
@@ -44,10 +43,10 @@ want_aot() {
     esac
 }
 
-publish_cli() {
+publish_gui() {
     if want_aot; then
-        info "Publishing CLI for $HOST_RID (AOT enabled)..."
-        dotnet publish "$CLI_PROJECT" \
+        info "Publishing GUI for $HOST_RID (AOT enabled)..."
+        dotnet publish "$GUI_PROJECT" \
             -c "$CONFIGURATION" \
             -r "$HOST_RID" \
             -o "$OUTPUT_DIR" \
@@ -57,8 +56,8 @@ publish_cli() {
             -p:PublishSingleFile=true \
             -p:Version="$VERSION"
     else
-        info "Publishing CLI for $HOST_RID (single-file/trimmed)..."
-        dotnet publish "$CLI_PROJECT" \
+        info "Publishing GUI for $HOST_RID (single-file/trimmed)..."
+        dotnet publish "$GUI_PROJECT" \
             -c "$CONFIGURATION" \
             -r "$HOST_RID" \
             -o "$OUTPUT_DIR" \
@@ -72,46 +71,28 @@ publish_cli() {
     fi
 }
 
-publish_gui() {
-    info "Publishing GUI for $HOST_RID..."
-    dotnet publish "$GUI_PROJECT" \
-        -c "$CONFIGURATION" \
-        -r "$HOST_RID" \
-        -o "$OUTPUT_DIR" \
-        --self-contained true \
-        -p:PublishSingleFile=true \
-        -p:PublishTrimmed=false \
-        -p:Version="$VERSION" \
-        -p:IncludeNativeLibrariesForSelfExtract=true
-}
-
 show_usage() {
     cat <<EOF
-Usage: $(basename "$0") <cli|gui> [app arguments...]
+Usage: $(basename "$0") [app arguments...]
 
 编译当前平台的 Debug 版本并启动程序。
 
 Arguments:
-  cli|gui   要启动的程序: cli (终端界面/REST API) 或 gui (Avalonia 图形界面)
   其余参数  原样传递给被启动的程序
 
 Examples:
-  $(basename "$0") cli
-  $(basename "$0") cli --persona senior-architect
-  $(basename "$0") cli api --port 8090
-  $(basename "$0") gui
+  $(basename "$0")
+  $(basename "$0") --version
+  $(basename "$0") doctor
 
 Options (env):
   CONFIGURATION=Debug   Build configuration (default: Debug)
-  AOT_MODE=off          Native AOT strategy for CLI: auto | always | off (default: off)
+  AOT_MODE=off          Native AOT strategy: auto | always | off (default: off)
   VERSION=1.0.0         Version string (default: 1.0.0)
 EOF
 }
 
 main() {
-    local app="${1:-}"
-    [ -z "$app" ] && { show_usage; exit 1; }
-
     echo ""
     info "Configuration: $CONFIGURATION"
     info "Version:       $VERSION"
@@ -119,24 +100,19 @@ main() {
     info "Output:        $OUTPUT_DIR"
     echo ""
 
-    case "$app" in
-        cli)
-            publish_cli
-            ok "CLI built, launching..."
-            exec "$OUTPUT_DIR/AIShikikan.Cli" "${@:2}"
-            ;;
-        gui)
-            publish_gui
-            ok "GUI built, launching..."
-            exec "$OUTPUT_DIR/AIShikikan.Gui" "${@:2}"
-            ;;
+    case "${1:-}" in
         -h|--help|help)
             show_usage
             ;;
+        "")
+            publish_gui
+            ok "GUI built, launching..."
+            exec "$OUTPUT_DIR/AIShikikan.Gui"
+            ;;
         *)
-            err "Unknown app: $app"
-            show_usage
-            exit 1
+            publish_gui
+            ok "GUI built, launching..."
+            exec "$OUTPUT_DIR/AIShikikan.Gui" "$@"
             ;;
     esac
 }

@@ -9,7 +9,6 @@ VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 1.0.0)}"
 AOT_MODE="${AOT_MODE:-auto}"
 ARCH="${ARCH:-both}"
 
-CLI_PROJECT="$PROJECT_DIR/src/AIShikikan.Cli/AIShikikan.Cli.csproj"
 GUI_PROJECT="$PROJECT_DIR/src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 detect_host_rid() {
@@ -72,12 +71,12 @@ want_aot() {
     esac
 }
 
-build_cli() {
+build_gui() {
     local rid="$1" outdir="$2"
 
     if want_aot "$rid"; then
-        info "Building CLI for $rid with Native AOT..."
-        dotnet publish "$CLI_PROJECT" \
+        info "Building GUI for $rid with Native AOT..."
+        dotnet publish "$GUI_PROJECT" \
             -c "$CONFIGURATION" \
             -r "$rid" \
             -o "$outdir" \
@@ -88,8 +87,8 @@ build_cli() {
             -p:Version="$VERSION"
     else
         warn "AOT_MODE=$AOT_MODE: host=$HOST_RID, target=$rid; 无法交叉 AOT, 回退到单文件裁剪发布"
-        info "Building CLI for $rid (single-file/trimmed)..."
-        dotnet publish "$CLI_PROJECT" \
+        info "Building GUI for $rid (single-file/trimmed)..."
+        dotnet publish "$GUI_PROJECT" \
             -c "$CONFIGURATION" \
             -r "$rid" \
             -o "$outdir" \
@@ -102,23 +101,6 @@ build_cli() {
             -p:IncludeNativeLibrariesForSelfExtract=true
     fi
 
-    ok "CLI built: $outdir"
-}
-
-build_gui() {
-    local rid="$1" outdir="$2"
-
-    info "Building GUI for $rid..."
-    dotnet publish "$GUI_PROJECT" \
-        -c "$CONFIGURATION" \
-        -r "$rid" \
-        -o "$outdir" \
-        --self-contained true \
-        -p:PublishSingleFile=true \
-        -p:PublishTrimmed=false \
-        -p:Version="$VERSION" \
-        -p:IncludeNativeLibrariesForSelfExtract=true
-
     ok "GUI built: $outdir"
 }
 
@@ -126,8 +108,7 @@ build_rid() {
     local platform="$1" rid="$2"
     local outdir="$OUTPUT_DIR/$rid"
 
-    info "=== $rid (CLI + GUI) ==="
-    build_cli "$rid" "$outdir"
+    info "=== $rid ==="
     build_gui "$rid" "$outdir"
     ok "$rid bundled: $outdir"
 }
@@ -138,7 +119,7 @@ pack_rid() {
 
     [ -d "$dir" ] || return 0
 
-    chmod +x "$dir/AIShikikan.Cli" "$dir/AIShikikan.Gui" 2>/dev/null || true
+    chmod +x "$dir/AIShikikan.Gui" 2>/dev/null || true
 
     case "$rid" in
         win-*)
@@ -173,7 +154,7 @@ Options:
   CONFIGURATION=Release   Build configuration (default: Release)
   VERSION=1.0.0           Version string (default: 1.0.0)
   ARCH=both               Instruction set architecture: x64 | arm64 | both (default: both)
-  AOT_MODE=auto           Native AOT strategy for CLI: auto | always | off
+  AOT_MODE=auto           Native AOT strategy: auto | always | off
                           auto   - AOT only when target RID equals host RID, else fallback
                           always - force AOT for all targets (requires cross toolchain)
                           off    - single-file/trimmed publish (default: auto)
