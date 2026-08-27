@@ -97,7 +97,27 @@ public sealed class GitStepService
         }
     }
 
-    public string RepositoryRoot { get; }
+    public string RepositoryRoot { get; private set; }
+
+    /// <summary>切换工作目录(仅接受已存在的目录), 后续所有 git 操作在该目录执行。</summary>
+    public void SetRoot(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            throw new ArgumentException("路径为空。");
+        }
+
+        var full = Path.GetFullPath(path.Trim());
+        if (!Directory.Exists(full))
+        {
+            throw new InvalidOperationException($"目录不存在: {full}");
+        }
+
+        RepositoryRoot = full;
+    }
+
+    /// <summary>在当前工作目录初始化 git 仓库。</summary>
+    public GitCommandResult Init() => Run("init");
 
     public bool IsRepoAvailable => Run("rev-parse", "--is-inside-work-tree").Succeeded;
 
