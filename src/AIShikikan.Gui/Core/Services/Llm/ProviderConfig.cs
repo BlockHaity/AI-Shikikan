@@ -16,6 +16,21 @@ public class ProviderConfig
     /// <summary>启用的模型列表; 为空表示全部允许。</summary>
     public List<string> EnabledModels { get; set; } = [];
 
+    /// <summary>各模型可用的最大思考等级(键为模型 ID, 值为 low/medium/high/xhigh/max); 未配置表示不限。</summary>
+    public Dictionary<string, string> ModelMaxThinking { get; set; } = [];
+
+    /// <summary>返回指定模型的最大思考等级; 未配置时默认允许全部等级(Max)。</summary>
+    public ThinkingLevel GetMaxThinking(string? modelId)
+    {
+        if (modelId is not null && ModelMaxThinking.TryGetValue(modelId, out var s)
+            && ThinkingLevels.TryParse(s, out var level) && level is not ThinkingLevel.Auto)
+        {
+            return level;
+        }
+
+        return ThinkingLevel.Max;
+    }
+
     [JsonIgnore]
     public string EnvKey => Kind == ProviderKind.Anthropic ? "ANTHROPIC_API_KEY" : "OPENAI_API_KEY";
 }
