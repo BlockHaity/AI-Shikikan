@@ -112,6 +112,8 @@ public static class Strings
     public static string SubAgent_CommanderTitle => Get(nameof(SubAgent_CommanderTitle));
     public static string SubAgent_CommanderDesc => Get(nameof(SubAgent_CommanderDesc));
     public static string SubAgent_UseCommanderPersona => Get(nameof(SubAgent_UseCommanderPersona));
+    public static string SubAgent_Compact => Get(nameof(SubAgent_Compact));
+    public static string SubAgent_CompactTip => Get(nameof(SubAgent_CompactTip));
     public static string GitPanel_Changes => Get(nameof(GitPanel_Changes));
     public static string GitPanel_Stage => Get(nameof(GitPanel_Stage));
     public static string GitPanel_Unstage => Get(nameof(GitPanel_Unstage));
