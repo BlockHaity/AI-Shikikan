@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Llm;
+using AIShikikan.Core.Services.Mcp;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Usage;
@@ -25,6 +26,8 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(Persona))]
 [JsonSerializable(typeof(AgentTemplate))]
 [JsonSerializable(typeof(ThemeService.Preferences))]
+[JsonSerializable(typeof(McpConfigFile))]
+[JsonSerializable(typeof(McpServerDefinition))]
 [JsonSerializable(typeof(ModelConfigFile))]
 [JsonSerializable(typeof(ModelPriceConfig))]
 internal sealed partial class TomlJsonContext : JsonSerializerContext;
