@@ -15,3 +15,5 @@ active_provider_id = ""
 # api_key = ""
 # default_model = "gpt-4o"
 # enabled_models = ["gpt-4o", "gpt-4o-mini"]
+# 每个模型的最大思考深度, 取值 low / medium / high / xhigh / max(未配置则不限)
+# model_max_thinking = { "gpt-4o" = "medium", "gpt-4o-mini" = "low" }

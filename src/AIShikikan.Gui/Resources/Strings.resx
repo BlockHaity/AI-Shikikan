@@ -55,10 +55,8 @@
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>新会话</value></data>
   <data name="Chat_ClearSession" xml:space="preserve"><value>清空会话</value></data>
   <data name="Chat_AssignTaskWatermark" xml:space="preserve"><value>任务描述...</value></data>
-  <data name="Chat_AsyncMode" xml:space="preserve"><value>异步执行</value></data>
   <data name="Chat_StartAssign" xml:space="preserve"><value>启动</value></data>
   <data name="Chat_Assignments" xml:space="preserve"><value>子代理分派</value></data>
-  <data name="Chat_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_Refresh" xml:space="preserve"><value>刷新</value></data>
   <data name="Chat_GitMerge" xml:space="preserve"><value>合并</value></data>
   <data name="Chat_GitDrop" xml:space="preserve"><value>丢弃</value></data>
@@ -148,6 +146,9 @@
   <data name="Settings_Fetching" xml:space="preserve"><value>获取中…</value></data>
   <data name="Settings_EnableAll" xml:space="preserve"><value>全部启用</value></data>
   <data name="Settings_DisableAll" xml:space="preserve"><value>全部关闭</value></data>
+  <data name="Settings_ModelNameHeader" xml:space="preserve"><value>模型</value></data>
+  <data name="Settings_MaxThinking" xml:space="preserve"><value>最大思考深度</value></data>
+  <data name="Settings_DetectThinking" xml:space="preserve"><value>自动检测思考等级</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>默认模型</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>修改可执行文件或参数模板后点保存</value></data>
@@ -164,10 +165,7 @@
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
   <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>
   <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
-  <data name="Chat_ThinkingDepth" xml:space="preserve"><value>思考深度</value></data>
-  <data name="Chat_ThinkingDepthLow" xml:space="preserve"><value>低</value></data>
-  <data name="Chat_ThinkingDepthMedium" xml:space="preserve"><value>中</value></data>
-  <data name="Chat_ThinkingDepthHigh" xml:space="preserve"><value>高</value></data>
+  <data name="Chat_Thinking" xml:space="preserve"><value>思考</value></data>
   <data name="Chat_WorkDir" xml:space="preserve"><value>工作目录</value></data>
   <data name="Chat_WorkDirDefault" xml:space="preserve"><value>默认</value></data>
   <data name="Chat_ModePlan" xml:space="preserve"><value>Plan</value></data>

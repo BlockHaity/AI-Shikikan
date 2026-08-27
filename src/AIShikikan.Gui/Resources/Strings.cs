@@ -52,10 +52,8 @@ public static class Strings
     public static string Chat_DefaultTitle => Get(nameof(Chat_DefaultTitle));
     public static string Chat_ClearSession => Get(nameof(Chat_ClearSession));
     public static string Chat_AssignTaskWatermark => Get(nameof(Chat_AssignTaskWatermark));
-    public static string Chat_AsyncMode => Get(nameof(Chat_AsyncMode));
     public static string Chat_StartAssign => Get(nameof(Chat_StartAssign));
     public static string Chat_Assignments => Get(nameof(Chat_Assignments));
-    public static string Chat_Cancel => Get(nameof(Chat_Cancel));
     public static string Chat_Refresh => Get(nameof(Chat_Refresh));
     public static string Chat_GitMerge => Get(nameof(Chat_GitMerge));
     public static string Chat_GitDrop => Get(nameof(Chat_GitDrop));
@@ -161,10 +159,10 @@ public static class Strings
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
-    public static string Chat_ThinkingDepth => Get(nameof(Chat_ThinkingDepth));
-    public static string Chat_ThinkingDepthLow => Get(nameof(Chat_ThinkingDepthLow));
-    public static string Chat_ThinkingDepthMedium => Get(nameof(Chat_ThinkingDepthMedium));
-    public static string Chat_ThinkingDepthHigh => Get(nameof(Chat_ThinkingDepthHigh));
+    public static string Settings_ModelNameHeader => Get(nameof(Settings_ModelNameHeader));
+    public static string Settings_MaxThinking => Get(nameof(Settings_MaxThinking));
+    public static string Settings_DetectThinking => Get(nameof(Settings_DetectThinking));
+    public static string Chat_Thinking => Get(nameof(Chat_Thinking));
     public static string Chat_WorkDir => Get(nameof(Chat_WorkDir));
     public static string Chat_WorkDirDefault => Get(nameof(Chat_WorkDirDefault));
     public static string Chat_ModePlan => Get(nameof(Chat_ModePlan));
