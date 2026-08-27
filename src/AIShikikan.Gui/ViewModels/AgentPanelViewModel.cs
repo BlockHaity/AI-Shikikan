@@ -119,9 +119,6 @@ public partial class AgentPanelViewModel : ViewModelBase
     private string _assignTaskText = string.Empty;
 
     [ObservableProperty]
-    private bool _isAsyncAssign;
-
-    [ObservableProperty]
     private Persona? _commanderPersona;
 
     [ObservableProperty]
@@ -380,13 +377,6 @@ public partial class AgentPanelViewModel : ViewModelBase
         PushRoster();
     }
 
-    [RelayCommand]
-    private void CancelAssignment(string assignmentId)
-    {
-        _shell.CancelDispatch(assignmentId);
-        RefreshAssignments();
-    }
-
     public void RefreshAssignments()
     {
         Assignments.Clear();
@@ -405,7 +395,7 @@ public partial class AgentPanelViewModel : ViewModelBase
         var taskText = AssignTaskText.Trim();
         IsAssigning = true;
 
-        _shell.Dispatch(agent, taskText, IsAsyncAssign ? "async" : "sync",
+        _shell.Dispatch(agent, taskText,
             useCommanderPersona: UseCommanderPersonaForAgents,
             onFinished: (_, _) =>
             {
