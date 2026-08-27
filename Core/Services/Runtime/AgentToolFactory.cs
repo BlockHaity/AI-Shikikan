@@ -13,7 +13,7 @@ using AIShikikan.Core.Services.Tools.Builtin;
 
 namespace AIShikikan.Core.Services.Runtime;
 
-/// <summary>构建 LLM 可见工具集: 只读工具 + run_&lt;agent&gt; + assign_task + assignment_* + git_* + persona_*。</summary>
+/// <summary>构建 LLM 可见工具集: 只读工具 + run_&lt;agent&gt; + assign_task + run_subagents + git_*。</summary>
 public static class AgentToolFactory
 {
     public static IReadOnlyList<ITool> Create(
@@ -33,8 +33,7 @@ public static class AgentToolFactory
             new GitStatusTool(git),
             new GitMergeStepTool(git),
             new GitDropStepTool(git),
-            new GitRevertStepTool(git),
-            new PersonaListTool(personas)
+            new GitRevertStepTool(git)
         };
 
         foreach (var agent in agents)
@@ -210,8 +209,6 @@ public class AgentExecutionTool : ITool
           "type": "object",
           "properties": {
             "task": { "type": "string", "description": "子任务描述" },
-            "personaId": { "type": "string", "description": "专家persona ID(可选)" },
-            "templateId": { "type": "string", "description": "专家模板ID(可选, 如 frontend-dev)" },
             "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
           },
           "required": ["task"]
@@ -223,12 +220,11 @@ public class AgentExecutionTool : ITool
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
         var task = Get(args, "task");
-        var personaId = Get(args, "personaId");
-        var templateId = Get(args, "templateId");
         var workDir = Get(args, "workingDirectory");
 
+        // 专家由用户配置决定(agents.toml 推荐专家 / 面板设置), AI 不可指定人格/模板
         var personaText = AgentExecutor.ResolvePersonaText(
-            _agent, _personas, _templates, personaId, templateId,
+            _agent, _personas, _templates, null, null,
             CommanderRuntime.Instance?.CurrentPersonaText,
             false);
         return AgentExecutor.ExecuteAsync(
@@ -266,8 +262,8 @@ public class AssignTaskTool : ITool
 
     public string Name => "assign_task";
 
-    public string Description => "把任务分派给合适的 Agent: 可显式指定 agentId / templateId / personaId(专家), " +
-        "未指定时自动选择可用 Agent 并自动附带推荐专家。返回 assignmentId。";
+    public string Description => "把任务分派给合适的 Agent: 可显式指定 agentId, 未指定时自动选择可用 Agent。" +
+        "专家由用户配置决定(推荐专家), 调用时无法指定人格/模板。返回 assignmentId。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
@@ -275,8 +271,6 @@ public class AssignTaskTool : ITool
           "properties": {
             "task": { "type": "string", "description": "要执行的任务" },
             "agentId": { "type": "string", "description": "目标Agent ID(可选, 不填自动匹配)" },
-            "templateId": { "type": "string", "description": "专家模板ID(可选, 如 frontend-dev)" },
-            "personaId": { "type": "string", "description": "专家persona ID(可选)" },
             "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
           },
           "required": ["task"]
@@ -289,19 +283,18 @@ public class AssignTaskTool : ITool
     {
         var task = Get(args, "task");
         var agentId = Get(args, "agentId");
-        var templateId = Get(args, "templateId");
-        var personaId = Get(args, "personaId");
         var workDir = Get(args, "workingDirectory");
 
-        var agent = ResolveAgent(agentId, templateId, task ?? string.Empty);
+        var agent = ResolveAgent(agentId, task ?? string.Empty);
         if (agent is null)
         {
             return Task.FromResult(ToolResult.Error(
                 $"找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}"));
         }
 
+        // 专家由用户配置决定, AI 不可指定人格/模板
         var personaText = AgentExecutor.ResolvePersonaText(
-            agent, _personas, _templates, personaId, templateId,
+            agent, _personas, _templates, null, null,
             CommanderRuntime.Instance?.CurrentPersonaText,
             false);
         return AgentExecutor.ExecuteAsync(
@@ -310,20 +303,11 @@ public class AssignTaskTool : ITool
             args, ctx, _assignments, _llm, ct);
     }
 
-    private CliAgentDefinition? ResolveAgent(string? agentId, string? templateId, string task)
+    private CliAgentDefinition? ResolveAgent(string? agentId, string task)
     {
         if (!string.IsNullOrWhiteSpace(agentId))
         {
             return AgentConfigService.Find(agentId, _agents);
-        }
-
-        if (!string.IsNullOrWhiteSpace(templateId))
-        {
-            var template = AgentTemplateService.Find(templateId, _templates);
-            if (template?.DefaultAgentId is { Length: > 0 })
-            {
-                return AgentConfigService.Find(template.DefaultAgentId, _agents);
-            }
         }
 
         return _agents.FirstOrDefault();
@@ -372,8 +356,6 @@ public class SubagentGroupTool : ITool
                 "properties": {
                   "agentId": { "type": "string", "description": "目标Agent ID(可选, 不填自动匹配)" },
                   "task": { "type": "string", "description": "该子Agent要执行的任务" },
-                  "personaId": { "type": "string", "description": "专家persona ID(可选)" },
-                  "templateId": { "type": "string", "description": "专家模板ID(可选)" },
                   "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
                 },
                 "required": ["task"]
@@ -407,11 +389,9 @@ public class SubagentGroupTool : ITool
     {
         var task = Get(el, "task");
         var agentId = Get(el, "agentId");
-        var templateId = Get(el, "templateId");
-        var personaId = Get(el, "personaId");
         var workDir = Get(el, "workingDirectory");
 
-        var agent = ResolveAgent(agentId, templateId, task ?? string.Empty);
+        var agent = ResolveAgent(agentId, task ?? string.Empty);
         if (agent is null)
         {
             return $"[agent:{agentId ?? "?"}] 失败: 找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}";
@@ -419,15 +399,12 @@ public class SubagentGroupTool : ITool
 
         try
         {
+            // 专家由用户配置决定, AI 不可指定人格/模板
             var personaText = AgentExecutor.ResolvePersonaText(
-                agent, _personas, _templates, personaId, templateId,
+                agent, _personas, _templates, null, null,
                 CommanderRuntime.Instance?.CurrentPersonaText, false);
 
-            var args = JsonSerializer.SerializeToElement(new JsonObject
-            {
-                ["templateId"] = templateId,
-                ["personaId"] = personaId
-            });
+            var args = JsonSerializer.SerializeToElement(new JsonObject());
 
             var result = await AgentExecutor.ExecuteAsync(
                 agent, task ?? string.Empty, personaText,
@@ -442,20 +419,11 @@ public class SubagentGroupTool : ITool
         }
     }
 
-    private CliAgentDefinition? ResolveAgent(string? agentId, string? templateId, string task)
+    private CliAgentDefinition? ResolveAgent(string? agentId, string task)
     {
         if (!string.IsNullOrWhiteSpace(agentId))
         {
             return AgentConfigService.Find(agentId, _agents);
-        }
-
-        if (!string.IsNullOrWhiteSpace(templateId))
-        {
-            var template = AgentTemplateService.Find(templateId, _templates);
-            if (template?.DefaultAgentId is { Length: > 0 })
-            {
-                return AgentConfigService.Find(template.DefaultAgentId, _agents);
-            }
         }
 
         var tk = task.Trim();
@@ -468,40 +436,6 @@ public class SubagentGroupTool : ITool
         => args.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
             ? el.GetString()
             : null;
-}
-
-public class PersonaListTool : ITool
-{
-    private readonly IReadOnlyList<Persona> _personas;
-
-    public PersonaListTool(IReadOnlyList<Persona> personas) => _personas = personas;
-
-    public string Name => "persona_list";
-
-    public string Description => "列出可用专家/角色扮演人格(ID+说明), 供分配专家使用。只读。";
-
-    public JsonElement Parameters { get; } = ToolSchema.Json("""
-        { "type": "object", "properties": {} }
-        """);
-
-    public bool RequiresApproval => false;
-
-    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
-    {
-        if (_personas.Count == 0)
-        {
-            return Task.FromResult(ToolResult.Ok("暂无可用人格"));
-        }
-
-        var sb = new StringBuilder();
-        foreach (var p in _personas)
-        {
-            var desc = p.Description.Length <= 70 ? p.Description : p.Description[..70] + "...";
-            sb.AppendLine($"- {p.Name} ({p.Id}, {p.Kind}) - {desc}");
-        }
-
-        return Task.FromResult(ToolResult.Ok(sb.ToString()));
-    }
 }
 
 public class GitStatusTool : ITool

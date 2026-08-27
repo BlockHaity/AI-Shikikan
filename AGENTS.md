@@ -46,8 +46,7 @@ Llm/         - LLM 抽象: IChatCompletionsClient + OpenAI/Anthropic 双实现,
 Personas/    - 人格/专家管理 (YAML frontmatter + Markdown)
 Templates/   - 任务模板
 Tools/       - 内置工具框架 (ITool/ToolResult/ToolPathSanitizer) + Builtin 文件工具
-Runtime/     - AgentToolFactory: 工具集组装 (run_<agent>/assign_task/run_subagents/
-               persona_list/git_*)
+Runtime/     - AgentToolFactory: 工具集组装 (run_<agent>/assign_task/run_subagents/git_*; AI 不可指定人格/模板, 专家只由用户配置决定)
 Git/         - Git 步骤管理 (自动分支/回滚/合并/提交)
 Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelProfileService)
 ```
