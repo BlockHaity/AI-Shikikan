@@ -93,22 +93,33 @@ public class ChatService
 
     public ChatMessage AddMessage(string sessionId, MessageRole role, string content)
     {
+        return AddMessage(sessionId, role, [new MessageSegment { Kind = MessageSegmentKind.Text, Content = content }], content);
+    }
+
+    public ChatMessage AddMessage(string sessionId, MessageRole role, IReadOnlyList<MessageSegment> segments)
+    {
+        var plain = string.Join("\n", segments.Where(s => s.Kind == MessageSegmentKind.Text).Select(s => s.Content));
+        return AddMessage(sessionId, role, segments, plain);
+    }
+
+    private ChatMessage AddMessage(string sessionId, MessageRole role, IReadOnlyList<MessageSegment> segments, string plainText)
+    {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) throw new ArgumentException($"Session {sessionId} not found");
 
         var message = new ChatMessage
         {
             Role = role,
-            Content = content,
+            Segments = segments.ToList(),
             Timestamp = DateTime.Now
         };
 
         session.Messages.Add(message);
         session.UpdatedAt = DateTime.Now;
 
-        if (session.Messages.Count == 1 && role == MessageRole.User)
+        if (session.Messages.Count == 1 && role == MessageRole.User && !string.IsNullOrEmpty(plainText))
         {
-            session.Title = content.Length > 30 ? content[..30] + "..." : content;
+            session.Title = plainText.Length > 30 ? plainText[..30] + "..." : plainText;
         }
 
         SaveSession(session);
