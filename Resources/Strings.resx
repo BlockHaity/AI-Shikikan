@@ -44,6 +44,18 @@
   <data name="Home_UsageInput" xml:space="preserve"><value>输入</value></data>
   <data name="Home_UsageOutput" xml:space="preserve"><value>输出</value></data>
   <data name="Home_UsageCacheHit" xml:space="preserve"><value>缓存命中</value></data>
+  <data name="Home_ActivityTitle" xml:space="preserve"><value>活跃热力图</value></data>
+  <data name="Home_HeatLess" xml:space="preserve"><value>少</value></data>
+  <data name="Home_HeatMore" xml:space="preserve"><value>多</value></data>
+  <data name="Home_TimesFmt" xml:space="preserve"><value>{0} 次调用</value></data>
+  <data name="Home_TipInput" xml:space="preserve"><value>输入</value></data>
+  <data name="Home_TipOutput" xml:space="preserve"><value>输出</value></data>
+  <data name="Home_TipCached" xml:space="preserve"><value>其中缓存命中</value></data>
+  <data name="Home_TipMissed" xml:space="preserve"><value>缓存未命中</value></data>
+  <data name="Home_TipTotal" xml:space="preserve"><value>合计</value></data>
+  <data name="Home_Legend_InputNote" xml:space="preserve"><value>总输入 token · 含缓存命中部分</value></data>
+  <data name="Home_Legend_OutputNote" xml:space="preserve"><value>模型生成 token</value></data>
+  <data name="Home_Legend_CacheNote" xml:space="preserve"><value>缓存命中 token · 输入中已缓存部分, 未命中 = 输入 − 命中</value></data>
   <data name="Theme_ToggleTip" xml:space="preserve"><value>切换明暗主题</value></data>
   <data name="Nav_CollapseTip" xml:space="preserve"><value>折叠/展开导航</value></data>
   <data name="Chat_NewSession" xml:space="preserve"><value>新建会话</value></data>
@@ -51,6 +63,12 @@
   <data name="Chat_SelectModel" xml:space="preserve"><value>选择模型</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>输入消息...</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
+  <data name="Chat_Stop" xml:space="preserve"><value>停止</value></data>
+  <data name="Chat_StopTip" xml:space="preserve"><value>终止生成(双击 ESC 同效)</value></data>
+  <data name="Chat_Continue" xml:space="preserve"><value>继续</value></data>
+  <data name="Chat_ContinueTip" xml:space="preserve"><value>从中断处继续输出</value></data>
+  <data name="Chat_StoppedNote" xml:space="preserve"><value>⏹ 已停止生成。点击"继续"恢复输出。</value></data>
+  <data name="Chat_ContinuePrompt" xml:space="preserve"><value>请从刚才中断的位置继续完成任务。</value></data>
   <data name="Chat_NoSessions" xml:space="preserve"><value>暂无会话</value></data>
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>新会话</value></data>
   <data name="Chat_ClearSession" xml:space="preserve"><value>清空会话</value></data>
@@ -109,7 +127,10 @@
   <data name="GitPanel_Pull" xml:space="preserve"><value>拉取</value></data>
   <data name="GitPanel_Push" xml:space="preserve"><value>推送</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>步骤检查点</value></data>
-  <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库</value></data>
+  <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库, 请选择文件夹或初始化仓库</value></data>
+  <data name="GitPanel_SelectFolder" xml:space="preserve"><value>选择文件夹</value></data>
+  <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>选定后在此目录检测 git 仓库</value></data>
+  <data name="GitPanel_InitRepo" xml:space="preserve"><value>初始化 Git 仓库</value></data>
   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
   <data name="GitPanel_Graph" xml:space="preserve"><value>提交图谱</value></data>
   <data name="GitPanel_NoGraph" xml:space="preserve"><value>暂无图谱</value></data>

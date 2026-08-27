@@ -44,6 +44,18 @@
   <data name="Home_UsageInput" xml:space="preserve"><value>Input</value></data>
   <data name="Home_UsageOutput" xml:space="preserve"><value>Output</value></data>
   <data name="Home_UsageCacheHit" xml:space="preserve"><value>Cache Hit</value></data>
+  <data name="Home_ActivityTitle" xml:space="preserve"><value>Activity Heatmap</value></data>
+  <data name="Home_HeatLess" xml:space="preserve"><value>Less</value></data>
+  <data name="Home_HeatMore" xml:space="preserve"><value>More</value></data>
+  <data name="Home_TimesFmt" xml:space="preserve"><value>{0} calls</value></data>
+  <data name="Home_TipInput" xml:space="preserve"><value>Input</value></data>
+  <data name="Home_TipOutput" xml:space="preserve"><value>Output</value></data>
+  <data name="Home_TipCached" xml:space="preserve"><value>Cached hit</value></data>
+  <data name="Home_TipMissed" xml:space="preserve"><value>Cache miss</value></data>
+  <data name="Home_TipTotal" xml:space="preserve"><value>Total</value></data>
+  <data name="Home_Legend_InputNote" xml:space="preserve"><value>Total input tokens · incl. cached hits</value></data>
+  <data name="Home_Legend_OutputNote" xml:space="preserve"><value>Model-generated tokens</value></data>
+  <data name="Home_Legend_CacheNote" xml:space="preserve"><value>Cached-hit tokens; miss = input − hit</value></data>
   <data name="Theme_ToggleTip" xml:space="preserve"><value>Toggle Theme</value></data>
   <data name="Nav_CollapseTip" xml:space="preserve"><value>Collapse/Expand Navigation</value></data>
   <data name="Chat_NewSession" xml:space="preserve"><value>New Session</value></data>
@@ -51,6 +63,12 @@
   <data name="Chat_SelectModel" xml:space="preserve"><value>Select Model</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>Type a message...</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>Send</value></data>
+  <data name="Chat_Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="Chat_StopTip" xml:space="preserve"><value>Stop generating (double-press ESC)</value></data>
+  <data name="Chat_Continue" xml:space="preserve"><value>Continue</value></data>
+  <data name="Chat_ContinueTip" xml:space="preserve"><value>Resume output from where it stopped</value></data>
+  <data name="Chat_StoppedNote" xml:space="preserve"><value>⏹ Generation stopped. Click "Continue" to resume.</value></data>
+  <data name="Chat_ContinuePrompt" xml:space="preserve"><value>Please continue the task from where it was interrupted.</value></data>
   <data name="Chat_NoSessions" xml:space="preserve"><value>No Sessions</value></data>
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>New Session</value></data>
   <data name="Chat_ClearSession" xml:space="preserve"><value>Clear Session</value></data>
@@ -109,7 +127,10 @@
   <data name="GitPanel_Pull" xml:space="preserve"><value>Pull</value></data>
   <data name="GitPanel_Push" xml:space="preserve"><value>Push</value></data>
   <data name="GitPanel_Steps" xml:space="preserve"><value>Step checkpoints</value></data>
-  <data name="GitPanel_NotRepo" xml:space="preserve"><value>Not a git repository</value></data>
+  <data name="GitPanel_NotRepo" xml:space="preserve"><value>Not a git repository; select a folder or init one</value></data>
+  <data name="GitPanel_SelectFolder" xml:space="preserve"><value>Select Folder</value></data>
+  <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>Pick a folder and detect its git repository</value></data>
+  <data name="GitPanel_InitRepo" xml:space="preserve"><value>Init Git Repository</value></data>
   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
   <data name="GitPanel_Graph" xml:space="preserve"><value>Git graph</value></data>
   <data name="GitPanel_NoGraph" xml:space="preserve"><value>No graph</value></data>
