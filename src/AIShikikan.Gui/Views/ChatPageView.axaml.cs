@@ -1,8 +1,10 @@
+using System.Collections.Specialized;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using AIShikikan.Core.Services.Llm;
 using AIShikikan.Gui.Resources;
 using AIShikikan.Gui.ViewModels;
 
@@ -10,9 +12,32 @@ namespace AIShikikan.Gui.Views;
 
 public partial class ChatPageView : UserControl
 {
+    private INotifyCollectionChanged? _messagesCollection;
+
     public ChatPageView()
     {
         InitializeComponent();
+    }
+
+    private void OnModeIsCheckedChanged(object? sender, RoutedEventArgs e)
+    {
+        // Build(未勾选)高亮为 Filled, Plan(勾选)普通为 Outlined
+        SetModeHighlight(highlightBuild: ModeToggle.IsChecked != true);
+    }
+
+    private void SetModeHighlight(bool highlightBuild)
+    {
+        if (ModeToggle is null) return;
+        if (highlightBuild)
+        {
+            ModeToggle.Classes.Add("Filled");
+            ModeToggle.Classes.Remove("Outlined");
+        }
+        else
+        {
+            ModeToggle.Classes.Add("Outlined");
+            ModeToggle.Classes.Remove("Filled");
+        }
     }
 
     protected override void OnDataContextChanged(System.EventArgs e)
@@ -20,14 +45,36 @@ public partial class ChatPageView : UserControl
         base.OnDataContextChanged(e);
         if (DataContext is ChatPageViewModel vm)
         {
+            void Scroll() => Dispatcher.UIThread.Post(() => MessageScroller?.ScrollToEnd(),
+                DispatcherPriority.Background);
+
+            void AttachMessages()
+            {
+                if (_messagesCollection is not null)
+                {
+                    _messagesCollection.CollectionChanged -= M;
+                    _messagesCollection = null;
+                }
+
+                if (vm.Messages is { } col)
+                {
+                    _messagesCollection = col;
+                    col.CollectionChanged += M;
+                }
+            }
+
+            void M(object? s, NotifyCollectionChangedEventArgs a) => Scroll();
+
             vm.PropertyChanged += (_, args) =>
             {
+                // 流式期间在同一个集合上 Add, 仅靠 PropertyChanged 不够; 集合变化也要触发
                 if (args.PropertyName == nameof(ChatPageViewModel.Messages))
                 {
-                    Dispatcher.UIThread.Post(() => MessageScroller?.ScrollToEnd(),
-                        DispatcherPriority.Background);
+                    AttachMessages();
+                    Scroll();
                 }
             };
+            AttachMessages();
         }
     }
 
@@ -44,13 +91,16 @@ public partial class ChatPageView : UserControl
         }
     }
 
-    private void OnThinkingDepthClick(object? sender, RoutedEventArgs e)
+    private void OnThinkingSelected(object? sender, SelectionChangedEventArgs e)
     {
-        if (sender is Button button && DataContext is ChatPageViewModel vm
-            && int.TryParse(button.CommandParameter?.ToString(), out var depth))
+        if (DataContext is not ChatPageViewModel vm) return;
+
+        if (sender is ListBox { SelectedItem: ThinkingLevel level } && vm.SelectedThinking != level)
         {
-            vm.ThinkingDepth = depth;
+            vm.SelectedThinking = level;
         }
+
+        ThinkingButton.Flyout?.Hide();
     }
 
     private async void OnWorkDirClick(object? sender, RoutedEventArgs e)
