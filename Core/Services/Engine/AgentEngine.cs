@@ -113,7 +113,16 @@ public sealed class AgentEngine
 
     public async Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default)
     {
-        _conversation.Add(new ChatTurnMessage { Role = ChatMsgRole.User, Content = userMessage });
+        // 连续用户消息合并为一条(继续输出场景), 避免部分 API 要求严格角色交替
+        var last = _conversation.Count > 0 ? _conversation[^1] : null;
+        if (last is { Role: ChatMsgRole.User })
+        {
+            last.Content += $"\n\n{userMessage}";
+        }
+        else
+        {
+            _conversation.Add(new ChatTurnMessage { Role = ChatMsgRole.User, Content = userMessage });
+        }
 
         try
         {
@@ -193,13 +202,29 @@ public sealed class AgentEngine
 
                     foreach (var call in response.ToolCalls)
                     {
-                        var result = await ExecuteToolAsync(call, ct);
-                        _conversation.Add(new ChatTurnMessage
+                        try
                         {
-                            Role = ChatMsgRole.Tool,
-                            Content = result,
-                            ToolCallId = call.Id
-                        });
+                            var result = await ExecuteToolAsync(call, ct);
+                            _conversation.Add(new ChatTurnMessage
+                            {
+                                Role = ChatMsgRole.Tool,
+                                Content = result,
+                                ToolCallId = call.Id
+                            });
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            // 取消时补齐占位结果并闭环事件, 保持 tool_calls/tool 配对完整, 便于后续继续输出
+                            OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name,
+                                ToolResult.Error("用户中断了此工具调用。")));
+                            _conversation.Add(new ChatTurnMessage
+                            {
+                                Role = ChatMsgRole.Tool,
+                                Content = "用户中断了此工具调用。",
+                                ToolCallId = call.Id
+                            });
+                            throw;
+                        }
                     }
 
                     continue;
@@ -276,6 +301,10 @@ public sealed class AgentEngine
             };
 
             result = await tool.ExecuteAsync(args, context, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 用户终止需要立即上抛
         }
         catch (Exception ex)
         {
