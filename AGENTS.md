@@ -48,6 +48,9 @@ Templates/   - 任务模板
 Tools/       - 内置工具框架 (ITool/ToolResult/ToolPathSanitizer) + Builtin 文件工具
 Runtime/     - AgentToolFactory: 工具集组装 (run_<agent>/assign_task/run_subagents/git_*; AI 不可指定人格/模板, 专家只由用户配置决定)
 Git/         - Git 步骤管理 (自动分支/回滚/合并/提交)
+Mcp/         - MCP 客户端: McpConfigService(TOML 配置), McpStdioClient(手写 stdio
+               JSON-RPC 2.0, 零依赖 AOT 兼容), McpService(连接管理+路由),
+               McpProxyTool(ITool 桥接, 工具名 mcp_<serverId>_<toolName>)
 Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelProfileService)
 ```
 
@@ -58,6 +61,7 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 - **引擎循环**：`AgentEngine` 将人格 + Roster 提示词发给 LLM，执行工具调用直至回合结束，事件流 `AgentEngineEvent` 驱动 UI。
 - **子 Agent 工具**：均同步执行。`run_<agent>`（单个）、`assign_task`（分派返回 assignmentId）、`run_subagents`（并发多任务，`Task.WhenAll` 后汇总）。无 `mode` 参数。
 - **Compact Subagent**：`SubagentCompactService.Enabled` 开启后，超 2000 字符的子 Agent 输出先经 LLM 压缩为纪要再返回；开关在 AgentPanel 切换，持久化于 ThemeService.Preferences.CompactSubagents。
+- **MCP 服务器**：配置于 `mcp-servers.toml`（stdio 传输，command/args/env）。`CommanderRuntime.Boot` 后台连接启用的服务器并把其工具桥接为 `mcp_<serverId>_<toolName>` 注册进 ToolRegistry（MCP 工具默认需批准）。设置页可增删/开关/重连，调用 `Runtime.RefreshMcpToolsAsync()`。协议版本 "2025-06-18"。
 - **工具结果出口**：所有 Agent 执行工具统一走 `AgentExecutor.ExecuteAsync(..., llm, ct)`，压缩在该出口生效。
 - **聊天页**：支持手动停止按钮 + 双击 ESC 终止生成、「继续输出」续写。
 - **首页**：用量统计含 ScottPlot 折线图（固定坐标轴 + 标尺 + 折点悬浮详情）与 26 周活跃热力图，配色全部跟随主题资源。
@@ -115,6 +119,7 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 |------|------|
 | `providers.toml` | LLM Provider（API Key、模型、端点、思考等级限制） |
 | `agents.toml` | Agent 定义 + 推荐专家 |
+| `mcp-servers.toml` | MCP 服务器定义（stdio：command/args/env/enabled） |
 | `preferences.toml` | 界面偏好（明暗/语言/字体/背景/CompactSubagents 开关） |
 | `personas/` | 人格/专家 Markdown(YAML frontmatter) |
 | `templates/` | 任务模板 |
