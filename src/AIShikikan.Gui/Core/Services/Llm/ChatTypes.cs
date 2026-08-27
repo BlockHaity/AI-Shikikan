@@ -46,6 +46,9 @@ public class ChatRequest
     public List<ToolSpec>? Tools { get; set; }
     public int MaxTokens { get; set; } = 4096;
     public double Temperature { get; set; } = 0.2;
+
+    /// <summary>思考深度等级, 供客户端映射为 API 参数(如 OpenAI reasoning_effort)。</summary>
+    public ThinkingLevel Thinking { get; set; } = ThinkingLevel.Auto;
 }
 
 public class ChatUsage
@@ -70,6 +73,7 @@ public class ChatCompletionResult
 public enum StreamEventKind
 {
     TextDelta,
+    ThinkingDelta,
     ToolCallStarted,
     ToolCallCompleted,
     Done,
@@ -80,6 +84,10 @@ public class ChatStreamEvent
 {
     public StreamEventKind Kind { get; set; }
     public string? Text { get; set; }
+
+    /// <summary>思考内容增量(仅支持的模型, 遵循 OpenAI 规范: OpenAI chat 不返回, Anthropic thinking delta 等)。</summary>
+    public string? Thinking { get; set; }
+
     public ToolCallData? ToolCall { get; set; }
     public ChatCompletionResult? Final { get; set; }
     public string? Error { get; set; }
