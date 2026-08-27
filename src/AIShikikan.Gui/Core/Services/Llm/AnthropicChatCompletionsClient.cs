@@ -36,6 +36,8 @@ public class AnthropicChatCompletionsClient : ChatCompletionsClientBase
     private async IAsyncEnumerable<ChatStreamEvent> EmitCore(
         ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
+        // 注: 思考深度不通过 thinking 参数下发——Anthropic 扩展思考与工具调用互斥,
+        // 而本引擎始终携带工具, 因此仅通过系统提示词指令体现思考深度。
         var parameters = new MessageParameters
         {
             Model = request.Model,
@@ -69,6 +71,11 @@ public class AnthropicChatCompletionsClient : ChatCompletionsClientBase
                 };
                 toolCalls[started.Id] = started;
                 yield return new ChatStreamEvent { Kind = StreamEventKind.ToolCallStarted, ToolCall = started };
+            }
+
+            if (!string.IsNullOrEmpty(message.Delta?.Thinking))
+            {
+                yield return new ChatStreamEvent { Kind = StreamEventKind.ThinkingDelta, Thinking = message.Delta.Thinking };
             }
 
             if (!string.IsNullOrEmpty(message.Delta?.Text))
