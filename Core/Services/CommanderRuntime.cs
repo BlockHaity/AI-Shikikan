@@ -66,7 +66,7 @@ public sealed class CommanderRuntime
         };
 
         var registry = new ToolRegistry();
-        foreach (var tool in AgentToolFactory.Create(agentsList, personasList, templatesList, git, assignments))
+        foreach (var tool in AgentToolFactory.Create(agentsList, personasList, templatesList, git, assignments, llm))
         {
             registry.Register(tool);
         }

@@ -5,6 +5,7 @@ using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
+using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Tools;
@@ -20,7 +21,8 @@ public static class AgentToolFactory
         IReadOnlyList<Persona> personas,
         IReadOnlyList<AgentTemplate> templates,
         GitStepService git,
-        AssignmentManager assignments)
+        AssignmentManager assignments,
+        LlmService? llm = null)
     {
         var list = new List<ITool>
         {
@@ -37,11 +39,11 @@ public static class AgentToolFactory
 
         foreach (var agent in agents)
         {
-            list.Add(new AgentExecutionTool(agent, personas, templates, git, assignments));
+            list.Add(new AgentExecutionTool(agent, personas, templates, git, assignments, llm));
         }
 
-        list.Add(new AssignTaskTool(agents, personas, templates, git, assignments));
-        list.Add(new SubagentGroupTool(agents, personas, templates, git, assignments));
+        list.Add(new AssignTaskTool(agents, personas, templates, git, assignments, llm));
+        list.Add(new SubagentGroupTool(agents, personas, templates, git, assignments, llm));
         return list;
     }
 }
@@ -131,6 +133,7 @@ public static class AgentExecutor
         JsonElement args,
         ToolContext ctx,
         AssignmentManager assignments,
+        LlmService? llm,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(task))
@@ -154,7 +157,9 @@ public static class AgentExecutor
             var (completed, run) = await assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
             var tail = completed.OutputTail ?? run.Output;
             var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)";
-            return ToolResult.Ok($"{header}\n\n{Truncate(tail, 26000)}");
+            var body = await SubagentCompactService.CompactIfNeededAsync(
+                llm!, agent.Display, Truncate(tail, 26000), ct);
+            return ToolResult.Ok($"{header}\n\n{body}");
         }
         catch (Exception ex)
         {
@@ -180,15 +185,18 @@ public class AgentExecutionTool : ITool
     private readonly IReadOnlyList<AgentTemplate> _templates;
     protected readonly GitStepService _git;
     private readonly AssignmentManager _assignments;
+    private readonly LlmService? _llm;
 
     public AgentExecutionTool(CliAgentDefinition agent, IReadOnlyList<Persona> personas,
-        IReadOnlyList<AgentTemplate> templates, GitStepService git, AssignmentManager assignments)
+        IReadOnlyList<AgentTemplate> templates, GitStepService git, AssignmentManager assignments,
+        LlmService? llm = null)
     {
         _agent = agent;
         _personas = personas;
         _templates = templates;
         _git = git;
         _assignments = assignments;
+        _llm = llm;
     }
 
     public string Name => $"run_{_agent.Id}";
@@ -226,7 +234,7 @@ public class AgentExecutionTool : ITool
         return AgentExecutor.ExecuteAsync(
             _agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-            args, ctx, _assignments, ct);
+            args, ctx, _assignments, _llm, ct);
     }
 
     private static string? Get(JsonElement args, string name)
@@ -242,16 +250,18 @@ public class AssignTaskTool : ITool
     private readonly IReadOnlyList<AgentTemplate> _templates;
     protected readonly GitStepService _git;
     private readonly AssignmentManager _assignments;
+    private readonly LlmService? _llm;
 
     public AssignTaskTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitStepService git, AssignmentManager assignments)
+        GitStepService git, AssignmentManager assignments, LlmService? llm = null)
     {
         _agents = agents;
         _personas = personas;
         _templates = templates;
         _git = git;
         _assignments = assignments;
+        _llm = llm;
     }
 
     public string Name => "assign_task";
@@ -297,7 +307,7 @@ public class AssignTaskTool : ITool
         return AgentExecutor.ExecuteAsync(
             agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-            args, ctx, _assignments, ct);
+            args, ctx, _assignments, _llm, ct);
     }
 
     private CliAgentDefinition? ResolveAgent(string? agentId, string? templateId, string task)
@@ -332,16 +342,18 @@ public class SubagentGroupTool : ITool
     private readonly IReadOnlyList<AgentTemplate> _templates;
     private readonly GitStepService _git;
     private readonly AssignmentManager _assignments;
+    private readonly LlmService? _llm;
 
     public SubagentGroupTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitStepService git, AssignmentManager assignments)
+        GitStepService git, AssignmentManager assignments, LlmService? llm = null)
     {
         _agents = agents;
         _personas = personas;
         _templates = templates;
         _git = git;
         _assignments = assignments;
+        _llm = llm;
     }
 
     public string Name => "run_subagents";
@@ -420,7 +432,7 @@ public class SubagentGroupTool : ITool
             var result = await AgentExecutor.ExecuteAsync(
                 agent, task ?? string.Empty, personaText,
                 AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-                args, ctx, _assignments, ct);
+                args, ctx, _assignments, _llm, ct);
 
             return result.Content;
         }

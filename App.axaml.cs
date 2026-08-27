@@ -31,6 +31,9 @@ public partial class App : Application
         I18nService = new I18nService();
         I18nService.LanguageChanged += (_, culture) => AIShikikan.Gui.Resources.Strings.Culture = culture;
 
+        // 恢复 Compact Subagent 开关(子Agent输出 LLM 压缩)
+        Core.Services.Engine.SubagentCompactService.Restore(ThemeService);
+
         RequestedThemeVariant = ThemeService.IsDarkTheme ? ThemeVariant.Dark : ThemeVariant.Light;
         I18nService.SetLanguage(ThemeService.Language);
         AIShikikan.Gui.Resources.Strings.Culture = I18nService.CurrentCulture;
