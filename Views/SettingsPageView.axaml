@@ -257,6 +257,62 @@
                 </StackPanel>
             </theme:Card>
 
+            <!-- MCP 服务器 -->
+            <theme:Card Classes="Outlined">
+                <StackPanel>
+                    <Grid ColumnDefinitions="*,Auto" Margin="24,16,24,0">
+                        <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Mcp}" />
+                        <Button Grid.Column="1" Classes="Text"
+                                Content="{x:Static res:Strings.Settings_McpRefresh}"
+                                Command="{Binding RefreshMcpCommand}" />
+                    </Grid>
+                    <StackPanel Margin="24,12" Spacing="12">
+                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_McpHint}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                        <ItemsControl ItemsSource="{Binding McpItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:McpItemViewModel">
+                                    <Border CornerRadius="8" Padding="12,8"
+                                            Background="{DynamicResource SurfaceContainerLow}">
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                            <ToggleButton IsChecked="{Binding IsEnabled}" Margin="0,0,10,0"/>
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
+                                                <TextBlock Text="{Binding CommandSummary}" Classes="LabelSmall"
+                                                           Foreground="{DynamicResource OnSurfaceVariant}" />
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding StatusText}" Classes="LabelSmall"
+                                                           Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
+                                                <Button Classes="Text" Margin="8,0,0,0"
+                                                        Content="{x:Static res:Strings.Settings_Remove}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:SettingsPageViewModel)DataContext).RemoveMcpServerCommand}"
+                                                        CommandParameter="{Binding}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <theme:Divider />
+                        <StackPanel Spacing="8">
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentName}"
+                                     Text="{Binding NewMcpName}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpCommand}"
+                                     Text="{Binding NewMcpCommand}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpArgs}"
+                                     Text="{Binding NewMcpArgs}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpEnv}"
+                                     Text="{Binding NewMcpEnv}" AcceptsReturn="True" MinHeight="52" />
+                            <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
+                                    Command="{Binding AddMcpServerCommand}"/>
+                        </StackPanel>
+                        <TextBlock Classes="BodySmall" Text="{Binding McpStatus}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </StackPanel>
+            </theme:Card>
+
             <!-- 关于 -->
             <theme:Card Classes="Outlined">
                 <StackPanel>

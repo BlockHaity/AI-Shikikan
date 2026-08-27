@@ -7,6 +7,8 @@ using AIShikikan.Core;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Llm;
+using AIShikikan.Core.Services.Mcp;
+using AIShikikan.Gui.Resources;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -76,6 +78,55 @@ public partial class ModelItem : ObservableObject
 
         ProviderSettingsService.Save(_settings);
         _onChanged();
+    }
+}
+
+/// <summary>MCP 服务器条目: 展示连接状态与工具数, 开关切换即持久化并后台重连。</summary>
+public partial class McpItemViewModel : ObservableObject
+{
+    private readonly McpServerDefinition _def;
+    private readonly Action _onReload;
+
+    public McpItemViewModel(McpServerDefinition def, Action onReload)
+    {
+        _def = def;
+        _onReload = onReload;
+        _isEnabled = def.Enabled;
+    }
+
+    public string Id => _def.Id;
+    public string Name => string.IsNullOrWhiteSpace(_def.Name) ? _def.Id : _def.Name;
+    public string CommandSummary => $"{_def.Command} {string.Join(' ', _def.Args)}".Trim();
+
+    [ObservableProperty]
+    private bool _isEnabled;
+
+    public bool IsConnected { get; private set; }
+
+    public string StatusText { get; private set; } = string.Empty;
+
+    partial void OnIsEnabledChanged(bool value)
+    {
+        _def.Enabled = value;
+        McpConfigService.Upsert(_def);
+        // 后台重连, 完成后回调宿主重建列表以更新状态
+        _ = Task.Run(async () =>
+        {
+            await AppShell.Instance.Runtime.RefreshMcpToolsAsync().ConfigureAwait(false);
+            Avalonia.Threading.Dispatcher.UIThread.Post(_onReload);
+        });
+    }
+
+    /// <summary>读取当前连接状态(供列表重建时刷新)。</summary>
+    public void Probe() 
+    {
+        var mcp = AppShell.Instance.Runtime.Mcp;
+        IsConnected = mcp.IsConnected(_def.Id);
+        var toolCount = mcp.EnumerateTools().Count(t =>
+            t.ServerId.Equals(_def.Id, StringComparison.OrdinalIgnoreCase));
+        StatusText = IsConnected
+            ? string.Format(Strings.Settings_McpToolCount, toolCount)
+            : Strings.Settings_McpNotConnected;
     }
 }
 
@@ -186,6 +237,92 @@ public partial class SettingsPageViewModel : ViewModelBase
     [ObservableProperty]
     private IReadOnlyList<CliAgentDefinition> _userAgents;
 
+    // MCP 服务器管理
+    public ObservableCollection<McpItemViewModel> McpItems { get; } = [];
+
+    [ObservableProperty]
+    private string _newMcpName = string.Empty;
+
+    [ObservableProperty]
+    private string _newMcpCommand = string.Empty;
+
+    [ObservableProperty]
+    private string _newMcpArgs = string.Empty;
+
+    [ObservableProperty]
+    private string _newMcpEnv = string.Empty;
+
+    [ObservableProperty]
+    private string _mcpStatus = string.Empty;
+
+    [RelayCommand]
+    private void AddMcpServer()
+    {
+        if (string.IsNullOrWhiteSpace(NewMcpName) || string.IsNullOrWhiteSpace(NewMcpCommand)) return;
+
+        var name = NewMcpName.Trim();
+        var id = name.ToLowerInvariant().Replace(" ", "-");
+        var def = new McpServerDefinition
+        {
+            Id = id,
+            Name = name,
+            Command = NewMcpCommand.Trim(),
+            Args = ParseArgs(NewMcpArgs),
+            Env = ParseEnv(NewMcpEnv),
+            Enabled = true
+        };
+
+        McpConfigService.Upsert(def);
+        ReloadMcpItems();
+        _ = ReconnectAsync();
+
+        NewMcpName = string.Empty;
+        NewMcpCommand = string.Empty;
+        NewMcpArgs = string.Empty;
+        NewMcpEnv = string.Empty;
+    }
+
+    [RelayCommand]
+    private void RemoveMcpServer(McpItemViewModel item)
+    {
+        McpConfigService.Remove(item.Id);
+        ReloadMcpItems();
+        _ = ReconnectAsync();
+    }
+
+    [RelayCommand]
+    private async Task RefreshMcp() => await ReconnectAsync().ConfigureAwait(true);
+
+    /// <summary>重连全部启用服务器并展示结果消息。</summary>
+    private async Task ReconnectAsync()
+    {
+        McpStatus = "连接中…";
+        var messages = await AppShell.Instance.Runtime.RefreshMcpToolsAsync().ConfigureAwait(true);
+        McpStatus = string.Join("\n", messages);
+        ReloadMcpItems();
+    }
+
+    /// <summary>按最新配置重建 MCP 条目列表(刷新状态列)。</summary>
+    public void ReloadMcpItems()
+    {
+        McpItems.Clear();
+        foreach (var def in McpConfigService.LoadAll())
+        {
+            var item = new McpItemViewModel(def, ReloadMcpItems);
+            item.Probe();
+            McpItems.Add(item);
+        }
+    }
+
+    /// <summary>解析 KEY=VALUE 行序列为环境变量表。</summary>
+    private static Dictionary<string, string> ParseEnv(string input) =>
+        input.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(l => l.Split('=', 2))
+            .Where(p => p.Length == 2 && p[0].Trim().Length > 0)
+            .ToDictionary(p => p[0].Trim(), p => p[1].Trim());
+
+    // Agent 管理(其余)
+
     [ObservableProperty]
     private CliAgentDefinition? _selectedAgent;
 
@@ -219,6 +356,7 @@ public partial class SettingsPageViewModel : ViewModelBase
 
         InitFonts();
         SyncDefaultModelSelection();
+        ReloadMcpItems();
 
         _themeService.ThemeChanged += (_, isDark) => IsDarkTheme = isDark;
     }
