@@ -1,7 +1,7 @@
 param(
     [Parameter(Position=0)]
-    [ValidateSet("cli", "gui", "help")]
-    [string]$App = "cli",
+    [ValidateSet("gui", "help")]
+    [string]$App = "gui",
 
     [string]$Configuration = "Debug",
     [string]$Version = "",
@@ -22,8 +22,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "1.0.0" }
 $OutputDir = Join-Path $ProjectDir "artifacts/debug"
-$CliProject = Join-Path $ProjectDir "src/AIShikikan.Cli/AIShikikan.Cli.csproj"
-$GuiProject = Join-Path $ProjectDir "src/AIShikikan.Gui/AIShikikan.Gui.csproj"
+$GuiProject = Join-Path $ProjectDir "AIShikikan.Gui.csproj"
 
 $hostOs = if ($IsLinux) { "linux" } elseif ($IsMacOS) { "osx" } else { "win" }
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq
@@ -43,10 +42,10 @@ function Test-WantAot {
     }
 }
 
-function Publish-Cli {
+function Publish-Gui {
     if (Test-WantAot) {
-        Write-Info "Publishing CLI for $HostRid (AOT enabled)..."
-        dotnet publish $CliProject `
+        Write-Info "Publishing GUI for $HostRid (AOT enabled)..."
+        dotnet publish $GuiProject `
             -c $Configuration `
             -r $HostRid `
             -o $OutputDir `
@@ -57,8 +56,8 @@ function Publish-Cli {
             -p:Version=$Version
     }
     else {
-        Write-Info "Publishing CLI for $HostRid (single-file/trimmed)..."
-        dotnet publish $CliProject `
+        Write-Info "Publishing GUI for $HostRid (single-file/trimmed)..."
+        dotnet publish $GuiProject `
             -c $Configuration `
             -r $HostRid `
             -o $OutputDir `
@@ -72,24 +71,6 @@ function Publish-Cli {
     }
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to publish CLI for $HostRid"
-        exit 1
-    }
-}
-
-function Publish-Gui {
-    Write-Info "Publishing GUI for $HostRid..."
-    dotnet publish $GuiProject `
-        -c $Configuration `
-        -r $HostRid `
-        -o $OutputDir `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:PublishTrimmed=false `
-        -p:Version=$Version `
-        -p:IncludeNativeLibrariesForSelfExtract=true
-
-    if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to publish GUI for $HostRid"
         exit 1
     }
@@ -97,19 +78,17 @@ function Publish-Gui {
 
 function Show-Usage {
     Write-Host @"
-Usage: .\debug.ps1 <cli|gui> [app arguments...]
+Usage: .\debug.ps1 [gui] [app arguments...]
 
 Compile a Debug build for the current platform and launch the app.
 
 Arguments:
-  cli|gui   App to launch: cli (terminal UI / REST API) or gui (Avalonia GUI)
-  remainder Passed through to the launched app
+   remainder  Passed through to the launched app
 
 Examples:
-  .\debug.ps1 cli
-  .\debug.ps1 cli --persona senior-architect
-  .\debug.ps1 cli api --port 8090
-  .\debug.ps1 gui
+  .\debug.ps1
+  .\debug.ps1 --version
+  .\debug.ps1 doctor
 "@
 }
 
@@ -121,12 +100,6 @@ Write-Info "Output:        $OutputDir"
 Write-Host ""
 
 switch ($App) {
-    "cli" {
-        Publish-Cli
-        Write-Ok "CLI built, launching..."
-        & (Join-Path $OutputDir "AIShikikan.Cli") @AppArgs
-        exit $LASTEXITCODE
-    }
     "gui" {
         Publish-Gui
         Write-Ok "GUI built, launching..."

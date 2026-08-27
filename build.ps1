@@ -22,8 +22,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "1.0.0" }
 $OutputDir = Join-Path $ProjectDir "artifacts"
-$CliProject = Join-Path $ProjectDir "src/AIShikikan.Cli/AIShikikan.Cli.csproj"
-$GuiProject = Join-Path $ProjectDir "src/AIShikikan.Gui/AIShikikan.Gui.csproj"
+$GuiProject = Join-Path $ProjectDir "AIShikikan.Gui.csproj"
 
 $hostOs = if ($IsLinux) { "linux" } elseif ($IsMacOS) { "osx" } else { "win" }
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq
@@ -60,12 +59,12 @@ function Write-Ok($msg)    { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg)  { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
-function Build-Cli {
+function Build-Gui {
     param([string]$Rid, [string]$OutDir)
 
     if (Test-WantAot $Rid) {
-        Write-Info "Building CLI for $Rid with Native AOT..."
-        dotnet publish $CliProject `
+        Write-Info "Building GUI for $Rid with Native AOT..."
+        dotnet publish $GuiProject `
             -c $Configuration `
             -r $Rid `
             -o $OutDir `
@@ -77,8 +76,8 @@ function Build-Cli {
     }
     else {
         Write-Warn "AOT_MODE=$AotMode: host=$HostRid, target=$Rid; cannot cross AOT, falling back to single-file/trimmed"
-        Write-Info "Building CLI for $Rid (single-file/trimmed)..."
-        dotnet publish $CliProject `
+        Write-Info "Building GUI for $Rid (single-file/trimmed)..."
+        dotnet publish $GuiProject `
             -c $Configuration `
             -r $Rid `
             -o $OutDir `
@@ -92,43 +91,11 @@ function Build-Cli {
     }
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to build CLI for $Rid"
-        exit 1
-    }
-
-    Write-Ok "CLI built: $OutDir"
-}
-
-function Build-Gui {
-    param([string]$Rid, [string]$OutDir)
-
-    Write-Info "Building GUI for $Rid..."
-    dotnet publish $GuiProject `
-        -c $Configuration `
-        -r $Rid `
-        -o $OutDir `
-        --self-contained true `
-        -p:PublishSingleFile=true `
-        -p:PublishTrimmed=false `
-        -p:Version=$Version `
-        -p:IncludeNativeLibrariesForSelfExtract=true
-
-    if ($LASTEXITCODE -ne 0) {
         Write-Err "Failed to build GUI for $Rid"
         exit 1
     }
 
     Write-Ok "GUI built: $OutDir"
-}
-
-function Build-Rid {
-    param([string]$Platform, [string]$Rid)
-
-    $outdir = Join-Path $OutputDir $Rid
-    Write-Info "=== $Rid (CLI + GUI) ==="
-    Build-Cli $Rid $outdir
-    Build-Gui $Rid $outdir
-    Write-Ok "$Rid bundled: $outdir"
 }
 
 function Pack-Rid {
@@ -137,6 +104,8 @@ function Pack-Rid {
     $dir = Join-Path $OutputDir $Rid
     if (-not (Test-Path $dir)) { return }
 
+    chmod +x (Join-Path $dir "AIShikikan.Gui") 2>$null | Out-Null
+
     if ($IsWindows) {
         $archive = Join-Path $OutputDir "AIShikikan-$Version-$Rid.zip"
         Compress-Archive -Path "$dir/*" -DestinationPath $archive -Force
@@ -144,11 +113,7 @@ function Pack-Rid {
     elseif (Get-Command tar -ErrorAction SilentlyContinue) {
         Push-Location $OutputDir
         try {
-            tar czf "AIShikikan-$Version-$Rid.tar.gz" -C "$Rid" .
-            if ($LASTEXITCODE -ne 0) {
-                Write-Warn "tar z failed for $Rid, retrying without gzip"
-                tar cf "AIShikikan-$Version-$Rid.tar" -C "$Rid" .
-            }
+            tar czf "AIShikikan-$Version-$Rid.tar.gz" -C "$Rid" --exclude='*.pdb' --exclude='*.dbg' .
         }
         finally {
             Pop-Location
@@ -185,12 +150,12 @@ Write-Host ""
 
 switch ($Command) {
     { $_ -in @("linux", "macos", "windows") } {
-        foreach ($rid in (Get-Rids $_)) { Build-Rid $_ $rid }
+        foreach ($rid in (Get-Rids $_)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
         foreach ($rid in (Get-Rids $_)) { Pack-Rid $rid }
     }
     "all" {
         foreach ($platform in @("linux", "macos", "windows")) {
-            foreach ($rid in (Get-Rids $platform)) { Build-Rid $platform $rid }
+            foreach ($rid in (Get-Rids $platform)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
         }
         foreach ($platform in @("linux", "macos", "windows")) {
             foreach ($rid in (Get-Rids $platform)) { Pack-Rid $rid }
