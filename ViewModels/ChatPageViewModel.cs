@@ -475,15 +475,11 @@ public partial class ChatPageViewModel : ViewModelBase
         var assistantItem = new ChatItemViewModel(MessageRole.Assistant);
         Messages.Add(assistantItem);
 
-        var bodySb = new StringBuilder();
-        var thinkingSb = new StringBuilder();
+        // 线性时间线: 分段按事件到达顺序排列(思考/正文/工具交替), UI 顺序 = 实际发生顺序
+        var entries = new List<TimelineEntry>();
         var toolData = new List<(string Id, string Name, string Args)>();       // 工具调用, 按调用顺序
         var toolOutputs = new Dictionary<string, StringBuilder>();
         var toolFinished = new Dictionary<string, (string Result, bool IsError)>();
-        var toolVmById = new Dictionary<int, SegmentItemViewModel>();
-        var thinkingVm = (SegmentItemViewModel?)null;
-        var bodyVm = (SegmentItemViewModel?)null;
-        var toolDispatched = 0;
         var flushPending = false;
 
         // 后台线程累积数据, 节流同步到 UI 线程重建分段
@@ -492,14 +488,23 @@ public partial class ChatPageViewModel : ViewModelBase
             switch (e)
             {
                 case EngineThinkingDelta t:
-                    thinkingSb.Append(t.Thinking);
+                    if (entries.Count == 0 || entries[^1].Kind != MessageSegmentKind.Thinking)
+                    {
+                        entries.Add(new TimelineEntry(MessageSegmentKind.Thinking));
+                    }
+                    entries[^1].Sb.Append(t.Thinking);
                     break;
                 case EngineTextDelta t:
-                    bodySb.Append(t.Text);
+                    if (entries.Count == 0 || entries[^1].Kind != MessageSegmentKind.Text)
+                    {
+                        entries.Add(new TimelineEntry(MessageSegmentKind.Text));
+                    }
+                    entries[^1].Sb.Append(t.Text);
                     break;
                 case EngineToolStarted s:
                     toolData.Add((s.ToolCallId, s.ToolName, s.Arguments));
                     toolOutputs[s.ToolCallId] = new StringBuilder();
+                    entries.Add(new TimelineEntry(MessageSegmentKind.Tool) { ToolIndex = toolData.Count - 1 });
                     break;
                 case EngineToolOutput o:
                     if (toolOutputs.TryGetValue(o.ToolCallId, out var osb))
@@ -518,55 +523,60 @@ public partial class ChatPageViewModel : ViewModelBase
             Dispatcher.UIThread.Post(FlushUi);
         }
 
-        // UI 线程同步: 确保分段对象稳定存在(不重建, 保留展开状态), 值覆盖最新
+        // UI 线程同步: 按 entries 线性顺序补齐缺失分段(仅尾部追加)并覆盖最新内容
         void FlushUi()
         {
             flushPending = false;
 
-            if (thinkingSb.Length > 0 && thinkingVm is null)
+            while (assistantItem.Segments.Count < entries.Count)
             {
-                thinkingVm = new SegmentItemViewModel(MessageSegmentKind.Thinking);
-                assistantItem.Segments.Insert(0, thinkingVm);
-            }
-
-            thinkingVm?.SetThinking(thinkingSb.ToString());
-
-            for (var i = toolDispatched; i < toolData.Count; i++)
-            {
-                var vm = new SegmentItemViewModel(MessageSegmentKind.Tool)
+                var en = entries[assistantItem.Segments.Count];
+                SegmentItemViewModel vm;
+                if (en.Kind == MessageSegmentKind.Tool)
                 {
-                    ToolName = toolData[i].Name,
-                    ArgumentsRaw = toolData[i].Args
-                };
+                    var td = toolData[en.ToolIndex];
+                    vm = new SegmentItemViewModel(MessageSegmentKind.Tool)
+                    {
+                        ToolName = td.Name,
+                        ArgumentsRaw = td.Args
+                    };
+                }
+                else
+                {
+                    vm = new SegmentItemViewModel(en.Kind);
+                }
+
                 assistantItem.Segments.Add(vm);
-                toolVmById[i] = vm;
-                toolDispatched = i + 1;
+                en.Vm = vm;
             }
 
-            for (var i = 0; i < toolDispatched; i++)
+            foreach (var en in entries)
             {
-                if (!toolVmById.TryGetValue(i, out var vm)) continue;
-                var id = toolData[i].Id;
-                if (toolOutputs.TryGetValue(id, out var osb))
+                switch (en.Kind)
                 {
-                    vm.SetToolOutput(osb.ToString().TrimEnd());
-                }
+                    case MessageSegmentKind.Text:
+                        en.Vm!.SetBody(en.Sb.ToString());
+                        break;
+                    case MessageSegmentKind.Thinking:
+                        en.Vm!.SetThinking(en.Sb.ToString());
+                        break;
+                    case MessageSegmentKind.Tool:
+                        var id = toolData[en.ToolIndex].Id;
+                        if (toolOutputs.TryGetValue(id, out var osb))
+                        {
+                            en.Vm!.SetToolOutput(osb.ToString().TrimEnd());
+                        }
 
-                if (toolFinished.TryGetValue(id, out var fin))
-                {
-                    vm.ToolResult = fin.Result;
-                    vm.IsToolDone = true;
-                    vm.ToolStatus = fin.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                        if (toolFinished.TryGetValue(id, out var fin))
+                        {
+                            en.Vm!.ToolResult = fin.Result;
+                            en.Vm.IsToolDone = true;
+                            en.Vm.ToolStatus = fin.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                        }
+
+                        break;
                 }
             }
-
-            if (bodySb.Length > 0 && bodyVm is null)
-            {
-                bodyVm = new SegmentItemViewModel(MessageSegmentKind.Text);
-                assistantItem.Segments.Add(bodyVm); // 正文置于末尾
-            }
-
-            bodyVm?.SetBody(bodySb.ToString());
         }
 
         _runtime.Engine.OnEvent += OnEngineEvent;
@@ -581,11 +591,14 @@ public partial class ChatPageViewModel : ViewModelBase
             var reply = await _runtime.Engine.RunTurnAsync(engineMessage, _turnCts.Token);
             FlushUi(); // 兜底同步一次, 确保最终增量已呈现
 
-            if (bodyVm is null && !string.IsNullOrWhiteSpace(reply))
+            // 全程无流式文本时(如纯最终回复), 将整体回复作为正文分段补到时间线末尾
+            if (!string.IsNullOrWhiteSpace(reply) &&
+                assistantItem.Segments.All(s => s.Kind != MessageSegmentKind.Text))
             {
-                bodyVm = new SegmentItemViewModel(MessageSegmentKind.Text);
-                bodyVm.SetBody(reply);
-                assistantItem.Segments.Add(bodyVm);
+                var fallback = new TimelineEntry(MessageSegmentKind.Text);
+                fallback.Sb.Append(reply);
+                entries.Add(fallback);
+                FlushUi();
             }
         }
         catch (OperationCanceledException)
@@ -644,6 +657,21 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         IsSending = false;
+    }
+
+    /// <summary>时间线条目: 按引擎事件顺序累积的显示分段(工具调用与文本交替呈现)。</summary>
+    private sealed class TimelineEntry
+    {
+        public TimelineEntry(MessageSegmentKind kind) => Kind = kind;
+
+        public MessageSegmentKind Kind { get; }
+
+        /// <summary>工具条目对应 toolData 的下标; 非工具为 -1。</summary>
+        public int ToolIndex { get; init; } = -1;
+
+        public StringBuilder Sb { get; } = new();
+
+        public SegmentItemViewModel? Vm { get; set; }
     }
 
     private static List<string> SplitToolOutput(string value)
