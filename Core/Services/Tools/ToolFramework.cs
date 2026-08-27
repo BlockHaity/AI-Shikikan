@@ -39,6 +39,18 @@ public class ToolRegistry
 
     public void Register(ITool tool) => _tools[tool.Name] = tool;
 
+    /// <summary>按条件注销一组工具(MCP 刷新时重建桥接条目)。</summary>
+    public int UnregisterWhere(Func<ITool, bool> predicate)
+    {
+        var names = _tools.Where(kv => predicate(kv.Value)).Select(kv => kv.Key).ToList();
+        foreach (var n in names)
+        {
+            _tools.Remove(n);
+        }
+
+        return names.Count;
+    }
+
     public bool TryGet(string name, out ITool tool) => _tools.TryGetValue(name, out tool!);
 
     public ITool Get(string name) =>
