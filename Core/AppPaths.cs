@@ -19,6 +19,7 @@ public static class AppPaths
 
     public static string ProvidersPath { get; }
     public static string AgentsPath { get; }
+    public static string McpServersPath { get; }
     public static string PersonasDir { get; }
     public static string TemplatesDir { get; }
     public static string RosterTemplatePath { get; }
@@ -70,6 +71,7 @@ public static class AppPaths
 
         ProvidersPath = Path.Combine(ConfigDir, "providers.toml");
         AgentsPath = Path.Combine(ConfigDir, "agents.toml");
+        McpServersPath = Path.Combine(ConfigDir, "mcp-servers.toml");
         PersonasDir = Path.Combine(ConfigDir, "personas");
         TemplatesDir = Path.Combine(ConfigDir, "templates");
         RosterTemplatePath = Path.Combine(ConfigDir, "roster.prompt");
