@@ -73,7 +73,7 @@
                                           IsVisible="{Binding UsageSnapshot.ModelStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="usage:ModelUsageStat">
-                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,1">
                                             <TextBlock Classes="BodyMedium" Text="{Binding Model}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Grid.Column="1" Classes="BodySmall"
                                                        Text="{Binding Calls, StringFormat={}{0} 次调用}"
@@ -94,7 +94,7 @@
                                           IsVisible="{Binding UsageSnapshot.SessionStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="usage:SessionUsageStat">
-                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,1">
                                             <TextBlock Classes="BodyMedium" Text="{Binding SessionTitle}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Grid.Column="1" Classes="BodySmall"
                                                        Text="{Binding Calls, StringFormat={}{0} 次调用}"
@@ -115,7 +115,7 @@
                                           IsVisible="{Binding UsageSnapshot.AgentStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="usage:AgentCallStat">
-                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,2">
+                                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Margin="0,1">
                                             <TextBlock Classes="BodyMedium" Text="{Binding AgentName}" TextTrimming="CharacterEllipsis" />
                                             <TextBlock Grid.Column="1" Classes="BodySmall"
                                                        Text="{Binding Calls, StringFormat={}{0} 次调用}"
@@ -187,14 +187,14 @@
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
                                        Foreground="{DynamicResource OnSurfaceVariant}"
                                        IsVisible="{Binding !HasChartData}" HorizontalAlignment="Center"
-                                       Margin="0,100,0,0" />
+                                       Margin="0,70,0,0" />
                         </StackPanel>
                     </theme:Card>
                 </Grid>
 
                 <!-- 活跃热力图: 近 26 周 -->
                 <theme:Card Classes="Elevated">
-                    <StackPanel Margin="24" Spacing="12">
+                    <StackPanel Margin="18,14" Spacing="10">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_ActivityTitle}"/>
                             <TextBlock Grid.Column="1" Classes="BodySmall" Text="{Binding HeatRangeText}"
@@ -208,7 +208,7 @@
                             <ItemsControl ItemsSource="{Binding HeatGutter}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <TextBlock Width="18" Height="15" Text="{Binding}" FontSize="10"
+                                        <TextBlock Width="16" Height="13" Text="{Binding}" FontSize="10"
                                                    VerticalAlignment="Center"
                                                    Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7"/>
                                     </DataTemplate>
@@ -233,7 +233,7 @@
                                                 </ItemsControl.ItemsPanel>
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate x:DataType="vm:HeatmapCellVm">
-                                                        <Border Width="15" Height="15" CornerRadius="3"
+                                                        <Border Width="13" Height="13" CornerRadius="3"
                                                                 Background="{Binding Brush}"
                                                                 ToolTip.Tip="{Binding Tip}"/>
                                                     </DataTemplate>
@@ -258,7 +258,7 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:HeatmapLegendVm">
-                                        <Border Width="13" Height="13" CornerRadius="3"
+                                        <Border Width="11" Height="11" CornerRadius="3"
                                                 Background="{Binding Brush}"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
