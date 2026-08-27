@@ -124,13 +124,21 @@ public partial class AgentPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _useCommanderPersonaForAgents;
 
+    /// <summary>Compact Subagent: 子Agent输出经 LLM 压缩后返回给 AI(全局开关, 持久化到设置)。</summary>
+    [ObservableProperty]
+    private bool _compactSubagents;
+
     public AgentPanelViewModel()
     {
+        CompactSubagents = App.ThemeService.CompactSubagents;
         RefreshAll();
         _shell.DataChanged += () => Dispatcher.UIThread.Post(RefreshAll);
         _runtime.Assignments.AssignmentChanged += _ =>
             Dispatcher.UIThread.Post(RefreshAssignments);
     }
+
+    partial void OnCompactSubagentsChanged(bool value)
+        => Core.Services.Engine.SubagentCompactService.Persist(App.ThemeService, value);
 
     /// <summary>延迟到调度器下一轮再重建子 Agent 列表, 避免在输入事件级联中同步增删
     /// ItemsControl 项: Material 主题模板内部的 Transitions(如 Button 的 Opacity 过渡,
