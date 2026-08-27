@@ -6,6 +6,7 @@ using Avalonia.Data.Converters;
 using Avalonia.Layout;
 using Avalonia.Media;
 using AIShikikan.Core.Models;
+using AIShikikan.Core.Services.Llm;
 
 namespace AIShikikan.Gui.Views;
 
@@ -88,6 +89,20 @@ public class ModelListVisibilityConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         return value is int count && count > 0;
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>ThinkingLevel → 中文档位文案。</summary>
+public class ThinkingLevelToTextConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is ThinkingLevel level ? ThinkingLevels.DisplayName(level) : string.Empty;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
