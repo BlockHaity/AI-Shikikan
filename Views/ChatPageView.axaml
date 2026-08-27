@@ -258,9 +258,23 @@
                     <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
                              Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
                              KeyDown="OnInputKeyDown"/>
-                    <Button Grid.Column="1" Classes="Filled" Margin="8,0,0,0"
-                            Content="{x:Static res:Strings.Chat_Send}"
-                            Command="{Binding SendMessageCommand}" IsEnabled="{Binding !IsSending}"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
+                                VerticalAlignment="Center">
+                        <!-- 继续输出: 中断后出现 -->
+                        <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_Continue}"
+                                Command="{Binding ContinueOutputCommand}" IsVisible="{Binding CanContinue}"
+                                ToolTip.Tip="{x:Static res:Strings.Chat_ContinueTip}"/>
+                        <!-- 发送中: 显示终止按钮 -->
+                        <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Stop}"
+                                Command="{Binding StopGenerationCommand}" IsVisible="{Binding IsSending}"
+                                Background="{DynamicResource ErrorContainer}"
+                                Foreground="{DynamicResource OnErrorContainer}"
+                                MinWidth="80" ToolTip.Tip="{x:Static res:Strings.Chat_StopTip}"/>
+                        <!-- 空闲: 发送按钮 -->
+                        <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Send}"
+                                Command="{Binding SendMessageCommand}" IsVisible="{Binding !IsSending}"
+                                MinWidth="80"/>
+                    </StackPanel>
                 </Grid>
             </Border>
 
