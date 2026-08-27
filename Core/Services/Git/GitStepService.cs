@@ -364,6 +364,20 @@ public sealed class GitStepService
         return merge;
     }
 
+    /// <summary>按步骤当前状态自动选择回滚方式: 未合并 → 丢弃步骤分支; 已合并 → 反向提交。
+    /// 已回滚/Dropped 的步骤抛错, 调用方(UI)负责提示。</summary>
+    public GitCommandResult RollbackStep(string stepId)
+    {
+        var record = GetRecord(stepId);
+        return record.Status switch
+        {
+            GitStepStatus.Merged => RevertStep(stepId),
+            GitStepStatus.Dropped or GitStepStatus.Reverted =>
+                throw new InvalidOperationException($"步骤 {stepId} 已回滚过。"),
+            _ => DropStep(stepId)
+        };
+    }
+
     /// <summary>丢弃步骤: 切换回 base 分支并删除步骤分支(需工作区干净)。</summary>
     public GitCommandResult DropStep(string stepId)
     {

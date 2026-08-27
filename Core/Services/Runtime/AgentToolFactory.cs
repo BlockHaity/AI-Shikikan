@@ -155,14 +155,20 @@ public static class AgentExecutor
         {
             var (completed, run) = await assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
             var tail = completed.OutputTail ?? run.Output;
-            var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)";
+            var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)\n检查点: {completed.StepId}";
             var body = await SubagentCompactService.CompactIfNeededAsync(
                 llm!, agent.Display, Truncate(tail, 26000), ct);
-            return ToolResult.Ok($"{header}\n\n{body}");
+            return new ToolResult { Content = $"{header}\n\n{body}", StepId = completed.StepId };
         }
         catch (Exception ex)
         {
-            return ToolResult.Error($"[agent:{agent.Display}] 执行失败: {ex.Message}");
+            // 执行失败但检查点分支可能已建立(含部分变更), 保留回滚入口
+            return new ToolResult
+            {
+                IsError = true,
+                Content = $"[agent:{agent.Display}] 执行失败: {ex.Message}",
+                StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId
+            };
         }
     }
 
