@@ -3,6 +3,7 @@ using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Llm;
+using AIShikikan.Core.Services.Mcp;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Runtime;
 using AIShikikan.Core.Services.Templates;
@@ -22,6 +23,7 @@ public sealed class CommanderRuntime
     public required AssignmentManager Assignments { get; init; }
     public required ToolRegistry Registry { get; init; }
     public required AgentEngine Engine { get; init; }
+    public required McpService Mcp { get; init; }
     public required IReadOnlyList<Persona> Personas { get; init; }
     public required IReadOnlyList<AgentTemplate> Templates { get; init; }
     public required IReadOnlyList<CliAgentDefinition> Agents { get; init; }
@@ -39,6 +41,7 @@ public sealed class CommanderRuntime
         RosterBuilder.WriteDefaultTemplate();
         AgentConfigService.EnsureDefaultExists();
         ProviderSettingsService.EnsureDefaultExists();
+        McpConfigService.EnsureDefaultExists();
         AgentConfigService.Refresh();
 
         var root = Path.GetFullPath(string.IsNullOrWhiteSpace(workspaceRoot) ? "." : workspaceRoot);
@@ -53,6 +56,7 @@ public sealed class CommanderRuntime
         var llm = new LlmService();
         var git = new GitStepService(root);
         var assignments = new AssignmentManager(git);
+        var mcp = new McpService();
 
         // 子 Agent 终态时记录调用统计(Completed 视为成功)
         assignments.AssignmentChanged += a =>
@@ -97,6 +101,7 @@ public sealed class CommanderRuntime
             Assignments = assignments,
             Registry = registry,
             Engine = engine,
+            Mcp = mcp,
             Personas = personasList,
             Templates = templatesList,
             Agents = agentsList,
@@ -104,7 +109,31 @@ public sealed class CommanderRuntime
             CurrentRosterEntries = []
         };
 
+        // 后台连接 MCP 服务器并注册桥接工具(不阻塞启动)
+        var runtime = Instance;
+        _ = Task.Run(async () => await runtime.RefreshMcpToolsAsync().ConfigureAwait(false));
+
         return Instance;
+    }
+
+    /// <summary>重建 MCP 桥接工具: 断开旧连接, 连接全部启用服务器并注册 mcp_* 工具。
+    /// 返回状态消息列表(含连接失败说明), UI 可展示。</summary>
+    public async Task<List<string>> RefreshMcpToolsAsync(CancellationToken ct = default)
+    {
+        var messages = new List<string>();
+
+        await Mcp.DisposeAsync().ConfigureAwait(false);
+        Registry.UnregisterWhere(t => t is McpProxyTool);
+
+        messages.AddRange(await Mcp.ConnectAllAsync(ct).ConfigureAwait(false));
+
+        foreach (var (_, serverId, descriptor) in Mcp.EnumerateTools())
+        {
+            Registry.Register(new McpProxyTool(Mcp, serverId, descriptor));
+        }
+
+        messages.Add($"[MCP] 已连接 {Mcp.ConnectedCount} 个服务器, 注册 {Registry.All.Count(t => t is McpProxyTool)} 个工具");
+        return messages;
     }
 
     public void SetPersonaText(string? text)
