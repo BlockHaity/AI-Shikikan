@@ -8,99 +8,51 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 
 用户请求 → AI 指挥官 → 分析任务 → 调用子 Agent → 汇总结果 → 返回用户。
 
-## 架构
+## 项目结构
 
-单一项目，位于 `src/AIShikikan.Gui/`：
-
-```
-AIShikikan.Gui     - 图形界面 (Avalonia + CommunityToolkit.Mvvm)
-  Core/            - 核心逻辑（AOT 兼容，原 AIShikikan.Core）
-```
-
-`Core/Services/` 内部结构：
+单一项目 `AIShikikan.Gui.csproj`，位于**仓库根目录**（无 src 嵌套）：
 
 ```
-Engine/      - Agent 调度引擎 (AgentEngine, AssignmentManager, RosterBuilder)
-Agents/      - Agent 定义与配置加载 (CliAgentDefinition, AgentConfigService)
-Llm/         - LLM 客户端抽象 (OpenAI / Anthropic 双实现)
-Personas/    - 人格/专家管理 (YAML frontmatter + Markdown)
-Templates/   - 任务模板
-Tools/       - 内置工具框架 + 文件工具 (Glob/Grep/ReadFile/ListDirectory)
-Git/         - Git 步骤管理 (自动分支/回滚/合并)
-Runtime/     - 工具工厂 (AgentToolFactory)
+/                          - 仓库根 = 项目根
+  Program.cs / App.axaml(.cs) / ViewLocator.cs
+  Core/                    - 核心逻辑（AOT 兼容）
+  ViewModels/ Views/       - Avalonia MVVM
+  Services/                - GUI 层服务 (DynamicThemeService)
+  Resources/               - 双语字符串 + Markdown 主题
+  Assets/                  - 字体、logo
+  templates/               - 配置/人格 example 文件
 ```
 
-启动外观：`CommanderRuntime.Boot()`（`src/AIShikikan.Gui/Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、所有服务与工具集。
-
-## 文件索引
-
-### 根目录
+根目录文件：
 
 | 文件 | 说明 |
 |------|------|
 | `VERSION` | 单一版本源（软件与 CI 共用，勿在代码中硬编码） |
-| `Directory.Build.props` | 全局 MSBuild 属性（target、版本注入等） |
-| `build.sh` | 发布构建脚本（`./build.sh linux` / `all`，支持 `ARCH` / `AOT_MODE`） |
-| `debug.sh` | Debug 构建并运行 GUI（本地开发最常用） |
-| `templates/config/` | 配置 example 文件（providers.toml / agents.toml / roster.prompt） |
-| `templates/personas/` | 人格 example Markdown |
-| `.github/workflows/release.yml` | 手动触发的 GitHub Release 发布流程 |
-| `.github/workflows/debug.yml` | 仅构建产物的辅助 workflow |
+| `Directory.Build.props` | 全局 MSBuild 属性（从 VERSION 注入版本） |
+| `build.sh` / `build.ps1` | 发布构建脚本（`./build.sh linux` / `all`，支持 `ARCH` / `AOT_MODE`） |
+| `debug.sh` / `debug.ps1` | Debug 构建并运行 GUI（本地开发最常用） |
+| `.github/workflows/release.yml` | 手动触发的 Release 发布流程 |
+| `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow |
 
-### AIShikikan.Gui（图形界面 + 核心逻辑）
+### Core/Services 内部结构
 
-#### GUI 层
+```
+Engine/      - Agent 调度引擎 (AgentEngine, AssignmentManager, RosterBuilder,
+               RosterConfigService, SubagentCompactService)
+Agents/      - Agent 定义与配置加载 (CliAgentDefinition, AgentConfigService)
+Llm/         - LLM 抽象: IChatCompletionsClient + OpenAI/Anthropic 双实现,
+               LlmService(Provider路由), ProviderConfig, ModelListService,
+               ChatTypes(含 ThinkingLevel 思考深度), LlmMessages
+Personas/    - 人格/专家管理 (YAML frontmatter + Markdown)
+Templates/   - 任务模板
+Tools/       - 内置工具框架 (ITool/ToolResult/ToolPathSanitizer) + Builtin 文件工具
+Runtime/     - AgentToolFactory: 工具集组装 (run_<agent>/assign_task/run_subagents/
+               persona_list/git_*)
+Git/         - Git 步骤管理 (自动分支/回滚/合并/提交)
+Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelProfileService)
+```
 
-| 文件 | 说明 |
-|------|------|
-| `Program.cs` / `App.axaml(.cs)` | Avalonia 启动与应用配置，支持 `--version` / `doctor` 命令行参数 |
-| `ViewLocator.cs` | VM ↔ View 映射（MVVM 约定） |
-| `ViewModels/ViewModelBase.cs` | 所有 VM 基类（ObservableObject） |
-| `ViewModels/AppShell.cs` / `MainWindowViewModel.cs` | 主窗口 / 页面导航壳 |
-| `ViewModels/HomePageViewModel.cs` | 首页（状态概览） |
-| `ViewModels/ChatPageViewModel.cs` | 聊天页 |
-| `ViewModels/SettingsPageViewModel.cs` | 设置页 |
-| `ViewModels/AgentPanelViewModel.cs` | Agent 信息面板 |
-| `ViewModels/SessionPanelViewModel.cs` | 会话列表面板 |
-| `ViewModels/StatusPanelViewModel.cs` | 状态面板 |
-| `ViewModels/GitPanelViewModel.cs` | Git 面板 |
-| `Views/` | 对应 XAML 视图 + code-behind（`MainWindow` / `ChatPageView` / `HomePageView` / `SettingsPageView` / 各 PanelView / `Converters.cs` / `PageBackground.axaml`） |
-| `Services/DynamicThemeService.cs` | 动态主题（配合 Core 的 ColorExtraction/Theme） |
-| `Resources/Strings.cs` | 资源字符串访问器 |
-
-#### Core 层（`Core/`）
-
-| 文件 | 说明 |
-|------|------|
-| `AppPaths.cs` | 跨平台用户配置目录解析 |
-| `AppInfo.cs` | 应用名称等常量 |
-| `Models/` | 数据模型：`ChatSession` / `ChatMessage` / `AgentRosterEntry` / `MessageRole` |
-| `Serialization/AppJsonContext.cs` | 源生成 `System.Text.Json` 上下文（AOT 必需） |
-| `Serialization/TomlBridge.cs` | TOML ↔ JSON 桥接（Tomlyn） |
-| `Serialization/YamlFrontmatterParser.cs` | 解析 Markdown 的 YAML frontmatter（人格） |
-| `Services/CommanderRuntime.cs` | 启动外观：装配配置、服务、工具集（Boot 入口） |
-| `Services/DefaultConfig.cs` | 读取内嵌默认 TOML，首次启动初始化用户配置 |
-| `Services/ChatService.cs` | 会话持久化与消息存储 |
-| `Services/ChatTitleService.cs` | 调用 LLM 生成会话标题 |
-| `Services/ColorExtractionService.cs` | 从图片提取主题色（Material Color Utilities） |
-| `Services/ThemeService.cs` | 主题配置读写 |
-| `Services/I18nService.cs` | 国际化（文化/本地化资源） |
-| `Services/Engine/AgentEngine.cs` | 对话引擎：人格+Roster → LLM → 工具循环，`AgentEngineEvent` 事件流 |
-| `Services/Engine/AssignmentManager.cs` | 任务分派（子 Agent 执行/批准/回滚）持久化 |
-| `Services/Engine/RosterBuilder.cs` | 组装 Roster 提示词（注入 agents 定义） |
-| `Services/Engine/RosterConfigService.cs` | Session 级 Agent 编目（`sessions/{id}/roster.json`） |
-| `Services/Agents/CliAgentDefinition.cs` | 子 Agent 定义模型（命令、参数、规则） |
-| `Services/Agents/AgentConfigService.cs` | 加载 `agents.toml` 分派规则 |
-| `Services/Llm/` | LLM 抽象：`IChatCompletionsClient` 接口 + OpenAI / Anthropic 双实现、`LlmService`（provider 路由）、`ProviderConfig`（providers.toml）、`ModelListService`（拉取模型列表）、`ChatTypes` / `LlmMessages`（请求/消息类型） |
-| `Services/Personas/PersonaService.cs` | 人格/专家管理（frontmatter + Markdown） |
-| `Services/Templates/AgentTemplateService.cs` | 任务模板加载 |
-| `Services/Tools/ToolFramework.cs` | 内置工具框架（`ITool` / `ToolResult`） |
-| `Services/Tools/ToolPathSanitizer.cs` | 工具路径安全：禁止越出工作区 |
-| `Services/Tools/Builtin/` | 内置文件工具：`GlobTool` / `GrepTool` / `ReadFileTool` / `ListDirectoryTool` |
-| `Services/Runtime/AgentToolFactory.cs` | 按 Agent 定义创建工具集 |
-| `Services/Git/GitStepService.cs` | Git 步骤管理：自动分支 / 回滚 / 合并 / 提交 |
-| `Services/Usage/UsageStatsService.cs` | LLM 与子 Agent 调用用量统计持久化 |
-| `Services/Usage/ModelProfileService.cs` | 模型档案（上下文窗口 / 价格） |
+启动外观：`CommanderRuntime.Boot()`（`Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、全部服务与工具集，并注册到静态 `Instance`。GUI 外壳单例 `AppShell`（ViewModels/AppShell.cs）持有 Runtime。
 
 ## 常用命令
 
@@ -130,7 +82,7 @@ AOT_MODE=off ./build.sh linux
 
 ## 配置与数据路径
 
-用户配置在用户目录（`AppPaths`，见 `src/AIShikikan.Gui/Core/AppPaths.cs`）：
+用户配置在用户目录（`AppPaths`，见 `Core/AppPaths.cs`）：
 
 | 平台 | 配置目录 |
 |------|----------|
