@@ -24,6 +24,10 @@ public partial class ModelItem : ObservableObject
     private readonly ProviderConfig _provider;
     private readonly Action _onChanged;
 
+    /// <summary>模型管理里可选的思考等级档位(不含"自动", 自动仅在聊天菜单)。</summary>
+    public static IReadOnlyList<ThinkingLevel> LevelOptions { get; } =
+        [ThinkingLevel.Low, ThinkingLevel.Medium, ThinkingLevel.High, ThinkingLevel.XHigh, ThinkingLevel.Max];
+
     public ModelItem(LlmSettings settings, ProviderConfig provider, string id, Action onChanged)
     {
         _settings = settings;
@@ -31,9 +35,22 @@ public partial class ModelItem : ObservableObject
         _onChanged = onChanged;
         Id = id;
         _isEnabled = provider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase);
+        // 直接写 backing field, 避免构造时触发持久化
+        _maxThinking = provider.GetMaxThinking(id);
     }
 
     public string Id { get; }
+
+    /// <summary>该模型配置的最大思考等级。</summary>
+    [ObservableProperty]
+    private ThinkingLevel _maxThinking;
+
+    partial void OnMaxThinkingChanged(ThinkingLevel value)
+    {
+        _provider.ModelMaxThinking[Id] = ThinkingLevels.ToConfigString(value);
+        ProviderSettingsService.Save(_settings);
+        _onChanged();
+    }
 
     [ObservableProperty]
     private bool _isEnabled;
@@ -508,6 +525,16 @@ public partial class SettingsPageViewModel : ViewModelBase
             var models = await ModelListService.FetchModelsAsync(SelectedProvider);
             SelectedProvider.EnabledModels = models.ToList();
 
+            // 通过 API 拉取模型列表时, 对尚未配置过的模型自动探测其最大思考等级
+            foreach (var m in SelectedProvider.EnabledModels)
+            {
+                if (!SelectedProvider.ModelMaxThinking.ContainsKey(m))
+                {
+                    SelectedProvider.ModelMaxThinking[m] =
+                        ThinkingLevels.ToConfigString(ThinkingLevels.DetectMaxLevel(m));
+                }
+            }
+
             if (SelectedProvider.EnabledModels.Count == 0)
             {
                 ModelFetchError = "未获取到任何模型";
@@ -552,6 +579,23 @@ public partial class SettingsPageViewModel : ViewModelBase
         {
             item.IsEnabled = false;
         }
+    }
+
+    /// <summary>自动为选中的 Provider 各模型探测并写入最大思考等级。</summary>
+    [RelayCommand]
+    private void DetectThinkingLevels()
+    {
+        if (SelectedProvider is null) return;
+
+        foreach (var m in SelectedProvider.EnabledModels)
+        {
+            SelectedProvider.ModelMaxThinking[m] =
+                ThinkingLevels.ToConfigString(ThinkingLevels.DetectMaxLevel(m));
+        }
+
+        ProviderSettingsService.Save(LlmSettings);
+        AppShell.Instance.NotifyDataChanged();
+        OnSelectedProviderChanged(SelectedProvider); // 重建 ModelItems, 读取新上限
     }
 
     // Agent 管理
