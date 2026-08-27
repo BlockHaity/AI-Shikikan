@@ -175,6 +175,14 @@
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>默认模型</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>修改可执行文件或参数模板后点保存</value></data>
+  <data name="Settings_Mcp" xml:space="preserve"><value>MCP 服务器</value></data>
+  <data name="Settings_McpHint" xml:space="preserve"><value>stdio 传输; 工具以 mcp_&lt;ID&gt;_&lt;工具名&gt; 暴露给 AI</value></data>
+  <data name="Settings_McpCommand" xml:space="preserve"><value>启动命令 (如 npx / uvx)</value></data>
+  <data name="Settings_McpArgs" xml:space="preserve"><value>参数 (空格分隔)</value></data>
+  <data name="Settings_McpEnv" xml:space="preserve"><value>环境变量 KEY=VALUE (每行一个)</value></data>
+  <data name="Settings_McpRefresh" xml:space="preserve"><value>重连全部</value></data>
+  <data name="Settings_McpNotConnected" xml:space="preserve"><value>未连接</value></data>
+  <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} 个工具</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>模型</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>会话列表</value></data>
   <data name="Session_New" xml:space="preserve"><value>新建会话</value></data>
