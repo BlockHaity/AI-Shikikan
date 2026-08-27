@@ -22,12 +22,16 @@
     <Grid>
         <local:PageBackground ThemeService="{Binding ThemeService}" />
 
-        <ScrollViewer>
-        <StackPanel Margin="32,24" Spacing="24">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Margin="32,24">
             <TextBlock Classes="DisplaySmall" Text="{x:Static res:Strings.Settings_Title}" />
 
+            <!-- 卡片瀑布流: 按可用宽度自适应列数, 每张卡片落入当前最矮列 -->
+            <local:WaterfallPanel MinColumnWidth="430" ColumnSpacing="18" RowSpacing="18"
+                                  Margin="0,20,0,0">
+
             <!-- 外观设置 -->
-            <theme:Card Classes="Outlined" MaxWidth="600">
+            <theme:Card Classes="Outlined">
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Appearance}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
@@ -85,7 +89,7 @@
             </theme:Card>
 
             <!-- LLM 提供商 -->
-            <theme:Card Classes="Outlined" MaxWidth="600">
+            <theme:Card Classes="Outlined">
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Providers}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
@@ -206,7 +210,7 @@
             </theme:Card>
 
             <!-- Agent 程序 -->
-            <theme:Card Classes="Outlined" MaxWidth="600">
+            <theme:Card Classes="Outlined">
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_Agents}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
@@ -254,7 +258,7 @@
             </theme:Card>
 
             <!-- 关于 -->
-            <theme:Card Classes="Outlined" MaxWidth="600">
+            <theme:Card Classes="Outlined">
                 <StackPanel>
                     <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Settings_About}" Margin="24,16,24,0" />
                     <StackPanel Margin="24,16" Spacing="16">
@@ -275,6 +279,7 @@
                     </StackPanel>
                 </StackPanel>
             </theme:Card>
+            </local:WaterfallPanel>
         </StackPanel>
         </ScrollViewer>
     </Grid>
