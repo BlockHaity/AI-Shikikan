@@ -167,8 +167,6 @@
                          PlaceholderText="{x:Static res:Strings.Chat_AssignTaskWatermark}"
                          AcceptsReturn="True" MinHeight="60" TextWrapping="Wrap"/>
                 <Grid ColumnDefinitions="*,Auto">
-                    <ToggleSwitch Content="{x:Static res:Strings.Chat_AsyncMode}" IsChecked="{Binding IsAsyncAssign}"
-                                  HorizontalAlignment="Left" VerticalAlignment="Center"/>
                     <Button Grid.Column="1" Classes="Filled"
                             Content="{x:Static res:Strings.Chat_StartAssign}"
                             Command="{Binding AssignCommand}" IsEnabled="{Binding !IsAssigning}"/>
@@ -186,9 +184,6 @@
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
                                 <TextBlock Text="{Binding Display}" FontSize="12"
                                            TextTrimming="CharacterEllipsis" MaxWidth="140"/>
-                                <Button Classes="Text" Content="✕" ToolTip.Tip="{x:Static res:Strings.Chat_Cancel}"
-                                        Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).CancelAssignmentCommand}"
-                                        CommandParameter="{Binding AssignmentId}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>

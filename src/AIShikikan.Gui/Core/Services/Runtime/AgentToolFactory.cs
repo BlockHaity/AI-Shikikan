@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
@@ -27,8 +28,6 @@ public static class AgentToolFactory
             new GlobTool(),
             new GrepTool(),
             new ListDirectoryTool(),
-            new AssignmentStatusTool(assignments),
-            new AssignmentCancelTool(assignments),
             new GitStatusTool(git),
             new GitMergeStepTool(git),
             new GitDropStepTool(git),
@@ -42,6 +41,7 @@ public static class AgentToolFactory
         }
 
         list.Add(new AssignTaskTool(agents, personas, templates, git, assignments));
+        list.Add(new SubagentGroupTool(agents, personas, templates, git, assignments));
         return list;
     }
 }
@@ -106,16 +106,6 @@ public static class AgentExecutor
             ? task
             : $"# 专家指令\n{personaText}\n\n# 任务\n{task}";
 
-    public static string ResolveMode(CliAgentDefinition def, string? mode)
-    {
-        if (string.IsNullOrWhiteSpace(mode))
-        {
-            return def.DefaultMode;
-        }
-
-        return string.Equals(mode, "async", StringComparison.OrdinalIgnoreCase) ? "async" : "sync";
-    }
-
     public static string ResolveWorkingDir(string? requested, string root)
     {
         if (!string.IsNullOrWhiteSpace(requested))
@@ -137,7 +127,6 @@ public static class AgentExecutor
         CliAgentDefinition agent,
         string task,
         string personaText,
-        string mode,
         string workDirAbs,
         JsonElement args,
         ToolContext ctx,
@@ -154,32 +143,23 @@ public static class AgentExecutor
         var assignment = assignments.Create(agent, task,
             templateId: GetOpt(args, "templateId"),
             personaId: GetOpt(args, "personaId"),
-            mode: mode,
             workingDirectory: workDirAbs);
 
         var progress = ctx.OnToolOutput is not null
             ? new Progress<string>(ctx.OnToolOutput)
             : null;
 
-        if (mode == "sync")
+        try
         {
-            try
-            {
-                var (completed, run) = await assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
-                var tail = completed.OutputTail ?? run.Output;
-                var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)";
-                return ToolResult.Ok($"{header}\n\n{Truncate(tail, 26000)}");
-            }
-            catch (Exception ex)
-            {
-                return ToolResult.Error($"[agent:{agent.Display}] 执行失败: {ex.Message}");
-            }
+            var (completed, run) = await assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
+            var tail = completed.OutputTail ?? run.Output;
+            var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)";
+            return ToolResult.Ok($"{header}\n\n{Truncate(tail, 26000)}");
         }
-
-        assignments.StartAsync(assignment, finalPrompt, progress);
-        return ToolResult.Ok(
-            $"[异步] 已提交给 {agent.Display}: assignmentId = \"{assignment.AssignmentId}\"。" +
-            "之后可调用 assignment_status 查询结果; 完成后注意检查 git 步骤。");
+        catch (Exception ex)
+        {
+            return ToolResult.Error($"[agent:{agent.Display}] 执行失败: {ex.Message}");
+        }
     }
 
     private static string? GetOpt(JsonElement args, string name)
@@ -224,7 +204,6 @@ public class AgentExecutionTool : ITool
             "task": { "type": "string", "description": "子任务描述" },
             "personaId": { "type": "string", "description": "专家persona ID(可选)" },
             "templateId": { "type": "string", "description": "专家模板ID(可选, 如 frontend-dev)" },
-            "mode": { "type": "string", "enum": ["sync", "async"], "description": "执行模式, 默认按Agent配置" },
             "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
           },
           "required": ["task"]
@@ -238,7 +217,6 @@ public class AgentExecutionTool : ITool
         var task = Get(args, "task");
         var personaId = Get(args, "personaId");
         var templateId = Get(args, "templateId");
-        var mode = Get(args, "mode") ?? _agent.DefaultMode;
         var workDir = Get(args, "workingDirectory");
 
         var personaText = AgentExecutor.ResolvePersonaText(
@@ -247,7 +225,6 @@ public class AgentExecutionTool : ITool
             false);
         return AgentExecutor.ExecuteAsync(
             _agent, task ?? string.Empty, personaText,
-            AgentExecutor.ResolveMode(_agent, mode),
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
             args, ctx, _assignments, ct);
     }
@@ -290,7 +267,6 @@ public class AssignTaskTool : ITool
             "agentId": { "type": "string", "description": "目标Agent ID(可选, 不填自动匹配)" },
             "templateId": { "type": "string", "description": "专家模板ID(可选, 如 frontend-dev)" },
             "personaId": { "type": "string", "description": "专家persona ID(可选)" },
-            "mode": { "type": "string", "enum": ["sync", "async"], "description": "执行模式" },
             "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
           },
           "required": ["task"]
@@ -305,7 +281,6 @@ public class AssignTaskTool : ITool
         var agentId = Get(args, "agentId");
         var templateId = Get(args, "templateId");
         var personaId = Get(args, "personaId");
-        var mode = Get(args, "mode");
         var workDir = Get(args, "workingDirectory");
 
         var agent = ResolveAgent(agentId, templateId, task ?? string.Empty);
@@ -321,7 +296,6 @@ public class AssignTaskTool : ITool
             false);
         return AgentExecutor.ExecuteAsync(
             agent, task ?? string.Empty, personaText,
-            AgentExecutor.ResolveMode(agent, mode),
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
             args, ctx, _assignments, ct);
     }
@@ -351,99 +325,137 @@ public class AssignTaskTool : ITool
             : null;
 }
 
-public class AssignmentStatusTool : ITool
+public class SubagentGroupTool : ITool
 {
+    private readonly IReadOnlyList<CliAgentDefinition> _agents;
+    private readonly IReadOnlyList<Persona> _personas;
+    private readonly IReadOnlyList<AgentTemplate> _templates;
+    private readonly GitStepService _git;
     private readonly AssignmentManager _assignments;
 
-    public AssignmentStatusTool(AssignmentManager assignments) => _assignments = assignments;
-
-    public string Name => "assignment_status";
-
-    public string Description => "查询子代理任务状态: 传 assignmentId 查单个, 不传列出全部。只读。";
-
-    public JsonElement Parameters { get; } = ToolSchema.Json("""
-        { "type": "object", "properties": { "assignmentId": { "type": "string" } } }
-        """);
-
-    public bool RequiresApproval => false;
-
-    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    public SubagentGroupTool(IReadOnlyList<CliAgentDefinition> agents,
+        IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
+        GitStepService git, AssignmentManager assignments)
     {
-        var id = args.TryGetProperty("assignmentId", out var a) && a.ValueKind == JsonValueKind.String
-            ? a.GetString() : null;
-
-        if (!string.IsNullOrWhiteSpace(id))
-        {
-            var assignment = _assignments.Get(id);
-            if (assignment is null)
-            {
-                return Task.FromResult(ToolResult.Error($"任务不存在: {id}"));
-            }
-
-            var sb = new StringBuilder();
-            sb.AppendLine($"任务: {assignment.AssignmentId} | {assignment.AgentName} | {assignment.Mode}");
-            sb.AppendLine($"状态: {assignment.Status}");
-            sb.AppendLine($"任务描述: {assignment.Task}");
-            if (assignment.StepId.Length > 0) sb.AppendLine($"git 步骤: {assignment.StepId}");
-            if (assignment.ExitCode is { } code) sb.AppendLine($"退出码: {code}");
-            if (!string.IsNullOrEmpty(assignment.Error)) sb.AppendLine($"错误: {assignment.Error}");
-            if (!string.IsNullOrEmpty(assignment.OutputTail))
-            {
-                sb.AppendLine("--- 输出 ---");
-                sb.AppendLine(assignment.OutputTail);
-            }
-
-            return Task.FromResult(ToolResult.Ok(sb.ToString()));
-        }
-
-        var all = _assignments.All.Take(20).ToList();
-        if (all.Count == 0)
-        {
-            return Task.FromResult(ToolResult.Ok("(暂无分派任务)"));
-        }
-
-        var sbAll = new StringBuilder("最近分派任务:\n");
-        foreach (var item in all)
-        {
-            sbAll.AppendLine($"{item.AssignmentId} {item.Status,-10} [{item.AgentName}] {item.ShortTask}");
-        }
-
-        return Task.FromResult(ToolResult.Ok(sbAll.ToString()));
+        _agents = agents;
+        _personas = personas;
+        _templates = templates;
+        _git = git;
+        _assignments = assignments;
     }
-}
 
-public class AssignmentCancelTool : ITool
-{
-    private readonly AssignmentManager _assignments;
+    public string Name => "run_subagents";
 
-    public AssignmentCancelTool(AssignmentManager assignments) => _assignments = assignments;
-
-    public string Name => "assignment_cancel";
-
-    public string Description => "取消进行中的子代理任务(终止后台进程)。";
+    public string Description => "并发调用多个子Agent, 各自执行指定的子任务, 等全部完成后统一返回每个子Agent的结果。" +
+        "适合把一个大任务拆成多个相互独立的子任务并行处理。建议每个子任务只分配给一个 Agent。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
           "type": "object",
-          "properties": { "assignmentId": { "type": "string" } },
-          "required": ["assignmentId"]
+          "properties": {
+            "subagents": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "agentId": { "type": "string", "description": "目标Agent ID(可选, 不填自动匹配)" },
+                  "task": { "type": "string", "description": "该子Agent要执行的任务" },
+                  "personaId": { "type": "string", "description": "专家persona ID(可选)" },
+                  "templateId": { "type": "string", "description": "专家模板ID(可选)" },
+                  "workingDirectory": { "type": "string", "description": "运行目录(可选)" }
+                },
+                "required": ["task"]
+              }
+            }
+          },
+          "required": ["subagents"]
         }
         """);
 
     public bool RequiresApproval => false;
 
-    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var id = args.TryGetProperty("assignmentId", out var a) && a.ValueKind == JsonValueKind.String
-            ? a.GetString() : null;
-        if (string.IsNullOrWhiteSpace(id))
+        if (!args.TryGetProperty("subagents", out var items) || items.ValueKind != JsonValueKind.Array)
         {
-            return Task.FromResult(ToolResult.Error("缺少参数: assignmentId"));
+            return ToolResult.Error("缺少参数: subagents");
         }
 
-        _assignments.Cancel(id);
-        return Task.FromResult(ToolResult.Ok($"已请求取消任务: {id}"));
+        var subItems = items.EnumerateArray().ToList();
+        if (subItems.Count == 0)
+        {
+            return ToolResult.Error("subagents 为空");
+        }
+
+        var results = await Task.WhenAll(subItems.Select(el => RunOneAsync(el, ctx, ct)));
+        return ToolResult.Ok(string.Join("\n\n---\n\n", results));
     }
+
+    private async Task<string> RunOneAsync(JsonElement el, ToolContext ctx, CancellationToken ct)
+    {
+        var task = Get(el, "task");
+        var agentId = Get(el, "agentId");
+        var templateId = Get(el, "templateId");
+        var personaId = Get(el, "personaId");
+        var workDir = Get(el, "workingDirectory");
+
+        var agent = ResolveAgent(agentId, templateId, task ?? string.Empty);
+        if (agent is null)
+        {
+            return $"[agent:{agentId ?? "?"}] 失败: 找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}";
+        }
+
+        try
+        {
+            var personaText = AgentExecutor.ResolvePersonaText(
+                agent, _personas, _templates, personaId, templateId,
+                CommanderRuntime.Instance?.CurrentPersonaText, false);
+
+            var args = JsonSerializer.SerializeToElement(new JsonObject
+            {
+                ["templateId"] = templateId,
+                ["personaId"] = personaId
+            });
+
+            var result = await AgentExecutor.ExecuteAsync(
+                agent, task ?? string.Empty, personaText,
+                AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
+                args, ctx, _assignments, ct);
+
+            return result.Content;
+        }
+        catch (Exception ex)
+        {
+            return $"[agent:{agent.Id}] 执行失败: {ex.Message}";
+        }
+    }
+
+    private CliAgentDefinition? ResolveAgent(string? agentId, string? templateId, string task)
+    {
+        if (!string.IsNullOrWhiteSpace(agentId))
+        {
+            return AgentConfigService.Find(agentId, _agents);
+        }
+
+        if (!string.IsNullOrWhiteSpace(templateId))
+        {
+            var template = AgentTemplateService.Find(templateId, _templates);
+            if (template?.DefaultAgentId is { Length: > 0 })
+            {
+                return AgentConfigService.Find(template.DefaultAgentId, _agents);
+            }
+        }
+
+        var tk = task.Trim();
+        return _agents.FirstOrDefault(a =>
+            tk.Contains(a.Id, StringComparison.OrdinalIgnoreCase))
+            ?? _agents.FirstOrDefault();
+    }
+
+    private static string? Get(JsonElement args, string name)
+        => args.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString()
+            : null;
 }
 
 public class PersonaListTool : ITool

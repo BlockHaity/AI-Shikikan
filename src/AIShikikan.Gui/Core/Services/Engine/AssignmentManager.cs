@@ -24,7 +24,6 @@ public class Assignment
     public string Task { get; set; } = string.Empty;
     public string? TemplateId { get; set; }
     public string? PersonaId { get; set; }
-    public string Mode { get; set; } = "sync";
     public string StepId { get; set; } = string.Empty;
     public string? WorkingDirectory { get; set; }
     public SubagentStatus Status { get; set; } = SubagentStatus.Queued;
@@ -35,7 +34,7 @@ public class Assignment
     public DateTime? FinishedAt { get; set; }
 
     [JsonIgnore]
-    public string Display => $"[{AgentName}] {ShortTask} [{Mode}] {Status}";
+    public string Display => $"[{AgentName}] {ShortTask} {Status}";
 
     [JsonIgnore]
     public string ShortTask => Task.Length <= 40 ? Task : Task[..40] + "...";
@@ -45,7 +44,6 @@ public class Assignment
 public sealed class AssignmentManager
 {
     private readonly Dictionary<string, Assignment> _assignments = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, CancellationTokenSource> _cancellations = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
     public AssignmentManager(GitStepService git)
@@ -90,7 +88,7 @@ public sealed class AssignmentManager
 
     public Assignment Create(CliAgentDefinition agent, string task,
         string? templateId = null, string? personaId = null,
-        string mode = "sync", string? workingDirectory = null)
+        string? workingDirectory = null)
     {
         var assignment = new Assignment
         {
@@ -99,7 +97,6 @@ public sealed class AssignmentManager
             Task = task,
             TemplateId = templateId,
             PersonaId = personaId,
-            Mode = mode,
             WorkingDirectory = workingDirectory ?? string.Empty
         };
 
@@ -157,107 +154,6 @@ public sealed class AssignmentManager
         AssignmentChanged?.Invoke(assignment);
 
         return (assignment, result);
-    }
-
-    /// <summary>异步模式: 立即返回, 后台线程执行。</summary>
-    public Assignment StartAsync(Assignment assignment, string finalPrompt,
-        IProgress<string>? progressOutput)
-    {
-        var cts = new CancellationTokenSource();
-        lock (_lock)
-        {
-            _cancellations[assignment.AssignmentId] = cts;
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                var stepRecord = null as GitStepRecord;
-                try
-                {
-                    assignment.Status = SubagentStatus.Running;
-                    var step = Git.BeginStep($"async-{assignment.AgentId}");
-                    assignment.StepId = step.StepId;
-                    Git.MarkRunning(step.StepId);
-                    stepRecord = step;
-                }
-                catch (Exception ex)
-                {
-                    assignment.Status = SubagentStatus.Failed;
-                    assignment.Error = ex.Message;
-                    assignment.FinishedAt = DateTime.Now;
-                    Save(assignment);
-                    AssignmentChanged?.Invoke(assignment);
-                    return;
-                }
-
-                var result = await RunCliAsync(assignment, finalPrompt, progressOutput, cts.Token);
-
-                if (stepRecord is not null && assignment.Status != SubagentStatus.Cancelled)
-                {
-                    Git.MarkCompleted(stepRecord.StepId);
-                }
-
-                assignment.ExitCode = result.ExitCode;
-                assignment.OutputTail = TailOf(result.Output);
-                assignment.Status = result.TimedOut
-                    ? SubagentStatus.TimedOut
-                    : result.Succeeded
-                        ? SubagentStatus.Completed
-                        : SubagentStatus.Failed;
-                assignment.FinishedAt = DateTime.Now;
-                Save(assignment);
-                AssignmentChanged?.Invoke(assignment);
-            }
-            catch (OperationCanceledException)
-            {
-                assignment.Status = SubagentStatus.Cancelled;
-                assignment.FinishedAt = DateTime.Now;
-                Save(assignment);
-                AssignmentChanged?.Invoke(assignment);
-            }
-            catch (Exception ex)
-            {
-                assignment.Status = SubagentStatus.Failed;
-                assignment.Error = ex.Message;
-                assignment.FinishedAt = DateTime.Now;
-                Save(assignment);
-                AssignmentChanged?.Invoke(assignment);
-            }
-            finally
-            {
-                lock (_lock)
-                {
-                    _cancellations.Remove(assignment.AssignmentId);
-                }
-            }
-        });
-
-        return assignment;
-    }
-
-    public void Cancel(string assignmentId)
-    {
-        Assignment? a = Get(assignmentId);
-        if (a is null || a.Status is SubagentStatus.Completed or SubagentStatus.Failed
-            or SubagentStatus.Cancelled or SubagentStatus.TimedOut)
-        {
-            return;
-        }
-
-        lock (_lock)
-        {
-            if (_cancellations.TryGetValue(assignmentId, out var cts))
-            {
-                cts.Cancel();
-            }
-        }
-
-        a.Status = SubagentStatus.Cancelled;
-        a.FinishedAt = DateTime.Now;
-        Save(a);
-        AssignmentChanged?.Invoke(a);
     }
 
     private async Task<CliAgentRunResult> RunCliAsync(
