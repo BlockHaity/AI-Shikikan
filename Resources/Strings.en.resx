@@ -175,6 +175,14 @@
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>Default Model</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
+  <data name="Settings_Mcp" xml:space="preserve"><value>MCP Servers</value></data>
+  <data name="Settings_McpHint" xml:space="preserve"><value>stdio transport; tools exposed to AI as mcp_&lt;ID&gt;_&lt;tool&gt;</value></data>
+  <data name="Settings_McpCommand" xml:space="preserve"><value>Command (e.g. npx / uvx)</value></data>
+  <data name="Settings_McpArgs" xml:space="preserve"><value>Arguments (space-separated)</value></data>
+  <data name="Settings_McpEnv" xml:space="preserve"><value>Env KEY=VALUE (one per line)</value></data>
+  <data name="Settings_McpRefresh" xml:space="preserve"><value>Reconnect all</value></data>
+  <data name="Settings_McpNotConnected" xml:space="preserve"><value>Not connected</value></data>
+  <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} tools</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>Sessions</value></data>
   <data name="Session_New" xml:space="preserve"><value>New Session</value></data>

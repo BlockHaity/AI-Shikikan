@@ -169,6 +169,14 @@ public static class Strings
     public static string Settings_ProviderDefaultModel => Get(nameof(Settings_ProviderDefaultModel));
     public static string Settings_AgentSave => Get(nameof(Settings_AgentSave));
     public static string Settings_AgentEditHint => Get(nameof(Settings_AgentEditHint));
+    public static string Settings_Mcp => Get(nameof(Settings_Mcp));
+    public static string Settings_McpHint => Get(nameof(Settings_McpHint));
+    public static string Settings_McpCommand => Get(nameof(Settings_McpCommand));
+    public static string Settings_McpArgs => Get(nameof(Settings_McpArgs));
+    public static string Settings_McpEnv => Get(nameof(Settings_McpEnv));
+    public static string Settings_McpRefresh => Get(nameof(Settings_McpRefresh));
+    public static string Settings_McpNotConnected => Get(nameof(Settings_McpNotConnected));
+    public static string Settings_McpToolCount => Get(nameof(Settings_McpToolCount));
     public static string Chat_Model => Get(nameof(Chat_Model));
     public static string Session_Panel_Title => Get(nameof(Session_Panel_Title));
     public static string Session_New => Get(nameof(Session_New));
