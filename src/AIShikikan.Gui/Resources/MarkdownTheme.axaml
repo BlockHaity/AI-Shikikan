@@ -1,0 +1,183 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:md="clr-namespace:Markdown.Avalonia;assembly=Markdown.Avalonia"
+        xmlns:mdc="clr-namespace:Markdown.Avalonia.Controls;assembly=Markdown.Avalonia"
+        xmlns:ctxt="clr-namespace:ColorTextBlock.Avalonia;assembly=ColorTextBlock.Avalonia">
+
+    <!-- 覆盖 Markdown.Avalonia 回退到的 MarkdownStyleStandard(其含大量硬编码颜色:
+         奇数行 White 底、代码块 #EEEEEE/DarkBlue、Note #FAFAFA 等),
+         全部改用应用 M3 动态令牌, 使其跟随明暗主题。
+         后加载的样式优先级更高, 可安全压过内置 Standard 规则。 -->
+
+    <Style Selector=":is(md|MarkdownScrollViewer)">
+        <Setter Property="SelectionBrush" Value="{DynamicResource Primary}"/>
+    </Style>
+
+    <!-- 基础文本 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Margin" Value="0,4"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+    </Style>
+
+    <!-- 标题 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading1">
+        <Setter Property="FontSize" Value="24"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontWeight" Value="DemiBold"/>
+        <Setter Property="Margin" Value="0,8"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading2">
+        <Setter Property="FontSize" Value="21"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontWeight" Value="DemiBold"/>
+        <Setter Property="Margin" Value="0,8"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading3">
+        <Setter Property="FontSize" Value="18"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,6"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading4">
+        <Setter Property="FontSize" Value="16"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,6"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading5">
+        <Setter Property="FontSize" Value="15"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,4"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Heading6">
+        <Setter Property="FontSize" Value="14"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Setter Property="Margin" Value="0,4"/>
+    </Style>
+
+    <!-- 链接 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CHyperlink">
+        <Setter Property="IsUnderline" Value="true"/>
+        <Setter Property="Foreground" Value="{DynamicResource Primary}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CHyperlink:pointerover">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
+    </Style>
+
+    <!-- 表格: 统一不透明单元格底色(SurfaceContainerLow), 无斑马纹;
+         Grid.Table > Border 覆盖所有单元格(表头/奇偶/首末行), 保证无遗漏。 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.Table">
+        <Setter Property="Margin" Value="0,4"/>
+        <Setter Property="BorderThickness" Value="0,0,1,1"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="ClipToBounds" Value="True"/>
+        <Setter Property="Background" Value="Transparent"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Grid.Table">
+        <Setter Property="mdc:AutoScaleColumnDefinitions.IsEnabled" Value="True"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Grid.Table > Border">
+        <Setter Property="Margin" Value="0"/>
+        <Setter Property="BorderThickness" Value="1,1,0,0"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+        <Setter Property="Padding" Value="10,6"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <!-- 单元格内文本统一用 OnSurface, 避免 Standard 的黑色标题/系统白色正文混杂 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Grid.Table TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Grid.Table ctxt|CTextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+    </Style>
+    <!-- 表头加强底色 + 加粗 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.TableHeader">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.TableHeader TextBlock">
+        <Setter Property="FontWeight" Value="DemiBold"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.TableHeader ctxt|CTextBlock">
+        <Setter Property="FontWeight" Value="DemiBold"/>
+    </Style>
+    <!-- 去除斑马纹: 奇偶/首末/尾行与普通单元格同色 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.OddTableRow">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.EvenTableRow">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.FirstTableRow">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.LastTableRow">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.TableFooter">
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+
+    <!-- 代码块 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.CodeBlock">
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Margin" Value="0,4"/>
+        <Setter Property="Padding" Value="10,8"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer TextBlock.CodeBlock">
+        <Setter Property="FontFamily" Value="menlo,monaco,consolas,droid sans mono,inconsolata,courier new,monospace,dejavu sans mono"/>
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+    </Style>
+
+    <!-- 行内代码 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CCode">
+        <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+    </Style>
+
+    <!-- 未识别容器兜底: 标准 Default 主题此处是红色边框 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.NoContainer">
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="BorderBrush" Value="Transparent"/>
+    </Style>
+
+    <!-- 引用块 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.Blockquote">
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+        <Setter Property="BorderThickness" Value="3,0,0,0"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer StackPanel.Blockquote">
+        <Setter Property="Margin" Value="10,5"/>
+    </Style>
+
+    <!-- 提示块(Note 等) -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Border.Note">
+        <Setter Property="Margin" Value="0,4"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="10,8"/>
+        <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.Note">
+        <Setter Property="Margin" Value="0"/>
+    </Style>
+
+    <!-- 列表 -->
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer Grid.List">
+        <Setter Property="Margin" Value="24,0,0,0"/>
+    </Style>
+    <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CTextBlock.ListMarker">
+        <Setter Property="Margin" Value="0,4,5,4"/>
+    </Style>
+</Styles>
