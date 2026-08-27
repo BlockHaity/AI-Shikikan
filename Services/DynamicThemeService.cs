@@ -8,6 +8,9 @@ namespace AIShikikan.Gui.Services;
 
 public class DynamicThemeService
 {
+    /// <summary>动态调色板(取色/重置)应用后触发, 供图表等自绘控件刷新主题配色。</summary>
+    public static event EventHandler? PaletteApplied;
+
     public void ApplyPalette(ExtractedPalette? palette)
     {
         if (Application.Current is not { } app) return;
@@ -26,6 +29,8 @@ public class DynamicThemeService
         SetResource(app, "Surface", palette.Surface);
         SetResource(app, "OnSurface", palette.OnSurface);
         SetResource(app, "SurfaceVariant", palette.SurfaceVariant);
+
+        PaletteApplied?.Invoke(this, EventArgs.Empty);
     }
 
     public void ResetToDefault()
@@ -37,6 +42,8 @@ public class DynamicThemeService
         {
             app.Resources.Remove(key);
         }
+
+        PaletteApplied?.Invoke(this, EventArgs.Empty);
     }
 
     private static void SetResource(Application app, string key, uint argb)

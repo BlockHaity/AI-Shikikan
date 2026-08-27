@@ -149,8 +149,41 @@
                                 </StackPanel>
                             </Grid>
 
-                            <ScottPlot:AvaPlot x:Name="UsageChart" Height="300"
-                                               IsVisible="{Binding HasChartData}" />
+                            <Panel IsVisible="{Binding HasChartData}">
+                                <ScottPlot:AvaPlot x:Name="UsageChart" Height="300"
+                                                   PointerMoved="OnChartPointerMoved"
+                                                   PointerExited="OnChartPointerExited"/>
+                                <!-- 悬浮详情覆盖层: Canvas 不参与布局测量, 不影响卡片尺寸 -->
+                                <Canvas x:Name="ChartTipLayer" IsHitTestVisible="False">
+                                    <Border x:Name="ChartTip" IsVisible="False" Padding="12,9"
+                                            CornerRadius="8">
+                                        <TextBlock x:Name="ChartTipText" FontSize="12"
+                                                   TextWrapping="NoWrap"/>
+                                    </Border>
+                                </Canvas>
+                            </Panel>
+
+                            <!-- 自绘图例: 底色随卡片主题, 条目含 总量/命中/未命中 说明 -->
+                            <ItemsControl ItemsSource="{Binding LegendItems}"
+                                          IsVisible="{Binding HasChartData}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="20"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ChartLegendItemVm">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <Border Width="10" Height="10" CornerRadius="2"
+                                                    Background="{Binding Swatch}" VerticalAlignment="Center"/>
+                                            <TextBlock Classes="BodyMedium" Text="{Binding Name}"/>
+                                            <TextBlock Classes="BodySmall" Text="{Binding Note}"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
                                        Foreground="{DynamicResource OnSurfaceVariant}"
                                        IsVisible="{Binding !HasChartData}" HorizontalAlignment="Center"
@@ -158,6 +191,88 @@
                         </StackPanel>
                     </theme:Card>
                 </Grid>
+
+                <!-- 活跃热力图: 近 26 周 -->
+                <theme:Card Classes="Elevated">
+                    <StackPanel Margin="24" Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_ActivityTitle}"/>
+                            <TextBlock Grid.Column="1" Classes="BodySmall" Text="{Binding HeatRangeText}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="4"
+                              IsVisible="{Binding UsageSnapshot.DailyStats.Count, Converter={StaticResource ModelListVisibilityConverter}}">
+                            <!-- 星期纵栏(与 7 行对齐) -->
+                            <ItemsControl ItemsSource="{Binding HeatGutter}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Width="18" Height="15" Text="{Binding}" FontSize="10"
+                                                   VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <!-- 周列网格: 每列周一→周日, 末周含未来日期透明占位 -->
+                            <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding HeatmapWeeks}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="3"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:HeatmapWeekVm">
+                                            <ItemsControl ItemsSource="{Binding Days}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Vertical" Spacing="3"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:HeatmapCellVm">
+                                                        <Border Width="15" Height="15" CornerRadius="3"
+                                                                Background="{Binding Brush}"
+                                                                ToolTip.Tip="{Binding Tip}"/>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- 图例: 少 → 多 -->
+                        <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_HeatLess}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                            <ItemsControl ItemsSource="{Binding HeatLegend}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="3"/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:HeatmapLegendVm">
+                                        <Border Width="13" Height="13" CornerRadius="3"
+                                                Background="{Binding Brush}"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_HeatMore}"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                        </StackPanel>
+
+                        <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageEmpty}"
+                                   Foreground="{DynamicResource OnSurfaceVariant}" HorizontalAlignment="Center"
+                                   IsVisible="{Binding UsageSnapshot.DailyStats.Count, Converter={StaticResource IntEqualsConverter}, ConverterParameter=0}"/>
+                    </StackPanel>
+                </theme:Card>
             </StackPanel>
         </ScrollViewer>
     </Grid>
