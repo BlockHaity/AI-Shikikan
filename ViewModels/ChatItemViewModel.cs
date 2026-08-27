@@ -93,6 +93,7 @@ public partial class SegmentItemViewModel : ViewModelBase
                 vm.ToolResult = t.Result;
                 vm.IsToolDone = t.IsDone;
                 vm.ToolStatus = t.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                vm.StepId = t.StepId;
                 break;
         }
 
@@ -135,6 +136,86 @@ public partial class SegmentItemViewModel : ViewModelBase
     private bool _isToolDone;
 
     public string ToolName { get; set; } = string.Empty;
+
+    /// <summary>关联的 git 检查点步骤 ID(非空时展示回滚按钮)。</summary>
+    [ObservableProperty]
+    private string? _stepId;
+
+    /// <summary>回滚二次确认状态。</summary>
+    [ObservableProperty]
+    private bool _isRollbackConfirming;
+
+    /// <summary>已成功回滚(按钮隐藏, 显示状态)。</summary>
+    [ObservableProperty]
+    private bool _isRolledBack;
+
+    partial void OnStepIdChanged(string? value) => OnPropertyChanged(nameof(CanRollback));
+    partial void OnIsToolDoneChanged(bool value) => OnPropertyChanged(nameof(CanRollback));
+
+    /// <summary>回滚失败信息(空表示无错误)。</summary>
+    [ObservableProperty]
+    private string? _rollbackError;
+
+    /// <summary>是否显示回滚按钮: 有关联检查点、未回滚过、工具已完成。</summary>
+    public bool CanRollback => !string.IsNullOrEmpty(StepId) && !IsRolledBack && IsToolDone;
+
+    /// <summary>回滚按钮文案: 二次确认阶段变为"确认回滚?"。</summary>
+    public string RollbackText => IsRollbackConfirming ? "确认回滚?" : "回滚此检查点";
+
+    /// <summary>回滚区提示文本: 已回滚 / 错误信息。</summary>
+    public string? RollbackNote => IsRolledBack ? "已回滚到检查点之前" : RollbackError;
+
+    public bool HasRollbackNote => !string.IsNullOrEmpty(RollbackNote);
+
+    /// <summary>回滚动作: 第一次点击进入确认态, 再次点击执行。</summary>
+    [RelayCommand]
+    private void Rollback()
+    {
+        if (!IsRollbackConfirming)
+        {
+            IsRollbackConfirming = true;
+            return;
+        }
+
+        IsRollbackConfirming = false;
+        if (string.IsNullOrEmpty(StepId))
+        {
+            return;
+        }
+
+        try
+        {
+            var git = AppShell.Instance.Runtime.Git;
+            var result = git.RollbackStep(StepId);
+            if (result.Succeeded)
+            {
+                IsRolledBack = true;
+                AppShell.Instance.NotifyDataChanged(); // Git 面板等刷新
+            }
+            else
+            {
+                RollbackError = $"回滚失败: {result.Stderr.Trim()}";
+            }
+        }
+        catch (Exception ex)
+        {
+            // 常见: 工作区有未提交变更 / 步骤已回滚
+            RollbackError = ex.Message.StartsWith("回滚失败") ? ex.Message : $"回滚失败: {ex.Message}";
+        }
+    }
+
+    partial void OnIsRollbackConfirmingChanged(bool value) => OnPropertyChanged(nameof(RollbackText));
+    partial void OnIsRolledBackChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(RollbackNote));
+        OnPropertyChanged(nameof(HasRollbackNote));
+    }
+    partial void OnRollbackErrorChanged(string? value)
+    {
+        OnPropertyChanged(nameof(RollbackNote));
+        OnPropertyChanged(nameof(HasRollbackNote));
+    }
 
     public string CardTitle => Kind == MessageSegmentKind.Thinking
         ? "思考过程"
