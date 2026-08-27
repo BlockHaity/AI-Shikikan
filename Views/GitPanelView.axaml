@@ -45,8 +45,22 @@
                        Foreground="{DynamicResource OnSurfaceVariant}"
                        TextTrimming="CharacterEllipsis"/>
 
-            <TextBlock Text="{x:Static res:Strings.GitPanel_NotRepo}" FontSize="12" Opacity="0.7"
-                       IsVisible="{Binding !IsRepoAvailable}"/>
+            <!-- 无仓库: 仅提供选择文件夹与初始化仓库 -->
+            <StackPanel IsVisible="{Binding !IsRepoAvailable}" Spacing="10">
+                <TextBlock Text="{x:Static res:Strings.GitPanel_NotRepo}" FontSize="12" Opacity="0.7"
+                           TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding RootText}" FontSize="11" Opacity="0.6"
+                           FontFamily="{DynamicResource MonoThemeFontFamily}"
+                           TextTrimming="CharacterEllipsis"
+                           IsVisible="{Binding HasSelectedFolder}"/>
+                <Button Classes="Filled" HorizontalAlignment="Stretch"
+                        Content="{x:Static res:Strings.GitPanel_SelectFolder}"
+                        Command="{Binding SelectFolderCommand}"
+                        ToolTip.Tip="{x:Static res:Strings.GitPanel_SelectFolderTip}"/>
+                <Button Classes="Outlined" HorizontalAlignment="Stretch"
+                        Content="{x:Static res:Strings.GitPanel_InitRepo}"
+                        Command="{Binding InitializeRepoCommand}"/>
+            </StackPanel>
 
             <StackPanel IsVisible="{Binding IsRepoAvailable}" Spacing="10">
 

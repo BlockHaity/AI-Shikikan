@@ -25,6 +25,14 @@ public partial class GitPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRepoAvailable;
 
+    /// <summary>当前 Git 工作目录显示文本。</summary>
+    [ObservableProperty]
+    private string _rootText = string.Empty;
+
+    /// <summary>是否已通过面板显式选择过文件夹。</summary>
+    [ObservableProperty]
+    private bool _hasSelectedFolder;
+
     [ObservableProperty]
     private string _commitMessage = string.Empty;
 
@@ -55,6 +63,7 @@ public partial class GitPanelViewModel : ViewModelBase
     public void Refresh()
     {
         var git = _runtime.Git;
+        RootText = git.RepositoryRoot;
         IsRepoAvailable = git.IsRepoAvailable;
         if (!IsRepoAvailable)
         {
@@ -73,6 +82,59 @@ public partial class GitPanelViewModel : ViewModelBase
         RefreshSteps();
         RefreshBranches();
         RefreshGraph();
+    }
+
+    /// <summary>视图注入的文件夹选择器(UI 层), 返回 null 表示取消。</summary>
+    public Func<Task<string?>>? FolderPicker { get; set; }
+
+    /// <summary>选择工作目录: 选定后立即刷新, 若为仓库则展开全部功能。</summary>
+    [RelayCommand]
+    private async Task SelectFolderAsync()
+    {
+        if (FolderPicker is null) return;
+        var path = await FolderPicker();
+        if (string.IsNullOrWhiteSpace(path)) return;
+
+        SetWorkingDirectory(path);
+    }
+
+    /// <summary>初始化 Git 仓库: 已选目录则直接在该目录 init, 否则先弹出选择器。</summary>
+    [RelayCommand]
+    private async Task InitializeRepoAsync()
+    {
+        string path;
+        if (HasSelectedFolder)
+        {
+            path = _runtime.Git.RepositoryRoot;
+        }
+        else
+        {
+            if (FolderPicker is null) return;
+            var picked = await FolderPicker();
+            if (string.IsNullOrWhiteSpace(picked)) return;
+            SetWorkingDirectory(picked);
+            path = _runtime.Git.RepositoryRoot;
+        }
+
+        SetResult(_runtime.Git.Init());
+        ResultText = $"{ResultText}\n({path})".TrimStart('\n');
+        Refresh();
+    }
+
+    private void SetWorkingDirectory(string path)
+    {
+        try
+        {
+            _runtime.Git.SetRoot(path);
+            HasSelectedFolder = true;
+            ResultText = "";
+        }
+        catch (Exception ex)
+        {
+            ResultText = $"✘ {ex.Message}";
+        }
+
+        Refresh();
     }
 
     private void RefreshStatus()
