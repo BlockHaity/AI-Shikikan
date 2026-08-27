@@ -8,6 +8,7 @@ using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
+using AIShikikan.Gui.Resources;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -25,7 +26,6 @@ public partial class ChatPageViewModel : ViewModelBase
 {
     private readonly ChatService _chatService;
     private readonly CommanderRuntime _runtime;
-    private readonly StringBuilder _toolLog = new();
     private string? _currentSessionId;
 
     public ThemeService ThemeService { get; }
@@ -42,8 +42,9 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private ChatSession? _currentSession;
 
+    /// <summary>显示层消息项(会话切换/Append 时更新)。</summary>
     [ObservableProperty]
-    private IReadOnlyList<ChatMessage> _messages = [];
+    private ObservableRange<ChatItemViewModel> _messages = [];
 
     [ObservableProperty]
     private string _inputText = string.Empty;
@@ -67,13 +68,27 @@ public partial class ChatPageViewModel : ViewModelBase
     private string _selectedModel = string.Empty;
 
     [ObservableProperty]
-    private int _thinkingDepth = 1;
+    private IReadOnlyList<ThinkingLevel> _thinkingOptions = [ThinkingLevel.Auto, ThinkingLevel.Low, ThinkingLevel.Medium, ThinkingLevel.High];
+
+    [ObservableProperty]
+    private ThinkingLevel _selectedThinking = ThinkingLevel.Auto;
 
     [ObservableProperty]
     private string _workDir = string.Empty;
 
     [ObservableProperty]
     private bool _isPlanMode;
+
+    /// <summary>当前模式文案(Plan / Build), 用于单按钮显示。</summary>
+    public string ModeLabel => IsPlanMode ? Strings.Chat_ModePlan : Strings.Chat_ModeBuild;
+
+    public string ModeTip => IsPlanMode ? Strings.Chat_ModePlanTip : Strings.Chat_ModeBuildTip;
+
+    partial void OnIsPlanModeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ModeLabel));
+        OnPropertyChanged(nameof(ModeTip));
+    }
 
     public AgentPanelViewModel AgentPanel { get; }
 
@@ -96,7 +111,7 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime = AppShell.Instance.Runtime;
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
-        Messages = CurrentSession?.Messages.ToList() ?? [];
+        RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
 
         AgentPanel = new AgentPanelViewModel();
@@ -109,14 +124,15 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.CurrentSessionChanged += (_, session) =>
         {
             CurrentSession = session;
-            Messages = session?.Messages.ToList() ?? [];
+            RefreshMessages();
             _currentSessionId = session?.Id;
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
         _chatService.MessageAdded += (_, _) =>
         {
-            Messages = CurrentSession?.Messages.ToList() ?? [];
+            if (IsSending) return; // 流式期间由 RespondAsync 维护, 避免重建列表
+            RefreshMessages();
             Sessions = _chatService.Sessions;
         };
 
@@ -129,6 +145,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         RefreshActiveModel();
         RefreshProviders();
+        RefreshThinkingOptions();
     }
 
     partial void OnSelectedModelChanged(string value)
@@ -140,6 +157,7 @@ public partial class ChatPageViewModel : ViewModelBase
         settings.ActiveModel = value;
         AIShikikan.Core.Services.Llm.ProviderSettingsService.Save(settings);
         RefreshActiveModel();
+        RefreshThinkingOptions();
     }
 
     partial void OnPanelModeChanged(RightPanelMode value)
@@ -156,6 +174,42 @@ public partial class ChatPageViewModel : ViewModelBase
     private void RefreshActiveModel()
     {
         ActiveModelText = $"{_runtime.Llm.ResolveModel()} @ {_runtime.Llm.GetProvider()?.Id ?? "-"}";
+    }
+
+    /// <summary>思考按钮文案: 当前思考档位。</summary>
+    public string SelectedThinkingText =>
+        $"{Strings.Chat_Thinking}: {ThinkingLevels.DisplayName(SelectedThinking)}";
+
+    partial void OnSelectedThinkingChanged(ThinkingLevel value)
+    {
+        OnPropertyChanged(nameof(SelectedThinkingText));
+    }
+
+    /// <summary>当前激活模型的思考等级上限。</summary>
+    private ThinkingLevel CurrentMaxThinking()
+    {
+        var provider = _runtime.Llm.GetProvider();
+        var model = _runtime.Llm.ResolveModel();
+        return provider?.GetMaxThinking(model) ?? ThinkingLevel.Max;
+    }
+
+    /// <summary>按当前模型上限重建思考菜单(自动 + 不超过上限的档位), 并夹紧当前选中值。</summary>
+    private void RefreshThinkingOptions()
+    {
+        var cap = CurrentMaxThinking();
+        var options = new List<ThinkingLevel> { ThinkingLevel.Auto };
+        for (var l = ThinkingLevel.Low; l <= cap; l++)
+        {
+            options.Add(l);
+        }
+
+        ThinkingOptions = options;
+        if (SelectedThinking > cap)
+        {
+            SelectedThinking = cap;
+        }
+
+        OnPropertyChanged(nameof(SelectedThinkingText));
     }
 
     private void RefreshProviders()
@@ -216,6 +270,7 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         RefreshModels();
+        RefreshThinkingOptions();
     }
 
     private void OnShellDataChanged()
@@ -241,10 +296,19 @@ public partial class ChatPageViewModel : ViewModelBase
             usage.Usage.CachedInputTokens);
     }
 
+    /// <summary>从当前会话消息重建显示层消息列表。</summary>
+    private void RefreshMessages()
+    {
+        var items = CurrentSession?.Messages.Select(ChatItemViewModel.From)
+                   ?? System.Linq.Enumerable.Empty<ChatItemViewModel>();
+        Messages = new ObservableRange<ChatItemViewModel>(items);
+    }
+
     private void RefreshShellDataChanged()
     {
         RefreshActiveModel();
         RefreshProviders();
+        RefreshThinkingOptions();
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
         StatusPanel.Refresh();
@@ -304,7 +368,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         _chatService.CreateSession();
         Sessions = _chatService.Sessions;
-        Messages = CurrentSession?.Messages.ToList() ?? [];
+        RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -315,7 +379,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         _chatService.DeleteSession(sessionId);
         Sessions = _chatService.Sessions;
-        Messages = CurrentSession?.Messages.ToList() ?? [];
+        RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -332,7 +396,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         if (CurrentSession is null) return;
         _chatService.ClearMessages(CurrentSession.Id);
-        Messages = CurrentSession.Messages.ToList();
+        RefreshMessages();
         _runtime.Engine.ClearConversation();
     }
 
@@ -350,7 +414,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         var isFirstMessage = CurrentSession!.Messages.Count == 0;
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
-        Messages = CurrentSession.Messages.ToList();
+        RefreshMessages();
         Sessions = _chatService.Sessions;
 
         if (isFirstMessage)
@@ -374,71 +438,173 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private async Task RespondAsync(string userMessage)
     {
-        var streamingMsg = new ChatMessage { Role = MessageRole.Assistant, Content = "" };
-        Messages = CurrentSession!.Messages.ToList().Append(streamingMsg).ToList();
+        var assistantItem = new ChatItemViewModel(MessageRole.Assistant);
+        Messages.Add(assistantItem);
 
-        var sb = new StringBuilder();
-        var uiUpdatePending = false;
+        var bodySb = new StringBuilder();
+        var thinkingSb = new StringBuilder();
+        var toolData = new List<(string Id, string Name, string Args)>();       // 工具调用, 按调用顺序
+        var toolOutputs = new Dictionary<string, StringBuilder>();
+        var toolFinished = new Dictionary<string, (string Result, bool IsError)>();
+        var toolVmById = new Dictionary<int, SegmentItemViewModel>();
+        var thinkingVm = (SegmentItemViewModel?)null;
+        var bodyVm = (SegmentItemViewModel?)null;
+        var toolDispatched = 0;
+        var flushPending = false;
 
+        // 后台线程累积数据, 节流同步到 UI 线程重建分段
         void OnEngineEvent(AgentEngineEvent e)
         {
             switch (e)
             {
-                case EngineTextDelta delta:
-                    streamingMsg.Content += delta.Text;
-                    if (!uiUpdatePending)
+                case EngineThinkingDelta t:
+                    thinkingSb.Append(t.Thinking);
+                    break;
+                case EngineTextDelta t:
+                    bodySb.Append(t.Text);
+                    break;
+                case EngineToolStarted s:
+                    toolData.Add((s.ToolCallId, s.ToolName, s.Arguments));
+                    toolOutputs[s.ToolCallId] = new StringBuilder();
+                    break;
+                case EngineToolOutput o:
+                    if (toolOutputs.TryGetValue(o.ToolCallId, out var osb))
                     {
-                        uiUpdatePending = true;
-                        Dispatcher.UIThread.Post(() =>
-                        {
-                            uiUpdatePending = false;
-                            Messages = CurrentSession!.Messages.ToList().Append(streamingMsg).ToList();
-                        });
+                        osb.AppendLine(o.Line);
                     }
+
                     break;
-                case EngineToolStarted started:
-                    _toolLog.AppendLine($"[tool] {started.ToolName} {started.Arguments}");
-                    break;
-                case EngineToolOutput output:
-                    _toolLog.AppendLine($"  {output.Line}");
-                    break;
-                case EngineToolFinished finished:
-                    _toolLog.AppendLine(finished.Result.IsError ? $"✘ {finished.Result.Content}" : "✔");
+                case EngineToolFinished f:
+                    toolFinished[f.ToolCallId] = (f.Result.Content, f.Result.IsError);
                     break;
             }
+
+            if (flushPending) return;
+            flushPending = true;
+            Dispatcher.UIThread.Post(FlushUi);
+        }
+
+        // UI 线程同步: 确保分段对象稳定存在(不重建, 保留展开状态), 值覆盖最新
+        void FlushUi()
+        {
+            flushPending = false;
+
+            if (thinkingSb.Length > 0 && thinkingVm is null)
+            {
+                thinkingVm = new SegmentItemViewModel(MessageSegmentKind.Thinking);
+                assistantItem.Segments.Insert(0, thinkingVm);
+            }
+
+            thinkingVm?.SetThinking(thinkingSb.ToString());
+
+            for (var i = toolDispatched; i < toolData.Count; i++)
+            {
+                var vm = new SegmentItemViewModel(MessageSegmentKind.Tool)
+                {
+                    ToolName = toolData[i].Name,
+                    ArgumentsRaw = toolData[i].Args
+                };
+                assistantItem.Segments.Add(vm);
+                toolVmById[i] = vm;
+                toolDispatched = i + 1;
+            }
+
+            for (var i = 0; i < toolDispatched; i++)
+            {
+                if (!toolVmById.TryGetValue(i, out var vm)) continue;
+                var id = toolData[i].Id;
+                if (toolOutputs.TryGetValue(id, out var osb))
+                {
+                    vm.SetToolOutput(osb.ToString().TrimEnd());
+                }
+
+                if (toolFinished.TryGetValue(id, out var fin))
+                {
+                    vm.ToolResult = fin.Result;
+                    vm.IsToolDone = true;
+                    vm.ToolStatus = fin.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                }
+            }
+
+            if (bodySb.Length > 0 && bodyVm is null)
+            {
+                bodyVm = new SegmentItemViewModel(MessageSegmentKind.Text);
+                assistantItem.Segments.Add(bodyVm); // 正文置于末尾
+            }
+
+            bodyVm?.SetBody(bodySb.ToString());
         }
 
         _runtime.Engine.OnEvent += OnEngineEvent;
         try
         {
-            _runtime.Engine.Options.ThinkingDepth = ThinkingDepth;
+            _runtime.Engine.Options.Thinking = SelectedThinking;
             _runtime.Engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
             _runtime.Engine.Options.IsPlanMode = IsPlanMode;
 
             var reply = await _runtime.Engine.RunTurnAsync(userMessage);
-            if (_toolLog.Length > 0)
+            FlushUi(); // 兜底同步一次, 确保最终增量已呈现
+
+            if (bodyVm is null && !string.IsNullOrWhiteSpace(reply))
             {
-                sb.AppendLine(reply);
-                sb.AppendLine();
-                sb.AppendLine(_toolLog.ToString().TrimEnd());
-            }
-            else
-            {
-                sb.Append(reply);
+                bodyVm = new SegmentItemViewModel(MessageSegmentKind.Text);
+                bodyVm.SetBody(reply);
+                assistantItem.Segments.Add(bodyVm);
             }
         }
         catch (Exception ex)
         {
-            sb.AppendLine($"⚠ 发生错误: {ex.Message}");
+            var err = new SegmentItemViewModel(MessageSegmentKind.Text);
+            err.SetBody($"⚠ 发生错误: {ex.Message}");
+            assistantItem.Segments.Add(err);
         }
         finally
         {
             _runtime.Engine.OnEvent -= OnEngineEvent;
-            _toolLog.Clear();
         }
 
-        _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, sb.ToString());
-        Messages = CurrentSession.Messages.ToList();
+        // 持久化为结构化分段
+        var segments = new List<MessageSegment>();
+        foreach (var seg in assistantItem.Segments)
+        {
+            switch (seg.Kind)
+            {
+                case MessageSegmentKind.Text when !string.IsNullOrEmpty(seg.BodyContent):
+                    segments.Add(new MessageSegment { Kind = MessageSegmentKind.Text, Content = seg.BodyContent });
+                    break;
+                case MessageSegmentKind.Thinking:
+                    segments.Add(new MessageSegment { Kind = MessageSegmentKind.Thinking, Content = seg.ThinkingContent });
+                    break;
+                case MessageSegmentKind.Tool:
+                    segments.Add(new MessageSegment
+                    {
+                        Kind = MessageSegmentKind.Tool,
+                        Tool = new ToolSegment
+                        {
+                            Name = seg.ToolName,
+                            Arguments = seg.ArgumentsRaw,
+                            OutputLines = SplitToolOutput(seg.ToolOutput),
+                            Result = seg.ToolResult,
+                            IsError = seg.ToolStatus == ToolStatusKind.Error,
+                            IsDone = seg.IsToolDone
+                        }
+                    });
+                    break;
+            }
+        }
+
+        if (segments.Count > 0)
+        {
+            _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, segments);
+        }
+
         IsSending = false;
+    }
+
+    private static List<string> SplitToolOutput(string value)
+    {
+        return string.IsNullOrEmpty(value)
+            ? []
+            : value.Split('\n', StringSplitOptions.RemoveEmptyEntries).ToList();
     }
 }
