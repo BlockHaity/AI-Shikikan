@@ -7,6 +7,9 @@ public class ToolResult
     public bool IsError { get; set; }
     public string Content { get; set; } = string.Empty;
 
+    /// <summary>关联的 git 检查点步骤 ID(子 Agent 调用产生检查点时填写), UI 据此提供回滚按钮。</summary>
+    public string? StepId { get; set; }
+
     public static ToolResult Ok(string content) => new() { Content = content };
 
     public static ToolResult Error(string message) => new() { IsError = true, Content = message };

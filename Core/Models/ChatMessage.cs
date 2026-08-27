@@ -27,6 +27,9 @@ public class ToolSegment
     public string Result { get; set; } = string.Empty;
     public bool IsError { get; set; }
     public bool IsDone { get; set; }
+
+    /// <summary>关联的 git 检查点步骤 ID(子 Agent 调用), 会话回放时据此提供回滚按钮。</summary>
+    public string? StepId { get; set; }
 }
 
 /// <summary>会话消息的一个分段(正文 / 思考 / 工具调用)。</summary>
