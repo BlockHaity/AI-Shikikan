@@ -55,10 +55,8 @@
   <data name="Chat_DefaultTitle" xml:space="preserve"><value>New Session</value></data>
   <data name="Chat_ClearSession" xml:space="preserve"><value>Clear Session</value></data>
   <data name="Chat_AssignTaskWatermark" xml:space="preserve"><value>Task description...</value></data>
-  <data name="Chat_AsyncMode" xml:space="preserve"><value>Async</value></data>
   <data name="Chat_StartAssign" xml:space="preserve"><value>Start</value></data>
   <data name="Chat_Assignments" xml:space="preserve"><value>Assignments</value></data>
-  <data name="Chat_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Chat_Refresh" xml:space="preserve"><value>Refresh</value></data>
   <data name="Chat_GitMerge" xml:space="preserve"><value>Merge</value></data>
   <data name="Chat_GitDrop" xml:space="preserve"><value>Drop</value></data>
@@ -148,6 +146,9 @@
   <data name="Settings_Fetching" xml:space="preserve"><value>Fetching…</value></data>
   <data name="Settings_EnableAll" xml:space="preserve"><value>Enable All</value></data>
   <data name="Settings_DisableAll" xml:space="preserve"><value>Disable All</value></data>
+  <data name="Settings_ModelNameHeader" xml:space="preserve"><value>Model</value></data>
+  <data name="Settings_MaxThinking" xml:space="preserve"><value>Max Thinking Depth</value></data>
+  <data name="Settings_DetectThinking" xml:space="preserve"><value>Auto-detect Thinking Level</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>Default Model</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
@@ -162,10 +163,7 @@
   <data name="Session_NewTitle" xml:space="preserve"><value>New Session</value></data>
   <data name="Session_Empty" xml:space="preserve"><value>No sessions</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
-  <data name="Chat_ThinkingDepth" xml:space="preserve"><value>Thinking Depth</value></data>
-  <data name="Chat_ThinkingDepthLow" xml:space="preserve"><value>Low</value></data>
-  <data name="Chat_ThinkingDepthMedium" xml:space="preserve"><value>Medium</value></data>
-  <data name="Chat_ThinkingDepthHigh" xml:space="preserve"><value>High</value></data>
+  <data name="Chat_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="Chat_WorkDir" xml:space="preserve"><value>Work Dir</value></data>
   <data name="Chat_WorkDirDefault" xml:space="preserve"><value>Default</value></data>
   <data name="Chat_ModePlan" xml:space="preserve"><value>Plan</value></data>
