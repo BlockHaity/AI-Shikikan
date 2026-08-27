@@ -1,0 +1,22 @@
+# MCP 服务器配置 (mcp-servers.toml)
+# 每个 [[servers]] 表对应一个 stdio MCP 服务器:
+#   id      - 唯一标识, 工具名前缀 mcp_<id>_
+#   name    - 显示名称
+#   command - 启动命令(npx / uvx / node / python 等)
+#   args    - 命令参数数组
+#   env     - 额外环境变量表(与父进程环境合并)
+#   enabled - 是否启用(默认 true)
+
+[[servers]]
+id = "filesystem"
+name = "文件系统"
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
+enabled = false
+
+[[servers]]
+id = "fetch"
+name = "网页抓取"
+command = "uvx"
+args = ["mcp-server-fetch"]
+enabled = false
