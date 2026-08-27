@@ -52,6 +52,13 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSending;
 
+    /// <summary>手动终止当前回合的取消源。</summary>
+    private CancellationTokenSource? _turnCts;
+
+    /// <summary>上一轮被中断后可继续输出。</summary>
+    [ObservableProperty]
+    private bool _canContinue;
+
     [ObservableProperty]
     private string _activeModelText = string.Empty;
 
@@ -126,6 +133,7 @@ public partial class ChatPageViewModel : ViewModelBase
             CurrentSession = session;
             RefreshMessages();
             _currentSessionId = session?.Id;
+            CanContinue = false;
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
@@ -398,6 +406,7 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.ClearMessages(CurrentSession.Id);
         RefreshMessages();
         _runtime.Engine.ClearConversation();
+        CanContinue = false;
     }
 
     [RelayCommand]
@@ -422,8 +431,27 @@ public partial class ChatPageViewModel : ViewModelBase
             _ = AutoGenerateTitleAsync(CurrentSession, content);
         }
 
+        CanContinue = false;
         IsSending = true;
         _ = RespondAsync(content);
+    }
+
+    /// <summary>手动终止当前生成(发送/工具循环均会收到取消信号)。</summary>
+    [RelayCommand]
+    private void StopGeneration()
+    {
+        if (!IsSending) return;
+        _turnCts?.Cancel();
+    }
+
+    /// <summary>继续输出: 以固定指令驱动引擎从中断处续写(不新增用户气泡)。</summary>
+    [RelayCommand]
+    private void ContinueOutput()
+    {
+        if (!CanContinue || IsSending) return;
+        CanContinue = false;
+        IsSending = true;
+        _ = RunTurnCoreAsync(Strings.Chat_ContinuePrompt);
     }
 
     /// <summary>首条消息后调用 LLM 为会话生成简洁标题(异步, 失败时静默保留默认标题)。</summary>
@@ -437,6 +465,12 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
     private async Task RespondAsync(string userMessage)
+    {
+        await RunTurnCoreAsync(userMessage);
+    }
+
+    /// <summary>驱动一轮引擎调用: 流式呈现、取消处理与分段持久化。</summary>
+    private async Task RunTurnCoreAsync(string engineMessage)
     {
         var assistantItem = new ChatItemViewModel(MessageRole.Assistant);
         Messages.Add(assistantItem);
@@ -536,13 +570,15 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         _runtime.Engine.OnEvent += OnEngineEvent;
+        _turnCts?.Dispose();
+        _turnCts = new CancellationTokenSource();
         try
         {
             _runtime.Engine.Options.Thinking = SelectedThinking;
             _runtime.Engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
             _runtime.Engine.Options.IsPlanMode = IsPlanMode;
 
-            var reply = await _runtime.Engine.RunTurnAsync(userMessage);
+            var reply = await _runtime.Engine.RunTurnAsync(engineMessage, _turnCts.Token);
             FlushUi(); // 兜底同步一次, 确保最终增量已呈现
 
             if (bodyVm is null && !string.IsNullOrWhiteSpace(reply))
@@ -551,6 +587,15 @@ public partial class ChatPageViewModel : ViewModelBase
                 bodyVm.SetBody(reply);
                 assistantItem.Segments.Add(bodyVm);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // 用户主动终止: 保留已生成的部分内容并允许继续输出
+            FlushUi();
+            var note = new SegmentItemViewModel(MessageSegmentKind.Text);
+            note.SetBody(Strings.Chat_StoppedNote);
+            assistantItem.Segments.Add(note);
+            CanContinue = true;
         }
         catch (Exception ex)
         {

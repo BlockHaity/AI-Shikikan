@@ -14,9 +14,32 @@ public partial class ChatPageView : UserControl
 {
     private INotifyCollectionChanged? _messagesCollection;
 
+    private DateTime _lastEscUtc; // 双击 ESC 判定窗口
+
     public ChatPageView()
     {
         InitializeComponent();
+
+        // 隧道方式捕获 ESC(无论焦点在哪个控件上), 双击终止生成
+        AddHandler(KeyDownEvent, OnTunnelKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    private void OnTunnelKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape) return;
+        if (DataContext is not ChatPageViewModel vm || !vm.IsSending) return;
+
+        var now = DateTime.UtcNow;
+        if ((now - _lastEscUtc).TotalMilliseconds <= 600)
+        {
+            vm.StopGenerationCommand.Execute(null);
+            _lastEscUtc = default;
+            e.Handled = true;
+        }
+        else
+        {
+            _lastEscUtc = now;
+        }
     }
 
     private void OnModeIsCheckedChanged(object? sender, RoutedEventArgs e)
