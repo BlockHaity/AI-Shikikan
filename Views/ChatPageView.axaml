@@ -180,6 +180,18 @@
                                                                         </md:MarkdownScrollViewer.Styles>
                                                                     </md:MarkdownScrollViewer>
                                                                 </StackPanel>
+
+                                                                <!-- 检查点回滚: 两段式确认(点击 → 确认回滚?) -->
+                                                                <StackPanel IsVisible="{Binding CanRollback}">
+                                                                    <Button Classes="Outlined"
+                                                                            Content="{Binding RollbackText}"
+                                                                            Command="{Binding RollbackCommand}"
+                                                                            HorizontalAlignment="Left"/>
+                                                                </StackPanel>
+                                                                <TextBlock Classes="BodySmall" Margin="0,0,0,2"
+                                                                           Text="{Binding RollbackNote}"
+                                                                           IsVisible="{Binding HasRollbackNote}"
+                                                                           Foreground="{DynamicResource Primary}"/>
                                                             </StackPanel>
                                                         </Border>
                                                     </Expander>
