@@ -105,7 +105,11 @@
                                                     <!-- 正文 Markdown -->
                                                     <md:MarkdownScrollViewer IsVisible="{Binding IsText}"
                                                                              Markdown="{Binding BodyContent}"
-                                                                             Padding="0"/>
+                                                                             Padding="0">
+                                                        <md:MarkdownScrollViewer.Styles>
+                                                            <StyleInclude Source="avares://AIShikikan.Gui/Resources/MarkdownTheme.axaml"/>
+                                                        </md:MarkdownScrollViewer.Styles>
+                                                    </md:MarkdownScrollViewer>
 
                                                     <!-- 思考过程折叠卡片 -->
                                                     <Expander IsVisible="{Binding IsThinking}"
@@ -151,7 +155,11 @@
                                                                             Command="{Binding ToggleArgumentsViewCommand}"
                                                                             FontSize="11"/>
                                                                 </DockPanel>
-                                                                <md:MarkdownScrollViewer Markdown="{Binding ArgumentsDisplay}"/>
+                                                                <md:MarkdownScrollViewer Markdown="{Binding ArgumentsDisplay}">
+                                                                    <md:MarkdownScrollViewer.Styles>
+                                                                        <StyleInclude Source="avares://AIShikikan.Gui/Resources/MarkdownTheme.axaml"/>
+                                                                    </md:MarkdownScrollViewer.Styles>
+                                                                </md:MarkdownScrollViewer>
 
                                                                 <!-- 流式输出 -->
                                                                 <StackPanel IsVisible="{Binding HasToolOutput}">
@@ -166,7 +174,11 @@
                                                                 <StackPanel IsVisible="{Binding HasToolResult}">
                                                                     <TextBlock Classes="LabelSmall" Text="结果"
                                                                                Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                                                    <md:MarkdownScrollViewer Markdown="{Binding ToolResult}"/>
+                                                                    <md:MarkdownScrollViewer Markdown="{Binding ToolResult}">
+                                                                        <md:MarkdownScrollViewer.Styles>
+                                                                            <StyleInclude Source="avares://AIShikikan.Gui/Resources/MarkdownTheme.axaml"/>
+                                                                        </md:MarkdownScrollViewer.Styles>
+                                                                    </md:MarkdownScrollViewer>
                                                                 </StackPanel>
                                                             </StackPanel>
                                                         </Border>
