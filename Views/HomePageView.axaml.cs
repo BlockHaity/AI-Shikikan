@@ -284,7 +284,7 @@ public partial class HomePageView : UserControl
 
         Canvas.SetLeft(ChartTip, x);
         Canvas.SetTop(ChartTip, y);
-        Panel.SetZIndex(ChartTip, 10);
+        ChartTip.SetValue(Panel.ZIndexProperty, 10);
         ChartTip.IsVisible = true;
     }
 
