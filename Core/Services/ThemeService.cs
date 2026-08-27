@@ -71,6 +71,18 @@ public class ThemeService
         }
     }
 
+    /// <summary>Compact Subagent 开关: 子Agent输出经 LLM 压缩后返回给 AI。</summary>
+    public bool CompactSubagents
+    {
+        get => _prefs.CompactSubagents;
+        set
+        {
+            if (_prefs.CompactSubagents == value) return;
+            _prefs.CompactSubagents = value;
+            Save();
+        }
+    }
+
     public event EventHandler<bool>? ThemeChanged;
     public event EventHandler<string?>? BackgroundChanged;
     public event EventHandler<string?>? FontChanged;
@@ -126,5 +138,6 @@ public class ThemeService
         public string? BackgroundImagePath { get; set; }
         public string CustomFont { get; set; } = string.Empty;
         public string MonoFont { get; set; } = string.Empty;
+        public bool CompactSubagents { get; set; }
     }
 }
