@@ -21,48 +21,48 @@
         <v:PageBackground ThemeService="{Binding ThemeService}" />
 
         <ScrollViewer>
-            <StackPanel Margin="32,24" Spacing="24">
-                <StackPanel Orientation="Horizontal" Spacing="20">
-                    <Border CornerRadius="16" ClipToBounds="True" VerticalAlignment="Center">
-                        <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="96" Height="96"
+            <StackPanel Margin="24,16" Spacing="16">
+                <StackPanel Orientation="Horizontal" Spacing="14">
+                    <Border CornerRadius="12" ClipToBounds="True" VerticalAlignment="Center">
+                        <Image Source="avares://AIShikikan.Gui/Assets/logo.jpg" Width="64" Height="64"
                                Stretch="Uniform" />
                     </Border>
-                    <StackPanel VerticalAlignment="Center" Spacing="2">
-                        <TextBlock Classes="HeadlineMedium" Text="{x:Static res:Strings.Home_Welcome}" />
-                        <TextBlock Classes="BodyLarge" Text="{x:Static res:Strings.Home_Description}"
+                    <StackPanel VerticalAlignment="Center" Spacing="1">
+                        <TextBlock Classes="HeadlineSmall" Text="{x:Static res:Strings.Home_Welcome}" />
+                        <TextBlock Classes="BodyMedium" Text="{x:Static res:Strings.Home_Description}"
                                    Foreground="{DynamicResource OnSurfaceVariant}" />
-                        <TextBlock Classes="BodyMedium" Text="{Binding VersionText}"
+                        <TextBlock Classes="BodySmall" Text="{Binding VersionText}"
                                    Foreground="{DynamicResource OnSurfaceVariant}" Opacity="0.7" />
                     </StackPanel>
                 </StackPanel>
 
                 <!-- 用量统计: 左右两张卡片 -->
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="24">
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
                     <!-- 左卡片: 汇总数字 + 分布 -->
                     <theme:Card Classes="Elevated">
-                        <StackPanel Margin="24" Spacing="12">
+                        <StackPanel Margin="18,14" Spacing="10">
                             <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTitle}" />
 
-                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="28">
-                                <StackPanel Spacing="2">
+                            <Grid ColumnDefinitions="Auto,Auto,Auto,Auto" ColumnSpacing="20">
+                                <StackPanel Spacing="1">
                                     <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageToday}"
                                                Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    <TextBlock Classes="BodyLarge" Text="{Binding TodayUsageText}" />
+                                    <TextBlock Classes="BodyMedium" Text="{Binding TodayUsageText}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Spacing="2">
+                                <StackPanel Grid.Column="1" Spacing="1">
                                     <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageTotal}"
                                                Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    <TextBlock Classes="BodyLarge" Text="{Binding TotalUsageText}" />
+                                    <TextBlock Classes="BodyMedium" Text="{Binding TotalUsageText}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="2" Spacing="2">
+                                <StackPanel Grid.Column="2" Spacing="1">
                                     <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageLlmCalls}"
                                                Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    <TextBlock Classes="BodyLarge" Text="{Binding LlmCallsText}" />
+                                    <TextBlock Classes="BodyMedium" Text="{Binding LlmCallsText}" />
                                 </StackPanel>
-                                <StackPanel Grid.Column="3" Spacing="2">
+                                <StackPanel Grid.Column="3" Spacing="1">
                                     <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Home_UsageAgentCalls}"
                                                Foreground="{DynamicResource OnSurfaceVariant}" />
-                                    <TextBlock Classes="BodyLarge" Text="{Binding AgentCallsText}" />
+                                    <TextBlock Classes="BodyMedium" Text="{Binding AgentCallsText}" />
                                 </StackPanel>
                             </Grid>
 
@@ -135,7 +135,7 @@
 
                     <!-- 右卡片: 用量趋势折线图 -->
                     <theme:Card Classes="Elevated" Grid.Column="1" VerticalAlignment="Top">
-                        <StackPanel Margin="24" Spacing="12">
+                        <StackPanel Margin="18,14" Spacing="10">
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                 <TextBlock Classes="TitleMedium" Text="{x:Static res:Strings.Home_UsageTrend}"
                                            VerticalAlignment="Center" />
@@ -150,7 +150,7 @@
                             </Grid>
 
                             <Panel IsVisible="{Binding HasChartData}">
-                                <ScottPlot:AvaPlot x:Name="UsageChart" Height="300"
+                                <ScottPlot:AvaPlot x:Name="UsageChart" Height="230"
                                                    PointerMoved="OnChartPointerMoved"
                                                    PointerExited="OnChartPointerExited"/>
                                 <!-- 悬浮详情覆盖层: Canvas 不参与布局测量, 不影响卡片尺寸 -->
