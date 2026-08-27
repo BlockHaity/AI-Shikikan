@@ -54,6 +54,17 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 
 启动外观：`CommanderRuntime.Boot()`（`Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、全部服务与工具集，并注册到静态 `Instance`。GUI 外壳单例 `AppShell`（ViewModels/AppShell.cs）持有 Runtime。
 
+## 关键机制
+
+- **引擎循环**：`AgentEngine` 将人格 + Roster 提示词发给 LLM，执行工具调用直至回合结束，事件流 `AgentEngineEvent` 驱动 UI。
+- **子 Agent 工具**：均同步执行。`run_<agent>`（单个）、`assign_task`（分派返回 assignmentId）、`run_subagents`（并发多任务，`Task.WhenAll` 后汇总）。无 `mode` 参数。
+- **Compact Subagent**：`SubagentCompactService.Enabled` 开启后，超 2000 字符的子 Agent 输出先经 LLM 压缩为纪要再返回；开关在 AgentPanel 切换，持久化于 ThemeService.Preferences.CompactSubagents。
+- **工具结果出口**：所有 Agent 执行工具统一走 `AgentExecutor.ExecuteAsync(..., llm, ct)`，压缩在该出口生效。
+- **聊天页**：支持手动停止按钮 + 双击 ESC 终止生成、「继续输出」续写。
+- **首页**：用量统计含 ScottPlot 折线图（固定坐标轴 + 标尺 + 折点悬浮详情）与 26 周活跃热力图，配色全部跟随主题资源。
+- **设置页**：卡片使用自绘 `Views/WaterfallPanel.cs` 自适应瀑布流布局。
+- **Linux 输入法**：Program.cs 的 `FixupLinuxImeEnvironment()` 启动时清洗 IME 环境变量弯引号、缺失时探测 fcitx/ibus 进程补写 `AVALONIA_IM_MODULE`，并显式启用 X11 IME。
+
 ## 常用命令
 
 ```bash
@@ -61,15 +72,16 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 ./build.sh linux          # 本平台
 ./build.sh all            # 所有平台 (linux/macos/windows x x64/arm64)
 ARCH=arm64 ./build.sh linux
-AOT_MODE=off ./build.sh linux
+AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 
 # Debug 构建并运行（最常用的本地开发方式）
 ./debug.sh                # 构建 Debug 版 GUI 并运行
 ./debug.sh --version      # 查看版本
 ./debug.sh doctor         # 环境诊断
 
-# 版本来源：根目录 VERSION 文件（单一版本源，软件与 CI 共用）
+# 版本来源：根目录 VERSION 文件（当前 1.0.0）
 # 环境变量可覆盖：CONFIGURATION / VERSION / ARCH / AOT_MODE
+# Windows 使用 build.ps1 / debug.ps1，参数等价
 ```
 
 ## 运行方式
@@ -80,41 +92,52 @@ AOT_MODE=off ./build.sh linux
 ./AIShikikan.Gui doctor    # 环境诊断
 ```
 
+## 技术栈与关键约束
+
+- .NET 10 (`net10.0`)，`PublishAot=true`：全链路 Native AOT 兼容。
+- UI：Avalonia 12 + CCSWE.Avalonia.Material (Material3)、Markdown.Avalonia、Material.Icons、ScottPlot.Avalonia（趋势图）。
+- MVVM：CommunityToolkit.Mvvm；编译绑定默认开启（XAML 需 `x:DataType`）。
+- 序列化约束（AOT 必需）：JSON 仅用源生成上下文 `Core/Serialization/AppJsonContext.cs`；TOML 用 Tomlyn（经 `TomlBridge`）；YAML frontmatter 用 YamlDotNet。禁止反射式序列化。
+- LLM SDK：OpenAI / Anthropic 官方 SDK（仅客户端内部 HTTP 细节使用，主数据结构自定义于 ChatTypes.cs）。
+- 动态主题取色：MaterialColorUtilities（配合 ColorExtractionService / DynamicThemeService）。
+
 ## 配置与数据路径
 
-用户配置在用户目录（`AppPaths`，见 `Core/AppPaths.cs`）：
+用户配置按平台解析（见 `Core/AppPaths.cs`），Linux 走 XDG 规范：
 
-| 平台 | 配置目录 |
-|------|----------|
-| Linux | `~/.config/ai-shikikan/` |
-| macOS | `~/Library/Application Support/AI-Shikikan/Config/` |
-| Windows | `%APPDATA%\AI-Shikikan\Config\` |
+| 目录 | Linux | macOS |
+|------|-------|-------|
+| Config | `~/.config/ai-shikikan/` | `~/Library/Application Support/AI-Shikikan/Config/` |
+| Data | `~/.local/share/ai-shikikan/` | 同上 Data/ |
 
 关键文件：
 
 | 文件 | 说明 |
 |------|------|
-| `providers.toml` | LLM Provider（API Key、模型、端点） |
-| `agents.toml` | Agent 定义 + 分派规则 |
+| `providers.toml` | LLM Provider（API Key、模型、端点、思考等级限制） |
+| `agents.toml` | Agent 定义 + 推荐专家 |
+| `preferences.toml` | 界面偏好（明暗/语言/字体/背景/CompactSubagents 开关） |
 | `personas/` | 人格/专家 Markdown(YAML frontmatter) |
 | `templates/` | 任务模板 |
 | `roster.prompt` | Roster 注入模板 |
+| `sessions/` | 会话记录（含每会话 roster.json） |
+| `usage.json` | 用量统计 |
 
-示例模板在 `templates/`（config 与 personas 子目录）。添加新配置字段时需同步更新 `templates/` 中的 example 文件。
+示例模板在 `templates/`（config 与 personas 子目录）。添加新配置字段时需同步更新对应 example 文件。
 
 ## 编码约定
 
 - 语言：**C#**，target `net10.0`，`Nullable` + `ImplicitUsings` 开启。
-- `Core` 必须保持 **AOT 兼容**（`IsAotCompatible=true`）：禁用反射式序列化等 AOT 不安全写法；JSON 序列化用源生成 `System.Text.Json` 上下文（`Core/Serialization/AppJsonContext.cs`），TOML 用 `Tomlyn`，YAML 用 `YamlDotNet`。
-- 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配。
+- 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配；新工具在 `AgentToolFactory.Create` 注册。
+- Core 必须 AOT 兼容；序列化规则见上节。
 - 代码注释使用中文（与现有代码一致）。
-- GUI 遵循 MVVM：ViewModels 继承 `ViewModelBase`，视图绑定 `Views/*.axaml`，资源字符串在 `Resources/Strings.resx`。
+- GUI 遵循 MVVM：ViewModels 继承 `ViewModelBase`，视图绑定 `Views/*.axaml`；用户可见文案一律走 `Resources/Strings.resx`（中文）+ `Strings.en.resx`（英文），经 `Strings.cs` 访问器引用。
 - 不得在代码中硬编码版本号，统一读取根目录 `VERSION`（见 `Directory.Build.props`）。
 - 不得在代码中硬编码 API Key 等机密；Key 通过 `providers.toml` 或环境变量注入。
 
 ## 提交规范
 
-遵循 Conventional Commits，scope 用项目/模块名，说明用中文。参考现有历史：
+遵循 Conventional Commits，scope 用项目/模块名，说明用中文：
 
 ```
 feat(core): 描述
@@ -126,11 +149,12 @@ ci: GitHub Actions 相关
 ## 发布
 
 - 版本：更新根目录 `VERSION` 文件。
-- 发布流程：`.github/workflows/release.yml`（手动触发），按 `v<版本>` 标签去重构建并发布 GitHub Release（含 AOT / dotnet / selfcontained 三种包）。发布前请确认 `VERSION` 已更新、对应 tag 不存在。
+- 发布流程：`.github/workflows/release.yml`（手动触发），按 `v<版本>` 标签去重构建并发布 GitHub Release（含 AOT / dotnet / selfcontained 三种包）。发布前确认 `VERSION` 已更新且对应 tag 不存在。
 - 本地构建辅助：`.github/workflows/debug.yml`（仅构建产物）。
 
 ## 注意事项
 
 - 不要直接提交 `artifacts/`、`bin/`、`obj/`（已在 `.gitignore` 中）。
-- 不要提交用户配置（`providers.toml` 等含 API Key）。
-- Native AOT 交叉编译受限：`AOT_MODE=auto` 下仅对宿主 RID 使用 AOT，其余目标回退到单文件裁剪发布，这是预期行为，不要"修复"。
+- 不要提交用户配置（providers.toml 等含 API Key）。
+- Native AOT 交叉编译受限：`AOT_MODE=auto` 下仅对宿主 RID 使用 AOT，其余目标回退单文件裁剪发布，这是预期行为，不要"修复"。
+- 图表交互类需求注意保持"固定坐标系"语义（禁用平移缩放），悬浮层用 Canvas 叠加避免影响布局测量。
