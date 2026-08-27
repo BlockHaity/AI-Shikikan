@@ -8,7 +8,7 @@ CONFIGURATION="${CONFIGURATION:-Debug}"
 VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 1.0.0)}"
 AOT_MODE="${AOT_MODE:-off}"
 
-GUI_PROJECT="$PROJECT_DIR/src/AIShikikan.Gui/AIShikikan.Gui.csproj"
+GUI_PROJECT="$PROJECT_DIR/AIShikikan.Gui.csproj"
 
 detect_host_rid() {
     local arch="x64"

@@ -1,5 +1,3 @@
 <Solution>
-  <Folder Name="/src/">
-    <Project Path="src/AIShikikan.Gui/AIShikikan.Gui.csproj" />
-  </Folder>
+  <Project Path="AIShikikan.Gui.csproj" />
 </Solution>
