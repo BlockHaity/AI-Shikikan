@@ -13,6 +13,8 @@ public abstract record AgentEngineEvent;
 
 public sealed record EngineTextDelta(string Text) : AgentEngineEvent;
 
+public sealed record EngineThinkingDelta(string Thinking) : AgentEngineEvent;
+
 public sealed record EngineToolStarted(string ToolCallId, string ToolName, string Arguments) : AgentEngineEvent;
 
 public sealed record EngineToolOutput(string ToolCallId, string ToolName, string Line) : AgentEngineEvent;
@@ -37,7 +39,7 @@ public sealed class EngineOptions
     public string? ProviderId { get; set; }
     public int MaxHistoryMessages { get; set; } = 40;
     public string? SystemExtra { get; set; }
-    public int ThinkingDepth { get; set; } = 1;
+    public ThinkingLevel Thinking { get; set; } = ThinkingLevel.Auto;
     public string? WorkDir { get; set; }
     public bool IsPlanMode { get; set; }
 }
@@ -124,7 +126,8 @@ public sealed class AgentEngine
             }
 
             var model = _llm.ResolveModel(_options.Model, _options.ProviderId);
-            var system = BuildSystemPrompt();
+            var thinking = ResolveThinking(model, _options.ProviderId);
+            var system = BuildSystemPrompt(thinking);
 
             for (var turn = 0; turn < _options.MaxTurns; turn++)
             {
@@ -137,6 +140,7 @@ public sealed class AgentEngine
                     MaxTokens = 4096,
                     Temperature = 0.2,
                     Tools = _registry.ToSpecs(),
+                    Thinking = thinking,
                     Messages = _conversation
                         .TakeLast(_options.MaxHistoryMessages)
                         .ToList()
@@ -151,6 +155,9 @@ public sealed class AgentEngine
                     {
                         case StreamEventKind.TextDelta:
                             OnEvent?.Invoke(new EngineTextDelta(sse.Text ?? ""));
+                            break;
+                        case StreamEventKind.ThinkingDelta:
+                            OnEvent?.Invoke(new EngineThinkingDelta(sse.Thinking ?? ""));
                             break;
                         case StreamEventKind.Error:
                             var sErr = $"流式错误: {sse.Error}";
@@ -279,7 +286,18 @@ public sealed class AgentEngine
         return result.Content;
     }
 
-    private string BuildSystemPrompt()
+    /// <summary>解析实际生效的思考等级: 自动档位解析为当前模型配置的最大思考等级。</summary>
+    private ThinkingLevel ResolveThinking(string model, string? providerId)
+    {
+        if (_options.Thinking is not ThinkingLevel.Auto)
+        {
+            return _options.Thinking;
+        }
+
+        return _llm.GetProvider(providerId)?.GetMaxThinking(model) ?? ThinkingLevel.Max;
+    }
+
+    private string BuildSystemPrompt(ThinkingLevel thinking)
     {
         var parts = new List<string>();
 
@@ -302,19 +320,10 @@ public sealed class AgentEngine
             parts.Add(_options.SystemExtra);
         }
 
-        var directives = new List<string>();
-        switch (_options.ThinkingDepth)
+        var directives = new List<string>
         {
-            case 0:
-                directives.Add("思考深度: 低。直接回答, 无需深入分析。");
-                break;
-            case 2:
-                directives.Add("思考深度: 高。进行深入、全面的分析后再回答。");
-                break;
-            default:
-                directives.Add("思考深度: 中。适度分析后回答。");
-                break;
-        }
+            ThinkingLevels.Directive(thinking)
+        };
 
         if (_options.IsPlanMode)
         {

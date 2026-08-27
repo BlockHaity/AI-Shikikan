@@ -38,6 +38,14 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
             ToolChoice = ChatToolChoice.CreateAutoChoice()
         };
 
+        // 思考深度 → reasoning_effort: 仅对具备推理能力的模型且在非自动档位时发送,
+        // 避免向不支持该参数的普通模型下发导致请求失败。
+        var effort = ToReasoningEffort(request);
+        if (effort is not null)
+        {
+            options.ReasoningEffortLevel = effort.Value;
+        }
+
         if (request.Tools is { Count: > 0 })
         {
             foreach (var t in request.Tools)
@@ -123,6 +131,22 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
     private ChatClient CreateChatClient(string model) => _isAzure
         ? new AzureOpenAIClient(_baseUrl, _credential).GetChatClient(model)
         : new OpenAIClient(_credential, new OpenAIClientOptions { Endpoint = _baseUrl }).GetChatClient(model);
+
+    /// <summary>把思考等级映射为 OpenAI reasoning_effort; Auto 或非推理模型返回 null(不下发参数)。</summary>
+    private static ChatReasoningEffortLevel? ToReasoningEffort(ChatRequest request)
+    {
+        if (request.Thinking is ThinkingLevel.Auto || !ThinkingLevels.IsReasoningModel(request.Model))
+        {
+            return null;
+        }
+
+        return request.Thinking switch
+        {
+            ThinkingLevel.Low => ChatReasoningEffortLevel.Low,
+            ThinkingLevel.Medium => ChatReasoningEffortLevel.Medium,
+            _ => ChatReasoningEffortLevel.High
+        };
+    }
 
     private static List<ChatMessage> BuildMessages(ChatRequest request)
     {
