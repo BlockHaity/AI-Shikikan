@@ -115,6 +115,8 @@
   <data name="SubAgent_CommanderTitle" xml:space="preserve"><value>注入专家到子代理</value></data>
   <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>子代理执行时将携带当前专家人设</value></data>
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>同步专家到子代理</value></data>
+  <data name="SubAgent_Compact" xml:space="preserve"><value>压缩子代理输出</value></data>
+  <data name="SubAgent_CompactTip" xml:space="preserve"><value>开启后, 子代理的长输出先经 LLM 压缩为要点纪要再返回给 AI, 节省上下文空间; 短输出与失败结果不受影响</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>更改</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>暂存</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>撤销暂存</value></data>
