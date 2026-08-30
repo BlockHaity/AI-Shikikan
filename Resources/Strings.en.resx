@@ -198,6 +198,7 @@
   <data name="Session_NewTitle" xml:space="preserve"><value>New Session</value></data>
   <data name="Session_Empty" xml:space="preserve"><value>No sessions</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
+  <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan-mode arguments (space-separated, e.g. --permission-mode plan)</value></data>
   <data name="Chat_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="Chat_WorkDir" xml:space="preserve"><value>Work Dir</value></data>
   <data name="Chat_WorkDirDefault" xml:space="preserve"><value>Default</value></data>

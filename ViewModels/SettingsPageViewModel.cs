@@ -369,7 +369,13 @@ public partial class SettingsPageViewModel : ViewModelBase
     private string _agentArgsEdit = string.Empty;
 
     [ObservableProperty]
+    private string _agentPlanArgsEdit = string.Empty;
+
+    [ObservableProperty]
     private string _newAgentArgs = string.Empty;
+
+    [ObservableProperty]
+    private string _newAgentPlanArgs = string.Empty;
 
     public SettingsPageViewModel(ThemeService themeService)
     {
@@ -524,6 +530,7 @@ public partial class SettingsPageViewModel : ViewModelBase
     {
         AgentExecutableEdit = value?.Executable ?? string.Empty;
         AgentArgsEdit = value is { Args.Count: > 0 } ? string.Join(" ", value.Args) : string.Empty;
+        AgentPlanArgsEdit = value is { PlanArgs.Count: > 0 } ? string.Join(" ", value.PlanArgs) : string.Empty;
     }
 
     private void OnModelConfigChanged()
@@ -781,6 +788,7 @@ public partial class SettingsPageViewModel : ViewModelBase
             Name = name,
             Executable = string.IsNullOrWhiteSpace(NewAgentExecutable) ? id : NewAgentExecutable.Trim(),
             Args = ParseArgs(NewAgentArgs),
+            PlanArgs = ParseArgs(NewAgentPlanArgs),
             DefaultMode = "sync",
             MaxConcurrent = 1,
             RequireApproval = true,
@@ -794,6 +802,7 @@ public partial class SettingsPageViewModel : ViewModelBase
         NewAgentName = string.Empty;
         NewAgentExecutable = string.Empty;
         NewAgentArgs = string.Empty;
+        NewAgentPlanArgs = string.Empty;
     }
 
     /// <summary>把空格分隔的参数模板解析为参数列表(支持 {prompt} 占位符)。</summary>
@@ -807,12 +816,12 @@ public partial class SettingsPageViewModel : ViewModelBase
     private void SaveAgentExecutable()
     {
         if (SelectedAgent is null) return;
-        if (string.Equals(SelectedAgent.Executable, AgentExecutableEdit, StringComparison.Ordinal)) return;
 
         SelectedAgent.Executable = string.IsNullOrWhiteSpace(AgentExecutableEdit)
             ? SelectedAgent.Id
             : AgentExecutableEdit.Trim();
         SelectedAgent.Args = ParseArgs(AgentArgsEdit);
+        SelectedAgent.PlanArgs = ParseArgs(AgentPlanArgsEdit);
 
         AgentConfigService.SaveUserAgent(SelectedAgent);
         UserAgents = AgentConfigService.LoadAll().ToList();
