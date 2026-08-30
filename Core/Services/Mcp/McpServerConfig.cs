@@ -3,7 +3,7 @@ namespace AIShikikan.Core.Services.Mcp;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
-/// <summary>单个 MCP 服务器定义(stdio 传输)。</summary>
+/// <summary>单个 MCP 服务器定义(stdio / http / sse 传输)。</summary>
 public class McpServerDefinition
 {
     /// <summary>唯一 ID(小写标识, 用于内部路由与工具前缀)。</summary>
@@ -12,13 +12,19 @@ public class McpServerDefinition
     /// <summary>显示名称(可中文)。</summary>
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>可执行命令(npx / uvx / node / python 等)。</summary>
+    /// <summary>传输方式: "stdio"(默认, 子进程) | "http"(Streamable HTTP) | "sse"(HTTP+Server-Sent Events)。</summary>
+    public string Transport { get; set; } = "stdio";
+
+    /// <summary>http/sse 传输的服务器 URL(stdio 时忽略)。</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>可执行命令(npx / uvx / node / python 等, 仅 stdio 传输)。</summary>
     public string Command { get; set; } = string.Empty;
 
-    /// <summary>命令参数列表。</summary>
+    /// <summary>命令参数列表(仅 stdio 传输)。</summary>
     public List<string> Args { get; set; } = [];
 
-    /// <summary>额外环境变量(与父进程环境合并后传给子进程)。</summary>
+    /// <summary>额外环境变量(与父进程环境合并后传给子进程, 仅 stdio 传输)。</summary>
     public Dictionary<string, string> Env { get; set; } = [];
 
     /// <summary>是否启用。</summary>
