@@ -8,22 +8,10 @@ namespace AIShikikan.Core.Services.Engine;
 /// <summary>
 /// Subagent 输出压缩: 开启后 run_subagents / run_&lt;agent&gt; 的结果先经 LLM 压缩,
 /// 保留任务结论、关键文件路径与数据, 剔除冗余过程输出, 降低主对话上下文占用。
+/// 开关为会话级子代理配置(右侧栏每条目独立控制, 存于 roster.json)。
 /// </summary>
 public static class SubagentCompactService
 {
-    /// <summary>全局开关(GUI 设置面板控制; 默认关闭)。</summary>
-    public static bool Enabled { get; set; }
-
-    /// <summary>启动时从偏好配置恢复开关状态。</summary>
-    public static void Restore(ThemeService prefs) => Enabled = prefs.CompactSubagents;
-
-    /// <summary>开关变化时同步到偏好配置持久化。</summary>
-    public static void Persist(ThemeService prefs, bool enabled)
-    {
-        Enabled = enabled;
-        prefs.CompactSubagents = enabled;
-    }
-
     /// <summary>触发压缩的最小输出长度(字符), 短结果直接透传避免无谓调用。</summary>
     public const int MinLengthToCompact = 2000;
 
@@ -31,12 +19,12 @@ public static class SubagentCompactService
     public const int TargetLength = 4000;
 
     /// <summary>
-    /// 按开关压缩子 Agent 输出; 失败或未启用时原样返回(不阻塞主流程)。
+    /// 按该子代理的会话开关压缩输出; 失败或未启用时原样返回(不阻塞主流程)。
     /// </summary>
     public static async Task<string> CompactIfNeededAsync(
-        LlmService llm, string agentDisplay, string output, CancellationToken ct)
+        LlmService llm, string agentDisplay, string output, bool enabled, CancellationToken ct)
     {
-        if (!Enabled || string.IsNullOrWhiteSpace(output) || output.Length < MinLengthToCompact)
+        if (!enabled || string.IsNullOrWhiteSpace(output) || output.Length < MinLengthToCompact)
         {
             return output;
         }

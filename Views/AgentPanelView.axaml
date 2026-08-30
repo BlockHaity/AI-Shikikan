@@ -53,10 +53,6 @@
                 </ComboBox>
                 <ToggleSwitch IsChecked="{Binding UseCommanderPersonaForAgents}"
                               Content="{x:Static res:Strings.SubAgent_UseCommanderPersona}"/>
-                <ToggleSwitch IsChecked="{Binding CompactSubagents}"
-                              Content="{x:Static res:Strings.SubAgent_Compact}"
-                              ToolTip.Tip="{x:Static res:Strings.SubAgent_CompactTip}"
-                              Margin="0,5,0,0"/>
             </StackPanel>
 
             <!-- 子Agent -->
@@ -136,6 +132,11 @@
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
                                         </StackPanel>
+                                        <ToggleSwitch IsChecked="{Binding CompactEnabled}"
+                                                      Content="{x:Static res:Strings.SubAgent_Compact}"
+                                                      ToolTip.Tip="{x:Static res:Strings.SubAgent_CompactTip}"
+                                                      Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryCompactCommand}"
+                                                      CommandParameter="{Binding}"/>
                                         <Grid ColumnDefinitions="*,Auto">
                                             <Button Content="{x:Static res:Strings.SubAgent_Save}"
                                                     Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).SaveEntryCommand}"

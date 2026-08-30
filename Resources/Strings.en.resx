@@ -116,7 +116,7 @@
   <data name="SubAgent_CommanderDesc" xml:space="preserve"><value>Choose the commander persona for this conversation</value></data>
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>Pass persona to sub-agents</value></data>
   <data name="SubAgent_Compact" xml:space="preserve"><value>Compact sub-agent output</value></data>
-  <data name="SubAgent_CompactTip" xml:space="preserve"><value>When enabled, long sub-agent outputs are condensed by the LLM into key-point summaries before returning to the AI; short outputs and failures are unaffected</value></data>
+  <data name="SubAgent_CompactTip" xml:space="preserve"><value>When enabled, long outputs of this sub-agent are condensed by the LLM into key-point summaries before returning to the AI; short outputs and failures are unaffected (applies to the current session only)</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>Changes</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>Stage</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>Unstage</value></data>

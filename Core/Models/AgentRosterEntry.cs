@@ -11,6 +11,7 @@ public class AgentRosterEntry : INotifyPropertyChanged
     private string _description = string.Empty;
     private string? _personaId;
     private bool _enabled = true;
+    private bool _compactEnabled;
     private bool _isExpanded;
 
     public string AgentId
@@ -45,6 +46,13 @@ public class AgentRosterEntry : INotifyPropertyChanged
     {
         get => _enabled;
         set { _enabled = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>是否把该子代理的长输出经 LLM 压缩为纪要后返回(会话级配置)。</summary>
+    public bool CompactEnabled
+    {
+        get => _compactEnabled;
+        set { _compactEnabled = value; OnPropertyChanged(); }
     }
 
     public bool IsExpanded
