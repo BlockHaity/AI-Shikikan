@@ -114,6 +114,8 @@ public static class Strings
     public static string SubAgent_UseCommanderPersona => Get(nameof(SubAgent_UseCommanderPersona));
     public static string SubAgent_Compact => Get(nameof(SubAgent_Compact));
     public static string SubAgent_CompactTip => Get(nameof(SubAgent_CompactTip));
+    public static string SubAgent_UseInPlanMode => Get(nameof(SubAgent_UseInPlanMode));
+    public static string SubAgent_UseInPlanModeTip => Get(nameof(SubAgent_UseInPlanModeTip));
     public static string GitPanel_Changes => Get(nameof(GitPanel_Changes));
     public static string GitPanel_Stage => Get(nameof(GitPanel_Stage));
     public static string GitPanel_Unstage => Get(nameof(GitPanel_Unstage));
@@ -171,6 +173,8 @@ public static class Strings
     public static string Settings_AgentEditHint => Get(nameof(Settings_AgentEditHint));
     public static string Settings_Mcp => Get(nameof(Settings_Mcp));
     public static string Settings_McpHint => Get(nameof(Settings_McpHint));
+    public static string Settings_McpTransport => Get(nameof(Settings_McpTransport));
+    public static string Settings_McpUrl => Get(nameof(Settings_McpUrl));
     public static string Settings_McpCommand => Get(nameof(Settings_McpCommand));
     public static string Settings_McpArgs => Get(nameof(Settings_McpArgs));
     public static string Settings_McpEnv => Get(nameof(Settings_McpEnv));
