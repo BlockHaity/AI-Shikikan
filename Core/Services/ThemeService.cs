@@ -76,6 +76,17 @@ public class ThemeService
     public event EventHandler<string?>? FontChanged;
     public event EventHandler<string?>? MonoFontChanged;
 
+    /// <summary>一键还原: 偏好全部恢复默认并写盘, 触发各事件让 UI 立即跟随。</summary>
+    public void ResetToDefault()
+    {
+        _prefs = new Preferences();
+        Save();
+        ThemeChanged?.Invoke(this, _prefs.IsDarkTheme);
+        BackgroundChanged?.Invoke(this, _prefs.BackgroundImagePath);
+        FontChanged?.Invoke(this, _prefs.CustomFont);
+        MonoFontChanged?.Invoke(this, _prefs.MonoFont);
+    }
+
     public ThemeService()
     {
         Load();
