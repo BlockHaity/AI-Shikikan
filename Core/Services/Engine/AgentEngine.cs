@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Git;
@@ -138,6 +139,8 @@ public sealed class AgentEngine
             var thinking = ResolveThinking(model, _options.ProviderId);
             var system = BuildSystemPrompt(thinking);
 
+            Log.Debug("LLM", $"回合开始: provider={_options.ProviderId ?? "默认"}, model={model}, thinking={thinking}");
+
             for (var turn = 0; turn < _options.MaxTurns; turn++)
             {
                 ct.ThrowIfCancellationRequested();
@@ -170,6 +173,7 @@ public sealed class AgentEngine
                             break;
                         case StreamEventKind.Error:
                             var sErr = $"流式错误: {sse.Error}";
+                            Log.Warn("LLM", sErr);
                             OnEvent?.Invoke(new EngineDone(null, sErr));
                             return $"模型调用失败: {sErr}";
                         case StreamEventKind.Done:
@@ -187,6 +191,7 @@ public sealed class AgentEngine
 
                 if (response.IsError)
                 {
+                    Log.Warn("LLM", $"响应错误: {response.Error}");
                     OnEvent?.Invoke(new EngineDone(null, response.Error));
                     return $"模型调用失败: {response.Error}";
                 }
@@ -260,10 +265,12 @@ public sealed class AgentEngine
     private async Task<string> ExecuteToolAsync(ToolCallData call, CancellationToken ct)
     {
         OnEvent?.Invoke(new EngineToolStarted(call.Id, call.Name, call.Arguments));
+        var sw = System.Diagnostics.Stopwatch.StartNew();
 
         if (!_registry.TryGet(call.Name, out var tool))
         {
             var err = $"工具不存在: {call.Name}";
+            Log.Warn("Engine", err);
             OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(err)));
             return $"工具调用失败: {err}";
         }
@@ -301,18 +308,35 @@ public sealed class AgentEngine
             };
 
             result = await tool.ExecuteAsync(args, context, ct);
+
+            if (result.IsError)
+            {
+                Log.Warn("Engine", $"工具 {call.Name} 失败({sw.ElapsedMilliseconds}ms): {TruncateOneLine(result.Content)}");
+            }
+            else
+            {
+                Log.Info("Engine", $"工具 {call.Name} 完成 ({sw.ElapsedMilliseconds}ms)");
+            }
         }
         catch (OperationCanceledException)
         {
+            Log.Info("Engine", $"工具 {call.Name} 被用户中断");
             throw; // 用户终止需要立即上抛
         }
         catch (Exception ex)
         {
+            Log.Error("Engine", ex, $"工具 {call.Name} 执行异常");
             result = ToolResult.Error($"工具执行异常: {ex.Message}");
         }
 
         OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, result));
         return result.Content;
+
+        static string TruncateOneLine(string s)
+        {
+            var line = s.Replace('\n', ' ').Replace('\r', ' ');
+            return line.Length <= 160 ? line : line[..160] + "...";
+        }
     }
 
     /// <summary>解析实际生效的思考等级: 自动档位解析为当前模型配置的最大思考等级。</summary>

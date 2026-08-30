@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Services.Llm;
 
 namespace AIShikikan.Core.Services.Engine;
@@ -69,6 +70,7 @@ public static class SubagentCompactService
             var response = await llm.GetClient(provider.Id).CompleteAsync(request, ct);
             if (response.IsError || string.IsNullOrWhiteSpace(response.Content))
             {
+                Log.Debug("Agent", $"子Agent 输出压缩未生效({agentDisplay}): {response.Error ?? "空内容"}");
                 return output;
             }
 
@@ -76,11 +78,14 @@ public static class SubagentCompactService
             var sb = new StringBuilder();
             sb.AppendLine($"[已压缩 原始{output.Length}字符 → {compact.Length}字符]");
             sb.Append(compact);
+
+            Log.Debug("Agent", $"子Agent 输出已压缩: {agentDisplay} ({output.Length} → {compact.Length} 字符)");
             return sb.ToString();
         }
-        catch
+        catch (Exception ex)
         {
             // 压缩失败不影响工具结果返回
+            Log.Warn("Agent", ex, $"子Agent 输出压缩失败({agentDisplay}), 使用原始输出");
             return output;
         }
     }

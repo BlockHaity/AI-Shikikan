@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Git;
@@ -116,16 +117,19 @@ public sealed class AssignmentManager
         IProgress<string>? progressOutput, CancellationToken ct = default)
     {
         UpdateStatus(assignment, SubagentStatus.Running);
+        Log.Info("Agent", $"子Agent 启动: {assignment.AgentName} (assignment={assignment.AssignmentId}) 任务: {assignment.ShortTask}");
 
         GitStepRecord step;
         try
         {
             step = Git.BeginStep($"agent-{assignment.AgentId}");
+            Log.Info("Git", $"检查点已创建: {step.StepId} (分支 {step.StepBranch}, 基于 {step.BaseBranch})");
             assignment.StepId = step.StepId;
             Git.MarkRunning(step.StepId);
         }
         catch (Exception ex)
         {
+            Log.Warn("Git", ex, "创建检查点失败(继续执行但不提供回滚保护)");
             assignment.Status = SubagentStatus.Failed;
             assignment.Error = ex.Message;
             assignment.FinishedAt = DateTime.Now;
@@ -152,6 +156,9 @@ public sealed class AssignmentManager
         assignment.FinishedAt = DateTime.Now;
         Save(assignment);
         AssignmentChanged?.Invoke(assignment);
+
+        Log.Info("Agent",
+            $"子Agent 结束: {assignment.AgentName} 状态={assignment.Status}, exit={result.ExitCode}, 耗时 {(int)result.Elapsed.TotalSeconds}s, 输出 {result.Output.Length} 字符");
 
         return (assignment, result);
     }
