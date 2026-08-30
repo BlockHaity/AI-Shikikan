@@ -1,5 +1,6 @@
 namespace AIShikikan.Core.Services.Mcp;
 
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 /// <summary>单个 MCP 服务器定义(stdio 传输)。</summary>
@@ -60,8 +61,9 @@ public static class McpConfigService
                 var file = TomlBridge.Deserialize<McpConfigFile>(content);
                 _cache = file?.Servers ?? [];
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Config", ex, $"解析 {AppPaths.McpServersPath} 失败");
                 _cache = [];
             }
 
@@ -86,8 +88,9 @@ public static class McpConfigService
             var content = File.ReadAllText(AppPaths.McpServersPath);
             return TomlBridge.Deserialize<McpConfigFile>(content) ?? new McpConfigFile();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Config", ex, $"读取 {AppPaths.McpServersPath} 失败");
             return new McpConfigFile();
         }
     }

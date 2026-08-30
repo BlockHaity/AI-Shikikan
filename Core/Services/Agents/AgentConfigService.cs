@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Agents;
@@ -52,8 +53,9 @@ public static class AgentConfigService
                     return file;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Config", ex, $"解析 {AppPaths.AgentsPath} 失败");
             }
 
             // 文件存在但解析失败: 不覆盖用户文件, 按空配置运行
@@ -73,8 +75,9 @@ public static class AgentConfigService
                     return file;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Config", ex, $"解析旧版 {legacyPath} 失败");
             }
 
             return new AgentConfigFile();
@@ -87,8 +90,9 @@ public static class AgentConfigService
             var content = File.ReadAllText(AppPaths.AgentsPath);
             return TomlBridge.Deserialize<AgentConfigFile>(content) ?? new AgentConfigFile();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Config", ex, $"读取 {AppPaths.AgentsPath} 失败");
             return new AgentConfigFile();
         }
     }

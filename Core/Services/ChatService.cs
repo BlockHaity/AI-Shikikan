@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Serialization;
 
@@ -152,15 +153,18 @@ public class ChatService
                         _sessions.Add(session);
                     }
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Log.Warn("Session", ex, $"会话文件解析失败(已跳过): {file}");
                 }
             }
 
+            Log.Info("Session", $"加载 {_sessions.Count} 个会话");
             _sessions.Sort((a, b) => b.UpdatedAt.CompareTo(a.UpdatedAt));
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Error("Session", ex, "会话目录读取失败");
             _sessions.Clear();
         }
     }
@@ -174,8 +178,9 @@ public class ChatService
             var path = Path.Combine(SessionsDir, $"{session.Id}.json");
             File.WriteAllText(path, json);
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Session", ex, $"会话保存失败: {session.Id}");
         }
     }
 
@@ -189,8 +194,9 @@ public class ChatService
                 File.Delete(path);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Session", ex, $"会话文件删除失败: {sessionId}");
         }
     }
 }
