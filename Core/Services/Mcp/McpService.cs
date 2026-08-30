@@ -2,11 +2,11 @@ using System.Text.Json.Nodes;
 
 namespace AIShikikan.Core.Services.Mcp;
 
-/// <summary>MCP 连接管理器: 按配置启动/停止 stdio 服务器连接, 聚合工具列表并路由调用。
-/// 工具对外统一命名为 mcp_&lt;serverId&gt;_&lt;toolName&gt;。</summary>
+/// <summary>MCP 连接管理器: 按配置建立/断开服务器连接(stdio / Streamable HTTP / SSE),
+/// 聚合工具列表并路由调用。工具对外统一命名为 mcp_&lt;serverId&gt;_&lt;toolName&gt;。</summary>
 public sealed class McpService : IAsyncDisposable
 {
-    private readonly Dictionary<string, McpStdioClient> _clients = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, McpClientBase> _clients = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, List<McpToolDescriptor>> _toolsByServer = new(StringComparer.OrdinalIgnoreCase);
     private readonly SemaphoreSlim _connectLock = new(1, 1);
 
@@ -44,7 +44,7 @@ public sealed class McpService : IAsyncDisposable
         return messages;
     }
 
-    /// <summary>连接单个服务器并缓存其工具列表(幂等)。</summary>
+    /// <summary>连接单个服务器并缓存其工具列表(幂等)。按传输方式选择 stdio 或 HTTP 客户端。</summary>
     public async Task ConnectAsync(McpServerDefinition def, CancellationToken ct = default)
     {
         await _connectLock.WaitAsync(ct).ConfigureAwait(false);
@@ -55,11 +55,27 @@ public sealed class McpService : IAsyncDisposable
                 return; // 已连接
             }
 
-            var client = await McpStdioClient.StartAsync(def, ct).ConfigureAwait(false);
-            var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
+            McpClientBase client;
+            if (McpHttpClient.IsHttpTransport(def.Transport))
+            {
+                client = await McpHttpClient.StartAsync(def, ct).ConfigureAwait(false);
+            }
+            else
+            {
+                client = await McpStdioClient.StartAsync(def, ct).ConfigureAwait(false);
+            }
 
-            _clients[def.Id] = client;
-            _toolsByServer[def.Id] = tools;
+            try
+            {
+                var tools = await client.ListToolsAsync(ct).ConfigureAwait(false);
+                _clients[def.Id] = client;
+                _toolsByServer[def.Id] = tools;
+            }
+            catch
+            {
+                await client.DisposeAsync().ConfigureAwait(false);
+                throw;
+            }
         }
         finally
         {
@@ -130,7 +146,7 @@ public sealed class McpService : IAsyncDisposable
             throw new InvalidOperationException($"未找到 MCP 工具 {bridgeName}, 请确认服务器已连接并启用");
         }
 
-        McpStdioClient? client;
+        McpClientBase? client;
         lock (_clients)
         {
             _clients.TryGetValue(found.Value.ServerId, out client);
@@ -148,7 +164,7 @@ public sealed class McpService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        List<McpStdioClient> clients;
+        List<McpClientBase> clients;
         lock (_clients)
         {
             clients = [.. _clients.Values];
