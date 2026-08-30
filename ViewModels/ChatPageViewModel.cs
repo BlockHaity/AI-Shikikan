@@ -489,7 +489,7 @@ public partial class ChatPageViewModel : ViewModelBase
         var entries = new List<TimelineEntry>();
         var toolData = new List<(string Id, string Name, string Args)>();       // 工具调用, 按调用顺序
         var toolOutputs = new Dictionary<string, StringBuilder>();
-        var toolFinished = new Dictionary<string, (string Result, bool IsError, string? StepId)>();
+        var toolFinished = new Dictionary<string, (string Result, bool IsError, string? StepId, ToolCardDetail? Detail)>();
         var flushPending = false;
 
         // 后台线程累积数据, 节流同步到 UI 线程重建分段
@@ -524,7 +524,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
                     break;
                 case EngineToolFinished f:
-                    toolFinished[f.ToolCallId] = (f.Result.Content, f.Result.IsError, f.Result.StepId);
+                    toolFinished[f.ToolCallId] = (f.Result.Content, f.Result.IsError, f.Result.StepId, f.Result.Detail);
                     break;
             }
 
@@ -582,6 +582,7 @@ public partial class ChatPageViewModel : ViewModelBase
                             en.Vm!.ToolResult = fin.Result;
                             en.Vm.IsToolDone = true;
                             en.Vm.ToolStatus = fin.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                            en.Vm.ToolCardDetail = fin.Detail;
                             if (!string.IsNullOrEmpty(fin.StepId))
                             {
                                 en.Vm.StepId = fin.StepId;
@@ -659,7 +660,8 @@ public partial class ChatPageViewModel : ViewModelBase
                             Result = seg.ToolResult,
                             IsError = seg.ToolStatus == ToolStatusKind.Error,
                             IsDone = seg.IsToolDone,
-                            StepId = seg.StepId
+                            StepId = seg.StepId,
+                            Detail = seg.ToolCardDetail
                         }
                     });
                     break;

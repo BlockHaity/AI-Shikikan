@@ -211,4 +211,28 @@
   <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
   <data name="Chat_ModePlanTip" xml:space="preserve"><value>Plan mode: analyze requirements and create a plan</value></data>
   <data name="Chat_ModeBuildTip" xml:space="preserve"><value>Build mode: execute tasks and generate code</value></data>
+  <data name="ToolCard_Title" xml:space="preserve"><value>Tool call {0} · {1}</value></data>
+  <data name="ToolCard_Thinking" xml:space="preserve"><value>Thinking</value></data>
+  <data name="ToolCard_Parameters" xml:space="preserve"><value>Arguments</value></data>
+  <data name="ToolCard_Output" xml:space="preserve"><value>Output</value></data>
+  <data name="ToolCard_Result" xml:space="preserve"><value>Result</value></data>
+  <data name="ToolCard_StatusRunning" xml:space="preserve"><value>Running</value></data>
+  <data name="ToolCard_StatusSuccess" xml:space="preserve"><value>Success</value></data>
+  <data name="ToolCard_StatusError" xml:space="preserve"><value>Failed</value></data>
+  <data name="ToolCard_CopyResult" xml:space="preserve"><value>Copy result</value></data>
+  <data name="ToolCard_Copied" xml:space="preserve"><value>Copied</value></data>
+  <data name="ToolCard_Rollback" xml:space="preserve"><value>Roll back checkpoint</value></data>
+  <data name="ToolCard_RollbackConfirm" xml:space="preserve"><value>Confirm rollback?</value></data>
+  <data name="ToolCard_RolledBack" xml:space="preserve"><value>Rolled back to before this checkpoint</value></data>
+  <data name="ToolCard_RollbackFailed" xml:space="preserve"><value>Rollback failed: {0}</value></data>
+  <data name="ToolCard_FileMeta" xml:space="preserve"><value>{0} lines · showing {1}-{2}</value></data>
+  <data name="ToolCard_FileTruncated" xml:space="preserve"><value>File content is not fully shown</value></data>
+  <data name="ToolCard_Query" xml:space="preserve"><value>Query: {0}</value></data>
+  <data name="ToolCard_MatchCount" xml:space="preserve"><value>{0} matches</value></data>
+  <data name="ToolCard_Truncated" xml:space="preserve"><value>Results truncated</value></data>
+  <data name="ToolCard_TypeDir" xml:space="preserve"><value>Folder</value></data>
+  <data name="ToolCard_TypeFile" xml:space="preserve"><value>File</value></data>
+  <data name="ToolCard_SubagentDone" xml:space="preserve"><value>Done</value></data>
+  <data name="ToolCard_SubagentFailed" xml:space="preserve"><value>Failed</value></data>
+  <data name="ToolCard_SubagentTimeout" xml:space="preserve"><value>Timed out</value></data>
 </root>

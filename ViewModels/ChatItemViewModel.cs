@@ -1,5 +1,7 @@
 using System.Text.Json;
 using AIShikikan.Core.Models;
+using AIShikikan.Gui.Resources;
+using Avalonia.Input.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -94,6 +96,7 @@ public partial class SegmentItemViewModel : ViewModelBase
                 vm.IsToolDone = t.IsDone;
                 vm.ToolStatus = t.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
                 vm.StepId = t.StepId;
+                vm.ToolCardDetail = t.Detail;
                 break;
         }
 
@@ -135,7 +138,81 @@ public partial class SegmentItemViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isToolDone;
 
-    public string ToolName { get; set; } = string.Empty;
+    public string ToolName
+    {
+        get => _toolName;
+        set
+        {
+            _toolName = value;
+            OnPropertyChanged(nameof(CardTitle));
+        }
+    }
+
+    private string _toolName = string.Empty;
+
+    /// <summary>结构化卡片展示数据(按工具类型渲染专属卡体), 为空时回退通用文本展示。</summary>
+    [ObservableProperty]
+    private ToolCardDetail? _toolCardDetail;
+
+    /// <summary>结构化数据分类视图(XAML 按 HasXxx 切换卡体)。</summary>
+    public FileReadDetail? FileRead => ToolCardDetail as FileReadDetail;
+
+    public DirectoryListDetail? DirectoryList => ToolCardDetail as DirectoryListDetail;
+
+    public GlobDetail? Glob => ToolCardDetail as GlobDetail;
+
+    public GrepDetail? Grep => ToolCardDetail as GrepDetail;
+
+    public SubagentsDetail? Subagents => ToolCardDetail as SubagentsDetail;
+
+    public bool HasFileRead => FileRead is not null;
+    public bool HasDirectoryList => DirectoryList is not null;
+    public bool HasGlob => Glob is not null;
+    public bool HasGrep => Grep is not null;
+    public bool HasSubagents => Subagents is not null;
+    public bool HasNoDetail => ToolCardDetail is null;
+
+    public string FileReadMeta => FileRead is null
+        ? string.Empty
+        : string.Format(Strings.ToolCard_FileMeta, FileRead.TotalLines, FileRead.StartLine,
+            FileRead.StartLine + FileRead.LinesShown - 1);
+
+    public string GlobQueryText => Glob is null ? string.Empty : string.Format(Strings.ToolCard_Query, Glob.Pattern);
+
+    public string GlobCountText => Glob is null ? string.Empty : string.Format(Strings.ToolCard_MatchCount, Glob.Matches.Count);
+
+    public string GrepQueryText => Grep is null ? string.Empty : string.Format(Strings.ToolCard_Query, Grep.Pattern);
+
+    public string GrepCountText => Grep is null ? string.Empty : string.Format(Strings.ToolCard_MatchCount, Grep.Matches.Count);
+
+    partial void OnToolCardDetailChanged(ToolCardDetail? value)
+    {
+        OnPropertyChanged(nameof(FileRead));
+        OnPropertyChanged(nameof(DirectoryList));
+        OnPropertyChanged(nameof(Glob));
+        OnPropertyChanged(nameof(Grep));
+        OnPropertyChanged(nameof(Subagents));
+        OnPropertyChanged(nameof(HasFileRead));
+        OnPropertyChanged(nameof(HasDirectoryList));
+        OnPropertyChanged(nameof(HasGlob));
+        OnPropertyChanged(nameof(HasGrep));
+        OnPropertyChanged(nameof(HasSubagents));
+        OnPropertyChanged(nameof(HasNoDetail));
+        OnPropertyChanged(nameof(FileReadMeta));
+        OnPropertyChanged(nameof(GlobQueryText));
+        OnPropertyChanged(nameof(GlobCountText));
+        OnPropertyChanged(nameof(GrepQueryText));
+        OnPropertyChanged(nameof(GrepCountText));
+    }
+
+    /// <summary>状态指示: 三态(运行中/成功/失败)由 UI 渲染为彩色圆点 + 文本。</summary>
+    public bool IsStatusRunning => !IsToolDone;
+    public bool IsStatusSuccess => IsToolDone && ToolStatus == ToolStatusKind.Success;
+    public bool IsStatusError => IsToolDone && ToolStatus == ToolStatusKind.Error;
+
+    public string StatusText => IsStatusRunning
+        ? Strings.ToolCard_StatusRunning
+        : IsStatusError ? Strings.ToolCard_StatusError : Strings.ToolCard_StatusSuccess;
 
     /// <summary>关联的 git 检查点步骤 ID(非空时展示回滚按钮)。</summary>
     [ObservableProperty]
@@ -150,7 +227,15 @@ public partial class SegmentItemViewModel : ViewModelBase
     private bool _isRolledBack;
 
     partial void OnStepIdChanged(string? value) => OnPropertyChanged(nameof(CanRollback));
-    partial void OnIsToolDoneChanged(bool value) => OnPropertyChanged(nameof(CanRollback));
+
+    partial void OnIsToolDoneChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(IsStatusRunning));
+        OnPropertyChanged(nameof(IsStatusSuccess));
+        OnPropertyChanged(nameof(IsStatusError));
+        OnPropertyChanged(nameof(StatusText));
+    }
 
     /// <summary>回滚失败信息(空表示无错误)。</summary>
     [ObservableProperty]
@@ -160,10 +245,10 @@ public partial class SegmentItemViewModel : ViewModelBase
     public bool CanRollback => !string.IsNullOrEmpty(StepId) && !IsRolledBack && IsToolDone;
 
     /// <summary>回滚按钮文案: 二次确认阶段变为"确认回滚?"。</summary>
-    public string RollbackText => IsRollbackConfirming ? "确认回滚?" : "回滚此检查点";
+    public string RollbackText => IsRollbackConfirming ? Strings.ToolCard_RollbackConfirm : Strings.ToolCard_Rollback;
 
     /// <summary>回滚区提示文本: 已回滚 / 错误信息。</summary>
-    public string? RollbackNote => IsRolledBack ? "已回滚到检查点之前" : RollbackError;
+    public string? RollbackNote => IsRolledBack ? Strings.ToolCard_RolledBack : RollbackError;
 
     public bool HasRollbackNote => !string.IsNullOrEmpty(RollbackNote);
 
@@ -194,13 +279,16 @@ public partial class SegmentItemViewModel : ViewModelBase
             }
             else
             {
-                RollbackError = $"回滚失败: {result.Stderr.Trim()}";
+                RollbackError = string.Format(Strings.ToolCard_RollbackFailed, result.Stderr.Trim());
             }
         }
         catch (Exception ex)
         {
-            // 常见: 工作区有未提交变更 / 步骤已回滚
-            RollbackError = ex.Message.StartsWith("回滚失败") ? ex.Message : $"回滚失败: {ex.Message}";
+            // 常见: 工作区有未提交变更 / 步骤已回滚(消息已带前缀时避免重复)
+            var prefix = Strings.ToolCard_RollbackFailed.Replace("{0}", string.Empty).TrimEnd();
+            RollbackError = ex.Message.StartsWith(prefix, StringComparison.Ordinal)
+                ? ex.Message
+                : string.Format(Strings.ToolCard_RollbackFailed, ex.Message);
         }
     }
 
@@ -218,8 +306,8 @@ public partial class SegmentItemViewModel : ViewModelBase
     }
 
     public string CardTitle => Kind == MessageSegmentKind.Thinking
-        ? "思考过程"
-        : $"工具调用 {_toolIndex} · {ToolName}";
+        ? Strings.ToolCard_Thinking
+        : string.Format(Strings.ToolCard_Title, _toolIndex, ToolName);
 
     public string CardGlyph => Kind == MessageSegmentKind.Thinking
         ? "🪄"
@@ -239,6 +327,43 @@ public partial class SegmentItemViewModel : ViewModelBase
 
     public bool HasToolOutput => !string.IsNullOrEmpty(ToolOutput);
 
+    /// <summary>复制结果按钮: 复制后短暂显示"已复制"。</summary>
+    [ObservableProperty]
+    private bool _isCopied;
+
+    public string CopyButtonText => IsCopied ? Strings.ToolCard_Copied : Strings.ToolCard_CopyResult;
+
+    partial void OnIsCopiedChanged(bool value) => OnPropertyChanged(nameof(CopyButtonText));
+
+    /// <summary>复制工具结果(优先最终结果, 其次流式输出)到剪贴板。</summary>
+    [RelayCommand]
+    private async Task CopyResultAsync()
+    {
+        var text = !string.IsNullOrEmpty(ToolResult) ? ToolResult : ToolOutput;
+        if (string.IsNullOrEmpty(text)) return;
+
+        // 超长结果截断, 避免剪贴板写入过大数据
+        if (text.Length > 200_000)
+        {
+            text = text[..200_000];
+        }
+
+        if (Avalonia.Application.Current?.ApplicationLifetime
+            is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime { MainWindow: { } window }
+            && window.Clipboard is { } clipboard)
+        {
+            await clipboard.SetTextAsync(text);
+            IsCopied = true;
+            var timer = new Avalonia.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1.5) };
+            timer.Tick += (_, _) =>
+            {
+                IsCopied = false;
+                timer.Stop();
+            };
+            timer.Start();
+        }
+    }
+
     [RelayCommand]
     private void ToggleArgumentsView()
     {
@@ -252,7 +377,13 @@ public partial class SegmentItemViewModel : ViewModelBase
     }
 
     partial void OnArgumentsRawChanged(string value) => OnPropertyChanged(nameof(ArgumentsDisplay));
-    partial void OnToolStatusChanged(ToolStatusKind value) => OnPropertyChanged(nameof(CardGlyph));
+    partial void OnToolStatusChanged(ToolStatusKind value)
+    {
+        OnPropertyChanged(nameof(CardGlyph));
+        OnPropertyChanged(nameof(IsStatusSuccess));
+        OnPropertyChanged(nameof(IsStatusError));
+        OnPropertyChanged(nameof(StatusText));
+    }
     partial void OnToolOutputChanged(string value) => OnPropertyChanged(nameof(HasToolOutput));
     partial void OnToolResultChanged(string value) => OnPropertyChanged(nameof(HasToolResult));
 
