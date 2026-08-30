@@ -155,10 +155,11 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         ? new AzureOpenAIClient(_baseUrl, _credential).GetChatClient(model)
         : new OpenAIClient(_credential, new OpenAIClientOptions { Endpoint = _baseUrl }).GetChatClient(model);
 
-    /// <summary>把思考等级映射为 OpenAI reasoning_effort; Auto 或非推理模型返回 null(不下发参数)。</summary>
+    /// <summary>把思考等级映射为 OpenAI reasoning_effort; Off/Auto 或非推理模型返回 null(不下发参数)。</summary>
     private static ChatReasoningEffortLevel? ToReasoningEffort(ChatRequest request)
     {
-        if (request.Thinking is ThinkingLevel.Auto || !ThinkingLevels.IsReasoningModel(request.Model))
+        if (request.Thinking is ThinkingLevel.Off or ThinkingLevel.Auto ||
+            !ThinkingLevels.IsReasoningModel(request.Model))
         {
             return null;
         }
@@ -171,9 +172,10 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         };
     }
 
-    /// <summary>是否按推理模型请求(影响参数命名与温度省略)。</summary>
+    /// <summary>是否按推理模型请求(影响参数命名与温度省略)。Off/Auto 不按推理请求。</summary>
     private static bool IsReasoningMode(ChatRequest request)
-        => request.Thinking is not ThinkingLevel.Auto && ThinkingLevels.IsReasoningModel(request.Model);
+        => request.Thinking is not (ThinkingLevel.Off or ThinkingLevel.Auto)
+           && ThinkingLevels.IsReasoningModel(request.Model);
 
     private static string EffortString(ChatRequest request) => request.Thinking switch
     {
