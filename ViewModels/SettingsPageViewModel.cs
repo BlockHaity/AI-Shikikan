@@ -382,16 +382,27 @@ public partial class SettingsPageViewModel : ViewModelBase
         ReloadMcpItems();
     }
 
-    /// <summary>按最新配置重建 MCP 条目列表(刷新状态列)。</summary>
+    private bool _mcpReloadQueued;
+
+    /// <summary>按最新配置重建 MCP 条目列表(刷新状态列)。延迟到调度器下一轮执行: 避免在按钮点击的
+    /// 输入事件级联中同步增删 ItemsControl 项 —— Material 主题模板内部 Transitions(如 Button 的
+    /// Opacity 过渡, Easing 绑 DynamicResource)在控件移除触发的主题变体级联中会把 Easing 置 null,
+    /// 导致 Avalonia 内部 NRE(12.0.4 未修复); 与 AgentPanel.QueueRefreshSubAgents 同一规避手段。</summary>
     public void ReloadMcpItems()
     {
-        McpItems.Clear();
-        foreach (var def in McpConfigService.LoadAll())
+        if (_mcpReloadQueued) return;
+        _mcpReloadQueued = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            var item = new McpItemViewModel(def, ReloadMcpItems);
-            item.Probe();
-            McpItems.Add(item);
-        }
+            _mcpReloadQueued = false;
+            McpItems.Clear();
+            foreach (var def in McpConfigService.LoadAll())
+            {
+                var item = new McpItemViewModel(def, ReloadMcpItems);
+                item.Probe();
+                McpItems.Add(item);
+            }
+        });
     }
 
     /// <summary>解析 KEY=VALUE 行序列为环境变量表。</summary>
