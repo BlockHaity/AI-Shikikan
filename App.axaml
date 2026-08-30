@@ -13,6 +13,12 @@
     <Application.Styles>
         <theme:MaterialTheme />
         <materialIcons:MaterialIconStyles />
+        <!-- 已知问题规避(Avalonia 12.0.4 + Material 主题): Button 过渡的 Easing 绑 DynamicResource,
+             ItemsControl 移除条目/主题级联时 Easing 被置 null, 过渡启动即 TransitionInstance NRE
+             (仅靠延迟重建不根治)。全局清除 Button(含派生 ToggleButton)过渡, 以悬停/按压微动画换稳定性。 -->
+        <Style Selector="Button">
+            <Setter Property="Transitions" Value="{x:Null}"/>
+        </Style>
     </Application.Styles>
 
     <Application.Resources>
