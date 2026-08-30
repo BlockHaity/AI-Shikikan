@@ -11,6 +11,11 @@ sealed class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        AIShikikan.Core.Logging.Log.Initialize();
+        HookGlobalExceptions();
+
+        AIShikikan.Core.Logging.Log.Info("Boot", $"AI-Shikikan {AppInfo.Version} 启动 (args: {(args.Length == 0 ? "无" : string.Join(' ', args))})");
+
         FixupLinuxImeEnvironment();
 
         if (args.Length > 0 && args[0] is "version" or "-v" or "--version")
@@ -25,7 +30,22 @@ sealed class Program
         }
 
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        AIShikikan.Core.Logging.Log.Info("Boot", "应用正常退出");
         return 0;
+    }
+
+    /// <summary>挂接全局异常钩子: 未知异常落盘(Error), 便于用户报障时提供日志。</summary>
+    static void HookGlobalExceptions()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            AIShikikan.Core.Logging.Log.Error("Crash", e.ExceptionObject as Exception ?? new Exception("非 Exception 异常对象"),
+                $"未处理异常 (IsTerminating={e.IsTerminating})");
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            AIShikikan.Core.Logging.Log.Warn("Task", e.Exception, "未观察的任务异常");
+            e.SetObserved();
+        };
     }
 
     /// <summary>
@@ -82,10 +102,12 @@ sealed class Program
         if (ProcessExists("fcitx5") || ProcessExists("fcitx"))
         {
             Environment.SetEnvironmentVariable("AVALONIA_IM_MODULE", "fcitx");
+            AIShikikan.Core.Logging.Log.Info("Boot", "检测到 fcitx 输入法守护进程, 已补写 AVALONIA_IM_MODULE=fcitx");
         }
         else if (ProcessExists("ibus-daemon"))
         {
             Environment.SetEnvironmentVariable("AVALONIA_IM_MODULE", "ibus");
+            AIShikikan.Core.Logging.Log.Info("Boot", "检测到 ibus 输入法守护进程, 已补写 AVALONIA_IM_MODULE=ibus");
         }
     }
 
