@@ -20,7 +20,7 @@
 
 AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统一指挥调度这些 Agent 的图形程序。
 
-你可以把它理解为：**一个 AI 指挥官，能调度 Claude Code、OpenCode、Reasonix 等工具协同完成复杂任务。**
+你可以把它理解为：**一个 AI 指挥官，能调度 Claude Code、OpenCode、DeepSeek Harness 等工具协同完成复杂任务。**
 
 ```
 用户请求 → AI指挥官 → 分析任务 → 调用子Agent → 汇总结果 → 返回用户
@@ -30,7 +30,7 @@ AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统
 
 ## 功能
 
-- **多 Agent 调度**：让 AI 调用主流 Agent 程序（Claude Code、OpenCode、Reasonix、Codex CLI、Gemini CLI）
+- **多 Agent 调度**：让 AI 调用主流 Agent 程序（Claude Code、OpenCode、DeepSeek Harness、Codex CLI、Gemini CLI）
 - **可配置模型**：为不同 Agent 使用不同的模型完成对应任务
 - **人格/专家注入**：对指挥官自身/Agent 程序注入角色扮演或专家文件
 - **Git 步骤管理**：自动创建步骤分支，支持回滚与合并
@@ -130,7 +130,7 @@ description = "Anthropic 官方编码 Agent"
 | Codex CLI | `codex` | 修复、小步修改、lint |
 | Gemini CLI | `gemini` | 搜索、研究、多模态 |
 | OpenCode | `opencode` | 通用、跨栈、脚本 |
-| Reasonix | `reasonix` | 低成本、批量、长任务 |
+| DeepSeek Harness | `dsh` | DeepSeek 官方 Harness、插件化运行时 |
 
 ## 架构
 

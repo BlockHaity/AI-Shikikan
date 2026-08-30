@@ -4,7 +4,7 @@
 
 ## 项目概览
 
-AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 Claude Code、OpenCode、Codex CLI、Gemini CLI、Reasonix 等终端 Agent 集合起来，由 AI 统一调度完成复杂任务。
+AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 Claude Code、OpenCode、Codex CLI、Gemini CLI、DeepSeek Harness 等终端 Agent 集合起来，由 AI 统一调度完成复杂任务。
 
 用户请求 → AI 指挥官 → 分析任务 → 调用子 Agent → 汇总结果 → 返回用户。
 

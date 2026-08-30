@@ -103,7 +103,7 @@
   <data name="SubAgent_AddName" xml:space="preserve"><value>Name</value></data>
   <data name="SubAgent_AddExec" xml:space="preserve"><value>Executable</value></data>
   <data name="SubAgent_AddDesc" xml:space="preserve"><value>Description (optional)</value></data>
-  <data name="SubAgent_AddHint" xml:space="preserve"><value>Built-ins: claude / codex / gemini / opencode / reasonix</value></data>
+  <data name="SubAgent_AddHint" xml:space="preserve"><value>Built-ins: claude / codex / gemini / opencode / dsh</value></data>
   <data name="SubAgent_DescPlaceholder" xml:space="preserve"><value>Describe this sub-agent's purpose to guide the commander AI...</value></data>
   <data name="SubAgent_Expert" xml:space="preserve"><value>Persona</value></data>
   <data name="SubAgent_None" xml:space="preserve"><value>(none)</value></data>

@@ -57,15 +57,15 @@ timeout_minutes = 30
 description = "开源通用命令行 Agent, 插件生态丰富"
 
 [[agents]]
-id = "reasonix"
-name = "Reasonix"
-executable = "reasonix"
-args = ["run", "{prompt}"]
+id = "dsh"
+name = "DeepSeek Harness"
+executable = "dsh"
+args = ["--profile", "headless", "{prompt}"]
 default_mode = "sync"
 max_concurrent = 1
 require_approval = true
 timeout_minutes = 30
-description = "DeepSeek 原生缓存优先 Agent, 低成本批量/长任务"
+description = "DeepSeek 官方开源 Agent Harness, 插件化运行时, 默认优先 DeepSeek 模型"
 
 [[agents]]
 id = "my-codex"
