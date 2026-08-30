@@ -60,7 +60,8 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 
 - **引擎循环**：`AgentEngine` 将人格 + Roster 提示词发给 LLM，执行工具调用直至回合结束，事件流 `AgentEngineEvent` 驱动 UI。
 - **子 Agent 工具**：均同步执行。`run_<agent>`（单个）、`assign_task`（分派返回 assignmentId）、`run_subagents`（并发多任务，`Task.WhenAll` 后汇总）。无 `mode` 参数。
-- **Compact Subagent**：`SubagentCompactService.Enabled` 开启后，超 2000 字符的子 Agent 输出先经 LLM 压缩为纪要再返回；开关在 AgentPanel 切换，持久化于 ThemeService.Preferences.CompactSubagents。
+- **Compact Subagent**：会话级子代理配置（AgentPanel 每条目独立开关，存于 roster.json `CompactEnabled`），开启后该子代理超 2000 字符的输出先经 LLM 压缩为纪要再返回；无全局开关。
+- **右侧栏与工具可见性**：聊天页右侧栏关闭时，`CommanderRuntime.SetSubagentToolsVisible(false)` 从 ToolRegistry 移除 `run_<agent>` / `assign_task` / `run_subagents` 并清空 Roster 注入（下一回合生效），重新打开时重建并恢复 Roster。
 - **MCP 服务器**：配置于 `mcp-servers.toml`（stdio 传输，command/args/env）。`CommanderRuntime.Boot` 后台连接启用的服务器并把其工具桥接为 `mcp_<serverId>_<toolName>` 注册进 ToolRegistry（MCP 工具默认需批准）。设置页可增删/开关/重连，调用 `Runtime.RefreshMcpToolsAsync()`。协议版本 "2025-06-18"。
 - **工具结果出口**：所有 Agent 执行工具统一走 `AgentExecutor.ExecuteAsync(..., llm, ct)`，压缩在该出口生效。
 - **聊天页**：支持手动停止按钮 + 双击 ESC 终止生成、「继续输出」续写。
@@ -120,7 +121,7 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 | `providers.toml` | LLM Provider（API Key、模型、端点、思考等级限制） |
 | `agents.toml` | Agent 定义 + 推荐专家 |
 | `mcp-servers.toml` | MCP 服务器定义（stdio：command/args/env/enabled） |
-| `preferences.toml` | 界面偏好（明暗/语言/字体/背景/CompactSubagents 开关） |
+| `preferences.toml` | 界面偏好（明暗/语言/字体/背景） |
 | `personas/` | 人格/专家 Markdown(YAML frontmatter) |
 | `templates/` | 任务模板 |
 | `roster.prompt` | Roster 注入模板 |
@@ -132,7 +133,7 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 ## 编码约定
 
 - 语言：**C#**，target `net10.0`，`Nullable` + `ImplicitUsings` 开启。
-- 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配；新工具在 `AgentToolFactory.Create` 注册。
+- 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配；新工具按类别在 `AgentToolFactory.CreateCoreTools`（固定工具）或 `CreateSubagentTools`（随右侧栏可见性注册的子代理工具）注册。
 - Core 必须 AOT 兼容；序列化规则见上节。
 - 代码注释使用中文（与现有代码一致）。
 - GUI 遵循 MVVM：ViewModels 继承 `ViewModelBase`，视图绑定 `Views/*.axaml`；用户可见文案一律走 `Resources/Strings.resx`（中文）+ `Strings.en.resx`（英文），经 `Strings.cs` 访问器引用。
