@@ -31,6 +31,9 @@ public partial class SubAgentItemViewModel : ViewModelBase
     private bool _enabled;
 
     [ObservableProperty]
+    private bool _compactEnabled;
+
+    [ObservableProperty]
     private string _description;
 
     [ObservableProperty]
@@ -124,21 +127,13 @@ public partial class AgentPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _useCommanderPersonaForAgents;
 
-    /// <summary>Compact Subagent: 子Agent输出经 LLM 压缩后返回给 AI(全局开关, 持久化到设置)。</summary>
-    [ObservableProperty]
-    private bool _compactSubagents;
-
     public AgentPanelViewModel()
     {
-        CompactSubagents = App.ThemeService.CompactSubagents;
         RefreshAll();
         _shell.DataChanged += () => Dispatcher.UIThread.Post(RefreshAll);
         _runtime.Assignments.AssignmentChanged += _ =>
             Dispatcher.UIThread.Post(RefreshAssignments);
     }
-
-    partial void OnCompactSubagentsChanged(bool value)
-        => Core.Services.Engine.SubagentCompactService.Persist(App.ThemeService, value);
 
     /// <summary>延迟到调度器下一轮再重建子 Agent 列表, 避免在输入事件级联中同步增删
     /// ItemsControl 项: Material 主题模板内部的 Transitions(如 Button 的 Opacity 过渡,
@@ -243,6 +238,7 @@ public partial class AgentPanelViewModel : ViewModelBase
     private void ApplySessionOverride(SubAgentItemViewModel item, RosterConfig? sessionConfig)
     {
         item.Enabled = true;
+        item.CompactEnabled = false;
         item.HasSessionOverride = false;
         item.Description = item.Agent.Description;
         item.SelectedOption = PersonaOptionFor(item.Agent.RecommendedPersonaId);
@@ -254,6 +250,7 @@ public partial class AgentPanelViewModel : ViewModelBase
         if (entry is null) return;
 
         item.Enabled = entry.Enabled;
+        item.CompactEnabled = entry.CompactEnabled;
         item.HasSessionOverride = !string.IsNullOrWhiteSpace(entry.Description)
                                   || !string.IsNullOrWhiteSpace(entry.PersonaId);
         if (item.HasSessionOverride)
@@ -277,7 +274,8 @@ public partial class AgentPanelViewModel : ViewModelBase
             o.Value is not null && string.Equals(o.Value.Id, personaId, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void PushRoster()
+    /// <summary>把启用条目推送给引擎(Roster 注入 + 压缩开关解析来源); 右侧栏重新打开时也由聊天页调用恢复。</summary>
+    public void PushRoster()
     {
         var entries = SubAgents.Where(e => e.Enabled)
             .Select(e => new AgentRosterEntry
@@ -286,7 +284,8 @@ public partial class AgentPanelViewModel : ViewModelBase
                 Display = e.Display,
                 Description = e.Description,
                 PersonaId = e.SelectedOption?.Value?.Id,
-                Enabled = true
+                Enabled = true,
+                CompactEnabled = e.CompactEnabled
             })
             .ToList();
         _runtime.SetRosterEntries(entries);
@@ -358,11 +357,17 @@ public partial class AgentPanelViewModel : ViewModelBase
     private void MoveToGlobal(SubAgentItemViewModel item)
     {
         var wasEnabled = item.Enabled;
+        var wasCompact = item.CompactEnabled;
         AgentConfigService.SaveUserAgent(Overlay(item.Agent, item.Description, item.SelectedOption?.Value?.Id));
         RosterConfigService.RemoveEntry(_sessionId, item.AgentId);
         if (!wasEnabled)
         {
             RosterConfigService.SetEnabled(_sessionId, item.AgentId, false);
+        }
+
+        if (wasCompact)
+        {
+            RosterConfigService.SetCompact(_sessionId, item.AgentId, true);
         }
 
         _shell.ReloadAgents();
@@ -382,6 +387,14 @@ public partial class AgentPanelViewModel : ViewModelBase
     private void ToggleEntryEnabled(SubAgentItemViewModel item)
     {
         RosterConfigService.SetEnabled(_sessionId, item.AgentId, item.Enabled);
+        PushRoster();
+    }
+
+    /// <summary>切换该子代理的输出压缩开关(会话级, roster.json 持久化)。</summary>
+    [RelayCommand]
+    private void ToggleEntryCompact(SubAgentItemViewModel item)
+    {
+        RosterConfigService.SetCompact(_sessionId, item.AgentId, item.CompactEnabled);
         PushRoster();
     }
 

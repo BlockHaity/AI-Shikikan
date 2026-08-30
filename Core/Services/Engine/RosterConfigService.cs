@@ -105,7 +105,31 @@ public static class RosterConfigService
         Save(sessionId, config);
     }
 
-    /// <summary>删除仅用于开关状态的会话条目(未自定义描述/专家时)。返回是否删除了条目。</summary>
+    /// <summary>设置该子代理在当前会话的输出压缩开关。</summary>
+    public static void SetCompact(string sessionId, string agentId, bool compact)
+    {
+        var config = Load(sessionId);
+        var entry = config.Entries.Find(e => e.AgentId == agentId);
+        if (entry is null)
+        {
+            config.Entries.Add(new AgentRosterEntry
+            {
+                AgentId = agentId,
+                Display = string.Empty,
+                Description = string.Empty,
+                Enabled = true,
+                CompactEnabled = compact
+            });
+        }
+        else
+        {
+            entry.CompactEnabled = compact;
+        }
+
+        Save(sessionId, config);
+    }
+
+    /// <summary>删除仅用于开关状态的会话条目(未自定义描述/专家/压缩时)。返回是否删除了条目。</summary>
     public static bool RemoveIfNoOverride(string sessionId, string agentId)
     {
         var config = Load(sessionId);
@@ -115,7 +139,8 @@ public static class RosterConfigService
             return false;
         }
 
-        if (!string.IsNullOrWhiteSpace(entry.Description) || !string.IsNullOrWhiteSpace(entry.PersonaId))
+        if (!string.IsNullOrWhiteSpace(entry.Description) || !string.IsNullOrWhiteSpace(entry.PersonaId)
+            || entry.CompactEnabled)
         {
             return false;
         }
