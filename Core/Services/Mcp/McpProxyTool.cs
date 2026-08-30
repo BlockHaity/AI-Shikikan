@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Services.Tools;
 
 namespace AIShikikan.Core.Services.Mcp;
@@ -44,12 +45,14 @@ public sealed class McpProxyTool : ITool
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
             var arguments = args.ValueKind is JsonValueKind.Object && args.GetRawText().Length > 2
                 ? JsonNode.Parse(args.GetRawText()) as JsonObject ?? []
                 : [];
             var (text, isError) = await _service.CallBridgeToolAsync(Name, arguments, ct).ConfigureAwait(false);
+            Log.Info("MCP", $"工具 {Name} 完成 ({sw.ElapsedMilliseconds}ms){(isError ? " [isError]" : "")}");
             return isError ? ToolResult.Error(text) : ToolResult.Ok(text);
         }
         catch (OperationCanceledException)
@@ -58,6 +61,7 @@ public sealed class McpProxyTool : ITool
         }
         catch (Exception ex)
         {
+            Log.Warn("MCP", ex, $"工具 {Name} 调用失败({sw.ElapsedMilliseconds}ms)");
             return ToolResult.Error($"MCP 工具调用失败({Name}): {ex.Message}");
         }
     }

@@ -1,3 +1,4 @@
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
@@ -113,6 +114,10 @@ public sealed class CommanderRuntime
         var runtime = Instance;
         _ = Task.Run(async () => await runtime.RefreshMcpToolsAsync().ConfigureAwait(false));
 
+        Log.Info("Boot",
+            $"装配完成: 工作区={Path.GetFullPath(root)}, Agent={agentsList.Count}, 专家={personasList.Count}, " +
+            $"模板={templatesList.Count}, 工具={registry.All.Count}, 人格字符数={personaText?.Length ?? 0}");
+
         return Instance;
     }
 
@@ -130,6 +135,16 @@ public sealed class CommanderRuntime
         foreach (var (_, serverId, descriptor) in Mcp.EnumerateTools())
         {
             Registry.Register(new McpProxyTool(Mcp, serverId, descriptor));
+        }
+
+        foreach (var m in messages.Where(m => !m.Contains("连接失败")))
+        {
+            Log.Info("MCP", m);
+        }
+
+        foreach (var m in messages.Where(m => m.Contains("连接失败")))
+        {
+            Log.Warn("MCP", m);
         }
 
         messages.Add($"[MCP] 已连接 {Mcp.ConnectedCount} 个服务器, 注册 {Registry.All.Count(t => t is McpProxyTool)} 个工具");

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Git;
@@ -360,6 +361,7 @@ public sealed class GitStepService
         record.Status = GitStepStatus.Merged;
         SaveRecord(record);
 
+        Log.Info("Git", $"步骤 {stepId} 已合并到 {record.BaseBranch} (commit {record.MergeCommit[..Math.Min(8, record.MergeCommit.Length)]})");
         TryDeleteBranch(record.StepBranch);
         return merge;
     }
@@ -369,6 +371,7 @@ public sealed class GitStepService
     public GitCommandResult RollbackStep(string stepId)
     {
         var record = GetRecord(stepId);
+        Log.Info("Git", $"回滚步骤 {stepId} (状态 {record.Status})");
         return record.Status switch
         {
             GitStepStatus.Merged => RevertStep(stepId),
@@ -409,6 +412,7 @@ public sealed class GitStepService
         record.Status = GitStepStatus.Dropped;
         record.CompletedAt = DateTime.Now;
         SaveRecord(record);
+        Log.Info("Git", $"步骤 {stepId} 已丢弃(分支 {record.StepBranch} 已删除)");
         return del;
     }
 
@@ -432,6 +436,7 @@ public sealed class GitStepService
         record.Status = GitStepStatus.Reverted;
         record.CompletedAt = DateTime.Now;
         SaveRecord(record);
+        Log.Info("Git", $"步骤 {stepId} 已反向提交(revert)");
         return revert;
     }
 
