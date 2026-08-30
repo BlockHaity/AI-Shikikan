@@ -129,7 +129,31 @@ public static class RosterConfigService
         Save(sessionId, config);
     }
 
-    /// <summary>删除仅用于开关状态的会话条目(未自定义描述/专家/压缩时)。返回是否删除了条目。</summary>
+    /// <summary>设置该子代理是否在 Plan 模式中使用(会话级)。</summary>
+    public static void SetUseInPlanMode(string sessionId, string agentId, bool useInPlanMode)
+    {
+        var config = Load(sessionId);
+        var entry = config.Entries.Find(e => e.AgentId == agentId);
+        if (entry is null)
+        {
+            config.Entries.Add(new AgentRosterEntry
+            {
+                AgentId = agentId,
+                Display = string.Empty,
+                Description = string.Empty,
+                Enabled = true,
+                UseInPlanMode = useInPlanMode
+            });
+        }
+        else
+        {
+            entry.UseInPlanMode = useInPlanMode;
+        }
+
+        Save(sessionId, config);
+    }
+
+    /// <summary>删除仅用于开关状态的会话条目(未自定义描述/专家/压缩/Plan 模式时)。返回是否删除了条目。</summary>
     public static bool RemoveIfNoOverride(string sessionId, string agentId)
     {
         var config = Load(sessionId);
@@ -140,7 +164,7 @@ public static class RosterConfigService
         }
 
         if (!string.IsNullOrWhiteSpace(entry.Description) || !string.IsNullOrWhiteSpace(entry.PersonaId)
-            || entry.CompactEnabled)
+            || entry.CompactEnabled || entry.UseInPlanMode)
         {
             return false;
         }

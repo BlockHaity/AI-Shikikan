@@ -304,6 +304,7 @@ public sealed class AgentEngine
             var context = new ToolContext
             {
                 WorkspaceRoot = _workspaceRoot,
+                IsPlanMode = _options.IsPlanMode,
                 OnToolOutput = line => OnEvent?.Invoke(new EngineToolOutput(call.Id, call.Name, line))
             };
 

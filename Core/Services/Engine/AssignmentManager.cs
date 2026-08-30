@@ -27,6 +27,9 @@ public class Assignment
     public string? PersonaId { get; set; }
     public string StepId { get; set; } = string.Empty;
     public string? WorkingDirectory { get; set; }
+
+    /// <summary>是否以 Plan 模式启动(追加 Agent 的 plan_args)。</summary>
+    public bool PlanMode { get; set; }
     public SubagentStatus Status { get; set; } = SubagentStatus.Queued;
     public string? OutputTail { get; set; }
     public int? ExitCode { get; set; }
@@ -89,7 +92,7 @@ public sealed class AssignmentManager
 
     public Assignment Create(CliAgentDefinition agent, string task,
         string? templateId = null, string? personaId = null,
-        string? workingDirectory = null)
+        string? workingDirectory = null, bool planMode = false)
     {
         var assignment = new Assignment
         {
@@ -98,7 +101,8 @@ public sealed class AssignmentManager
             Task = task,
             TemplateId = templateId,
             PersonaId = personaId,
-            WorkingDirectory = workingDirectory ?? string.Empty
+            WorkingDirectory = workingDirectory ?? string.Empty,
+            PlanMode = planMode
         };
 
         lock (_lock)
@@ -174,7 +178,7 @@ public sealed class AssignmentManager
             ? Path.GetFullPath(".")
             : Path.GetFullPath(assignment.WorkingDirectory!);
 
-        return await CliAgentRunner.RunAsync(agent, finalPrompt, workDir, progressOutput, ct);
+        return await CliAgentRunner.RunAsync(agent, finalPrompt, workDir, progressOutput, assignment.PlanMode, ct);
     }
 
     private static string TailOf(string output)

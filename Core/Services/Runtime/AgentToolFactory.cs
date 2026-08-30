@@ -151,7 +151,8 @@ public static class AgentExecutor
         var assignment = assignments.Create(agent, task,
             templateId: GetOpt(args, "templateId"),
             personaId: GetOpt(args, "personaId"),
-            workingDirectory: workDirAbs);
+            workingDirectory: workDirAbs,
+            planMode: ShouldRunInPlanMode(agent, ctx));
 
         var progress = ctx.OnToolOutput is not null
             ? new Progress<string>(ctx.OnToolOutput)
@@ -176,6 +177,19 @@ public static class AgentExecutor
                 StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId
             };
         }
+    }
+
+    /// <summary>主对话处于 Plan 模式且该子代理被会话配置允许时, 以 Plan 模式启动(需 Agent 配置了 plan_args)。</summary>
+    private static bool ShouldRunInPlanMode(CliAgentDefinition agent, ToolContext ctx)
+    {
+        if (!ctx.IsPlanMode || agent.PlanArgs is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        return CommanderRuntime.Instance?.CurrentRosterEntries?.Any(
+            e => string.Equals(e.AgentId, agent.Id, StringComparison.OrdinalIgnoreCase)
+                 && e.UseInPlanMode) ?? false;
     }
 
     /// <summary>解析该子代理在当前会话的输出压缩开关(右侧栏会话子代理配置, roster.json 持久化)。</summary>

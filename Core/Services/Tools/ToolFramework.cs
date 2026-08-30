@@ -19,6 +19,9 @@ public class ToolContext
 {
     public required string WorkspaceRoot { get; init; }
 
+    /// <summary>主对话是否处于 Plan 模式(决定子代理是否以 plan_args 启动)。</summary>
+    public bool IsPlanMode { get; init; }
+
     /// <summary>子代理实时输出回调(UI 订阅)。</summary>
     public Action<string>? OnToolOutput { get; init; }
 }

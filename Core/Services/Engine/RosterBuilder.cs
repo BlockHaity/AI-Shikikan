@@ -92,6 +92,10 @@ public static class RosterBuilder
             {
                 parts.Add($"推荐专家: {persona.Display}");
             }
+            if (entry.UseInPlanMode && agent.PlanArgs is { Count: > 0 })
+            {
+                parts.Add("Plan 模式可用");
+            }
             parts.Add($"模式: {agent.DefaultMode}, 并发: {agent.MaxConcurrent}");
 
             sb.AppendLine($"- run_{agent.Id}: {string.Join(" | ", parts)}");
