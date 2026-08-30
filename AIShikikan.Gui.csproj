@@ -22,7 +22,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="Core\DefaultConfig\*.toml" />
+    <!-- 显式 LogicalName: 代码按 AIShikikan.Core.DefaultConfig.<文件名> 查找, 与根命名空间无关 -->
+    <EmbeddedResource Include="Core\DefaultConfig\*.toml">
+      <LogicalName>AIShikikan.Core.DefaultConfig.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
   </ItemGroup>
 
   <ItemGroup>

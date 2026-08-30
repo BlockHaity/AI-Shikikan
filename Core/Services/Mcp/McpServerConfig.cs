@@ -40,7 +40,7 @@ public class McpConfigFile
 /// <summary>MCP 服务器配置持久化(TOML, AOT 源生成序列化)。</summary>
 public static class McpConfigService
 {
-    public const string McpServersResource = "AIShikikan.Core.DefaultConfig.mcp-servers.toml";
+    public const string McpServersResource = DefaultConfig.McpServersResource;
 
     private static readonly object Sync = new();
     private static IReadOnlyList<McpServerDefinition>? _cache;
