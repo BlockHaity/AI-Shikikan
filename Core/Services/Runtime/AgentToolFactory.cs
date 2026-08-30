@@ -13,18 +13,13 @@ using AIShikikan.Core.Services.Tools.Builtin;
 
 namespace AIShikikan.Core.Services.Runtime;
 
-/// <summary>构建 LLM 可见工具集: 只读工具 + run_&lt;agent&gt; + assign_task + run_subagents + git_*。</summary>
+/// <summary>构建 LLM 可见工具集: 基础只读/git 工具 + 子代理工具(run_&lt;agent&gt; / assign_task / run_subagents)。</summary>
 public static class AgentToolFactory
 {
-    public static IReadOnlyList<ITool> Create(
-        IReadOnlyList<CliAgentDefinition> agents,
-        IReadOnlyList<Persona> personas,
-        IReadOnlyList<AgentTemplate> templates,
-        GitStepService git,
-        AssignmentManager assignments,
-        LlmService? llm = null)
+    /// <summary>固定基础工具: 只读文件工具 + git 步骤工具(始终注册)。</summary>
+    public static IReadOnlyList<ITool> CreateCoreTools(GitStepService git)
     {
-        var list = new List<ITool>
+        return new List<ITool>
         {
             new ReadFileTool(),
             new GlobTool(),
@@ -35,7 +30,18 @@ public static class AgentToolFactory
             new GitDropStepTool(git),
             new GitRevertStepTool(git)
         };
+    }
 
+    /// <summary>子代理工具: run_&lt;agent&gt; / assign_task / run_subagents(随右侧栏开关注册/注销)。</summary>
+    public static IReadOnlyList<ITool> CreateSubagentTools(
+        IReadOnlyList<CliAgentDefinition> agents,
+        IReadOnlyList<Persona> personas,
+        IReadOnlyList<AgentTemplate> templates,
+        GitStepService git,
+        AssignmentManager assignments,
+        LlmService? llm = null)
+    {
+        var list = new List<ITool>();
         foreach (var agent in agents)
         {
             list.Add(new AgentExecutionTool(agent, personas, templates, git, assignments, llm));
@@ -157,7 +163,7 @@ public static class AgentExecutor
             var tail = completed.OutputTail ?? run.Output;
             var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)\n检查点: {completed.StepId}";
             var body = await SubagentCompactService.CompactIfNeededAsync(
-                llm!, agent.Display, Truncate(tail, 26000), ct);
+                llm!, agent.Display, Truncate(tail, 26000), IsCompactEnabled(agent.Id), ct);
             return new ToolResult { Content = $"{header}\n\n{body}", StepId = completed.StepId };
         }
         catch (Exception ex)
@@ -170,6 +176,13 @@ public static class AgentExecutor
                 StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId
             };
         }
+    }
+
+    /// <summary>解析该子代理在当前会话的输出压缩开关(右侧栏会话子代理配置, roster.json 持久化)。</summary>
+    private static bool IsCompactEnabled(string agentId)
+    {
+        return CommanderRuntime.Instance?.CurrentRosterEntries?.FirstOrDefault(
+            e => string.Equals(e.AgentId, agentId, StringComparison.OrdinalIgnoreCase))?.CompactEnabled ?? false;
     }
 
     private static string? GetOpt(JsonElement args, string name)
