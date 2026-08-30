@@ -194,6 +194,7 @@ public static class Strings
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
+    public static string Settings_AgentPlanArgs => Get(nameof(Settings_AgentPlanArgs));
     public static string Settings_ModelNameHeader => Get(nameof(Settings_ModelNameHeader));
     public static string Settings_MaxThinking => Get(nameof(Settings_MaxThinking));
     public static string Settings_DetectThinking => Get(nameof(Settings_DetectThinking));

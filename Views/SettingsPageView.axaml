@@ -239,6 +239,8 @@
                             </Grid>
                             <TextBox Text="{Binding AgentArgsEdit}"
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}" />
+                            <TextBox Text="{Binding AgentPlanArgsEdit}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_AgentPlanArgs}" />
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_AgentEditHint}"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                         </StackPanel>
@@ -250,6 +252,8 @@
                                      Text="{Binding NewAgentExecutable}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}"
                                      Text="{Binding NewAgentArgs}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentPlanArgs}"
+                                     Text="{Binding NewAgentPlanArgs}" />
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddAgentCommand}"/>
                         </StackPanel>
