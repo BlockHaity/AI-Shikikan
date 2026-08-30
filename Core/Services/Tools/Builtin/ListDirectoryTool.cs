@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools.Builtin;
 
@@ -51,18 +52,29 @@ public class ListDirectoryTool : ITool
         var sb = new System.Text.StringBuilder();
         sb.AppendLine($"目录: {path ?? "."}");
         var count = 0;
+        var entries = new List<DirectoryEntry>();
 
-        Walk(full, 0, recursive, sb, ref count, ct);
+        Walk(full, 0, recursive, sb, ref count, entries, ct);
 
         if (count >= MaxEntries)
         {
             sb.AppendLine($"...(条目已截断, 超过 {MaxEntries})");
         }
 
-        return Task.FromResult(ToolResult.Ok(sb.ToString()));
+        // 结构化卡片数据: 名称/类型/大小/修改时间
+        var detail = new DirectoryListDetail
+        {
+            Path = path ?? ".",
+            Recursive = recursive,
+            Entries = entries,
+            Truncated = count >= MaxEntries
+        };
+        return Task.FromResult(new ToolResult { Content = sb.ToString(), Detail = detail });
     }
 
-    private static void Walk(string dir, int depth, bool recursive, System.Text.StringBuilder sb, ref int count, CancellationToken ct)
+    private static void Walk(
+        string dir, int depth, bool recursive, System.Text.StringBuilder sb,
+        ref int count, List<DirectoryEntry> entries, CancellationToken ct)
     {
         if (count >= MaxEntries) return;
 
@@ -72,11 +84,19 @@ public class ListDirectoryTool : ITool
             var name = Path.GetFileName(sub);
             if (SkipDirs.Contains(name)) continue;
 
+            var subInfo = new DirectoryInfo(sub);
             sb.AppendLine($"{new string(' ', depth * 2)}[{name}/]");
+            entries.Add(new DirectoryEntry
+            {
+                Name = name,
+                IsDirectory = true,
+                ModifiedAt = subInfo.LastWriteTime,
+                Depth = depth
+            });
             count++;
             if (recursive && depth < MaxDepth)
             {
-                Walk(sub, depth + 1, true, sb, ref count, ct);
+                Walk(sub, depth + 1, true, sb, ref count, entries, ct);
             }
         }
 
@@ -85,6 +105,14 @@ public class ListDirectoryTool : ITool
             ct.ThrowIfCancellationRequested();
             var info = new FileInfo(file);
             sb.AppendLine($"{new string(' ', depth * 2)}{info.Name} ({info.Length / 1024}KB)");
+            entries.Add(new DirectoryEntry
+            {
+                Name = info.Name,
+                IsDirectory = false,
+                SizeBytes = info.Length,
+                ModifiedAt = info.LastWriteTime,
+                Depth = depth
+            });
             count++;
         }
     }

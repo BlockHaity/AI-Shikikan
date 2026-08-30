@@ -165,7 +165,25 @@ public static class AgentExecutor
             var header = $"[agent:{agent.Display}] 完成 (exit {run.ExitCode}, 耗时 {(int)run.Elapsed.TotalSeconds}s)\n检查点: {completed.StepId}";
             var body = await SubagentCompactService.CompactIfNeededAsync(
                 llm!, agent.Display, Truncate(tail, 26000), IsCompactEnabled(agent.Id), ct);
-            return new ToolResult { Content = $"{header}\n\n{body}", StepId = completed.StepId };
+
+            // 结构化卡片数据: 单个子 agent 结果框
+            var detail = new SubagentsDetail
+            {
+                Subagents =
+                [
+                    new SubagentResultEntry
+                    {
+                        AgentId = agent.Id,
+                        AgentName = agent.Display,
+                        ExitCode = run.ExitCode,
+                        ElapsedSeconds = (int)run.Elapsed.TotalSeconds,
+                        TimedOut = run.TimedOut,
+                        Output = body,
+                        StepId = completed.StepId
+                    }
+                ]
+            };
+            return new ToolResult { Content = $"{header}\n\n{body}", StepId = completed.StepId, Detail = detail };
         }
         catch (Exception ex)
         {
@@ -174,7 +192,21 @@ public static class AgentExecutor
             {
                 IsError = true,
                 Content = $"[agent:{agent.Display}] 执行失败: {ex.Message}",
-                StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId
+                StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId,
+                Detail = new SubagentsDetail
+                {
+                    Subagents =
+                    [
+                        new SubagentResultEntry
+                        {
+                            AgentId = agent.Id,
+                            AgentName = agent.Display,
+                            IsError = true,
+                            Output = ex.Message,
+                            StepId = string.IsNullOrEmpty(assignment.StepId) ? null : assignment.StepId
+                        }
+                    ]
+                }
             };
         }
     }
@@ -414,11 +446,21 @@ public class SubagentGroupTool : ITool
             return ToolResult.Error("subagents 为空");
         }
 
-        var results = await Task.WhenAll(subItems.Select(el => RunOneAsync(el, ctx, ct)));
-        return ToolResult.Ok(string.Join("\n\n---\n\n", results));
+        var runs = await Task.WhenAll(subItems.Select(el => RunOneAsync(el, ctx, ct)));
+
+        // 结构化卡片数据: 每个子 agent 一个独立结果框
+        var detail = new SubagentsDetail { Subagents = runs.Select(r => r.Entry).ToList() };
+        return new ToolResult
+        {
+            Content = string.Join("\n\n---\n\n", runs.Select(r => r.Result.Content)),
+            IsError = runs.Any(r => r.Result.IsError),
+            Detail = detail
+        };
     }
 
-    private async Task<string> RunOneAsync(JsonElement el, ToolContext ctx, CancellationToken ct)
+    private sealed record SubRunResult(ToolResult Result, SubagentResultEntry Entry);
+
+    private async Task<SubRunResult> RunOneAsync(JsonElement el, ToolContext ctx, CancellationToken ct)
     {
         var task = Get(el, "task");
         var agentId = Get(el, "agentId");
@@ -427,7 +469,16 @@ public class SubagentGroupTool : ITool
         var agent = ResolveAgent(agentId, task ?? string.Empty);
         if (agent is null)
         {
-            return $"[agent:{agentId ?? "?"}] 失败: 找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}";
+            var notFound = $"[agent:{agentId ?? "?"}] 失败: 找不到可用 Agent。已配置: {string.Join(", ", _agents.Select(a => a.Id))}";
+            return new SubRunResult(
+                ToolResult.Error(notFound),
+                new SubagentResultEntry
+                {
+                    AgentId = agentId ?? "?",
+                    AgentName = agentId ?? "?",
+                    IsError = true,
+                    Output = notFound
+                });
         }
 
         try
@@ -444,11 +495,27 @@ public class SubagentGroupTool : ITool
                 AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
                 args, ctx, _assignments, _llm, ct);
 
-            return result.Content;
+            var entry = (result.Detail as SubagentsDetail)?.Subagents.FirstOrDefault()
+                ?? new SubagentResultEntry
+                {
+                    AgentId = agent.Id,
+                    AgentName = agent.Display,
+                    IsError = result.IsError,
+                    Output = result.Content
+                };
+            return new SubRunResult(result, entry);
         }
         catch (Exception ex)
         {
-            return $"[agent:{agent.Id}] 执行失败: {ex.Message}";
+            return new SubRunResult(
+                ToolResult.Error($"[agent:{agent.Id}] 执行失败: {ex.Message}"),
+                new SubagentResultEntry
+                {
+                    AgentId = agent.Id,
+                    AgentName = agent.Display,
+                    IsError = true,
+                    Output = ex.Message
+                });
         }
     }
 

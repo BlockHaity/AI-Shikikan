@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools.Builtin;
 
@@ -63,12 +64,23 @@ public class ReadFileTool : ITool
                 sb.AppendLine($"{offset + i + 1,6} | {take[i]}");
             }
 
-            if (offset + take.Length < lines.Length)
+            var truncated = offset + take.Length < lines.Length;
+            if (truncated)
             {
                 sb.AppendLine($"...(还有 {lines.Length - offset - take.Length} 行未显示)");
             }
 
-            return Task.FromResult(ToolResult.Ok(sb.ToString()));
+            // 结构化卡片数据: 完整路径 + 原始内容(保留格式与缩进)
+            var detail = new FileReadDetail
+            {
+                Path = fullPath,
+                Content = string.Join("\n", take),
+                TotalLines = lines.Length,
+                StartLine = offset + 1,
+                LinesShown = take.Length,
+                Truncated = truncated
+            };
+            return Task.FromResult(new ToolResult { Content = sb.ToString(), Detail = detail });
         }
         catch (UnauthorizedAccessException ex)
         {

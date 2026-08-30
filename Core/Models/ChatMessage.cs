@@ -30,6 +30,9 @@ public class ToolSegment
 
     /// <summary>关联的 git 检查点步骤 ID(子 Agent 调用), 会话回放时据此提供回滚按钮。</summary>
     public string? StepId { get; set; }
+
+    /// <summary>结构化卡片展示数据(按工具类型渲染专属卡体), 会话回放时重建。</summary>
+    public ToolCardDetail? Detail { get; set; }
 }
 
 /// <summary>会话消息的一个分段(正文 / 思考 / 工具调用)。</summary>

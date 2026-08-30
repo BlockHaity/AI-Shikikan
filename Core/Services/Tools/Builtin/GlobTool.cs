@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools.Builtin;
 
@@ -69,12 +70,20 @@ public class GlobTool : ITool
             sb.AppendLine(r);
         }
 
-        if (results.Count >= maxResults)
+        var truncated = results.Count >= maxResults;
+        if (truncated)
         {
             sb.AppendLine("(已达结果上限)");
         }
 
-        return Task.FromResult(ToolResult.Ok(sb.ToString()));
+        // 结构化卡片数据: 查询条件 + 匹配路径
+        var detail = new GlobDetail
+        {
+            Pattern = pattern,
+            Matches = results.Select(r => new FileMatchEntry { Path = r }).ToList(),
+            Truncated = truncated
+        };
+        return Task.FromResult(new ToolResult { Content = sb.ToString(), Detail = detail });
     }
 
     private static bool ShouldSkipMatch(string rel)
