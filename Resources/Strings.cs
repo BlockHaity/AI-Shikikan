@@ -234,4 +234,9 @@ public static class Strings
     public static string ToolCard_SubagentDone => Get(nameof(ToolCard_SubagentDone));
     public static string ToolCard_SubagentFailed => Get(nameof(ToolCard_SubagentFailed));
     public static string ToolCard_SubagentTimeout => Get(nameof(ToolCard_SubagentTimeout));
+    public static string Chat_MsgEdit => Get(nameof(Chat_MsgEdit));
+    public static string Chat_MsgDelete => Get(nameof(Chat_MsgDelete));
+    public static string Chat_MsgDeleteConfirm => Get(nameof(Chat_MsgDeleteConfirm));
+    public static string Chat_MsgResend => Get(nameof(Chat_MsgResend));
+    public static string Chat_MsgCancel => Get(nameof(Chat_MsgCancel));
 }

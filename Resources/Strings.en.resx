@@ -235,4 +235,9 @@
   <data name="ToolCard_SubagentDone" xml:space="preserve"><value>Done</value></data>
   <data name="ToolCard_SubagentFailed" xml:space="preserve"><value>Failed</value></data>
   <data name="ToolCard_SubagentTimeout" xml:space="preserve"><value>Timed out</value></data>
+  <data name="Chat_MsgEdit" xml:space="preserve"><value>Edit</value></data>
+  <data name="Chat_MsgDelete" xml:space="preserve"><value>Delete</value></data>
+  <data name="Chat_MsgDeleteConfirm" xml:space="preserve"><value>Confirm delete?</value></data>
+  <data name="Chat_MsgResend" xml:space="preserve"><value>Resend</value></data>
+  <data name="Chat_MsgCancel" xml:space="preserve"><value>Cancel</value></data>
 </root>

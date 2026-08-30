@@ -237,4 +237,9 @@
   <data name="ToolCard_SubagentDone" xml:space="preserve"><value>完成</value></data>
   <data name="ToolCard_SubagentFailed" xml:space="preserve"><value>失败</value></data>
   <data name="ToolCard_SubagentTimeout" xml:space="preserve"><value>超时</value></data>
+  <data name="Chat_MsgEdit" xml:space="preserve"><value>编辑</value></data>
+  <data name="Chat_MsgDelete" xml:space="preserve"><value>删除</value></data>
+  <data name="Chat_MsgDeleteConfirm" xml:space="preserve"><value>确认删除?</value></data>
+  <data name="Chat_MsgResend" xml:space="preserve"><value>重新发送</value></data>
+  <data name="Chat_MsgCancel" xml:space="preserve"><value>取消</value></data>
 </root>
