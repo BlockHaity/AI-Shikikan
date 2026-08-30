@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools.Builtin;
 
@@ -91,6 +92,7 @@ public class GrepTool : ITool
 
         var sb = new System.Text.StringBuilder();
         var count = 0;
+        var matches = new List<GrepMatchEntry>();
 
         foreach (var file in files)
         {
@@ -118,6 +120,13 @@ public class GrepTool : ITool
                     var rel = Path.GetRelativePath(Path.GetFullPath(ctx.WorkspaceRoot), file).Replace('\\', '/');
                     var line = lines[i].Trim();
                     sb.AppendLine($"{rel}:{i + 1}: {(line.Length > 160 ? line[..160] + "..." : line)}");
+                    // 结构化卡片数据: 保留原始缩进的匹配行上下文(超长截断)
+                    matches.Add(new GrepMatchEntry
+                    {
+                        Path = rel,
+                        Line = i + 1,
+                        Text = lines[i].Length > 500 ? lines[i][..500] + "..." : lines[i]
+                    });
                     count++;
                 }
             }
@@ -131,12 +140,21 @@ public class GrepTool : ITool
             return Task.FromResult(ToolResult.Ok($"未找到匹配 \"{pattern}\""));
         }
 
-        if (count >= maxResults)
+        var truncated = count >= maxResults;
+        if (truncated)
         {
             sb.AppendLine($"(已达 {maxResults} 条上限)");
         }
 
-        return Task.FromResult(ToolResult.Ok(sb.ToString()));
+        // 结构化卡片数据: 查询条件 + 路径/行号/上下文
+        var detail = new GrepDetail
+        {
+            Pattern = pattern,
+            CaseSensitive = caseSensitive,
+            Matches = matches,
+            Truncated = truncated
+        };
+        return Task.FromResult(new ToolResult { Content = sb.ToString(), Detail = detail });
     }
 
     private static IEnumerable<string> EnumerateFiles(string dir, int depth)

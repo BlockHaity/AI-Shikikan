@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools;
 
@@ -9,6 +10,9 @@ public class ToolResult
 
     /// <summary>关联的 git 检查点步骤 ID(子 Agent 调用产生检查点时填写), UI 据此提供回滚按钮。</summary>
     public string? StepId { get; set; }
+
+    /// <summary>结构化卡片展示数据(按工具类型渲染专属卡体); 为空时卡片回退到通用文本展示。</summary>
+    public ToolCardDetail? Detail { get; set; }
 
     public static ToolResult Ok(string content) => new() { Content = content };
 
