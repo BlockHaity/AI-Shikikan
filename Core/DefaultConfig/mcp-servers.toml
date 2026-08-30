@@ -1,5 +1,5 @@
 # MCP 服务器配置示例(支持 stdio / http(Streamable) / sse 传输)
-# 每个服务器以 [[servers]] 表定义, 字段:
+# 默认不内置任何 MCP 服务器, 按需在设置页添加或在此文件添加 [[servers]] 条目, 字段:
 #   transport - 传输方式: "stdio"(默认, 子进程) | "http"(Streamable HTTP) | "sse"(HTTP+Server-Sent Events)
 #   id        - 唯一标识(小写字母/数字/连字符), 用于工具名前缀 mcp_<id>_
 #   name      - 显示名称
@@ -8,17 +8,4 @@
 #   args      - stdio 传输的命令参数数组
 #   env       - stdio 传输的额外环境变量表(可选, 与父进程环境合并)
 #   enabled   - 是否启用(默认 true)
-
-[[servers]]
-id = "filesystem"
-name = "文件系统"
-command = "npx"
-args = ["-y", "@modelcontextprotocol/server-filesystem", "/home/user/docs"]
-enabled = false
-
-[[servers]]
-id = "fetch"
-name = "网页抓取"
-command = "uvx"
-args = ["mcp-server-fetch"]
-enabled = false
+# 完整示例见安装目录 templates/config/mcp-servers.example.toml

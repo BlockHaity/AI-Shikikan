@@ -120,7 +120,7 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 |------|------|
 | `providers.toml` | LLM Provider（API Key、模型、端点、思考等级限制） |
 | `agents.toml` | Agent 定义 + 推荐专家 |
-| `mcp-servers.toml` | MCP 服务器定义（stdio：command/args/env/enabled） |
+| `mcp-servers.toml` | MCP 服务器定义（stdio/http/sse 传输；默认不内置任何服务器） |
 | `preferences.toml` | 界面偏好（明暗/语言/字体/背景） |
 | `personas/` | 人格/专家 Markdown(YAML frontmatter) |
 | `templates/` | 任务模板 |
