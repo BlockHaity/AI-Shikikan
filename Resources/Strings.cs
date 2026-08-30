@@ -142,6 +142,10 @@ public static class Strings
     public static string Settings_Language => Get(nameof(Settings_Language));
     public static string Settings_RestartHint => Get(nameof(Settings_RestartHint));
     public static string Settings_About => Get(nameof(Settings_About));
+    public static string Settings_ResetTitle => Get(nameof(Settings_ResetTitle));
+    public static string Settings_ResetMessage => Get(nameof(Settings_ResetMessage));
+    public static string Settings_ResetConfirm => Get(nameof(Settings_ResetConfirm));
+    public static string Settings_Cancel => Get(nameof(Settings_Cancel));
     public static string Settings_AppName => Get(nameof(Settings_AppName));
     public static string Settings_Version => Get(nameof(Settings_Version));
     public static string Settings_FontStandard => Get(nameof(Settings_FontStandard));
