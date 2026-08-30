@@ -71,7 +71,12 @@ public sealed class CommanderRuntime
         };
 
         var registry = new ToolRegistry();
-        foreach (var tool in AgentToolFactory.Create(agentsList, personasList, templatesList, git, assignments, llm))
+        foreach (var tool in AgentToolFactory.CreateCoreTools(git))
+        {
+            registry.Register(tool);
+        }
+
+        foreach (var tool in AgentToolFactory.CreateSubagentTools(agentsList, personasList, templatesList, git, assignments, llm))
         {
             registry.Register(tool);
         }
@@ -155,6 +160,37 @@ public sealed class CommanderRuntime
     {
         CurrentPersonaText = text;
         Engine.SetPersonaText(text);
+    }
+
+    private bool _subagentToolsVisible = true;
+
+    /// <summary>右侧栏可见性联动: 关闭时从注册表移除子代理工具(AI 下一回合不再可见), 打开时重新注册。
+    /// Roster 注入由 GUI 在打开后调用 SetRosterEntries 恢复。</summary>
+    public void SetSubagentToolsVisible(bool visible)
+    {
+        if (_subagentToolsVisible == visible) return;
+        _subagentToolsVisible = visible;
+
+        if (visible)
+        {
+            // 从配置服务重新加载, 保证增删后的 Agent/专家/模板即时生效
+            var agents = AgentConfigService.LoadAll();
+            var personas = PersonaService.LoadAll();
+            var templates = AgentTemplateService.LoadAll();
+            foreach (var tool in AgentToolFactory.CreateSubagentTools(
+                         agents, personas, templates, Git, Assignments, Llm))
+            {
+                Registry.Register(tool);
+            }
+        }
+        else
+        {
+            Registry.UnregisterWhere(t =>
+                t is AgentExecutionTool or AssignTaskTool or SubagentGroupTool);
+            SetRosterEntries([]);
+        }
+
+        Log.Info("Engine", $"子代理工具{(visible ? "已注册" : "已移除")}, 当前工具数={Registry.All.Count}");
     }
 
     public void SetRosterEntries(IReadOnlyList<AgentRosterEntry> entries)

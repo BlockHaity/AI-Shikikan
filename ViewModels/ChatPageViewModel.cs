@@ -33,6 +33,16 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRightPanelVisible = true;
 
+    /// <summary>右侧栏开关联动 AI 工具列表: 关闭时移除子代理工具与 Roster 注入(下一回合生效), 打开时恢复。</summary>
+    partial void OnIsRightPanelVisibleChanged(bool value)
+    {
+        _runtime.SetSubagentToolsVisible(value);
+        if (value)
+        {
+            AgentPanel.PushRoster();
+        }
+    }
+
     [ObservableProperty]
     private RightPanelMode _panelMode = RightPanelMode.Assignment;
 
