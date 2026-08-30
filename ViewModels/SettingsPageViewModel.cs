@@ -366,6 +366,7 @@ public partial class SettingsPageViewModel : ViewModelBase
 
         // Agent 列表与 MCP 桥接工具重建
         AppShell.Instance.ReloadAgents();
+        UserAgents = AgentConfigService.LoadAll().ToList();
         await ReconnectAsync().ConfigureAwait(true);
         AppShell.Instance.NotifyDataChanged();
 

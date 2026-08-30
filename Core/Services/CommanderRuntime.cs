@@ -194,7 +194,7 @@ public sealed class CommanderRuntime
     }
 
     /// <summary>一键还原默认设置: 删除 providers/agents/mcp-servers/roster.prompt(含旧 JSON 兼容文件)后
-    /// 按启动流程重新生成默认, 并让运行时即时生效(LLM client 缓存清空)。返回各步骤状态说明。
+    /// 按启动流程重新生成默认, 并让运行时即时生效(LLM client 缓存清空)。返回各步骤状态说明(失败带 ⚠)。
     /// 界面偏好(preferences.toml)由 GUI 层的 ThemeService.ResetToDefault 负责; 人格/模板示例与会话/统计数据不受影响。</summary>
     public List<string> ResetSettingsToDefault()
     {
@@ -205,29 +205,33 @@ public sealed class CommanderRuntime
         DeleteIfExists(Path.ChangeExtension(AppPaths.ProvidersPath, ".json"));
         ProviderSettingsService.EnsureDefaultExists();
         Llm.Settings = ProviderSettingsService.Load();
-        messages.Add("[Provider] 已还原默认 LLM 配置");
+        messages.Add(StepMessage("[Provider] 默认 LLM 配置", File.Exists(AppPaths.ProvidersPath)));
 
         // Agent
         DeleteIfExists(AppPaths.AgentsPath);
         DeleteIfExists(Path.ChangeExtension(AppPaths.AgentsPath, ".json"));
         AgentConfigService.EnsureDefaultExists();
         AgentConfigService.Refresh();
-        messages.Add("[Agent] 已还原默认 Agent 配置");
+        messages.Add(StepMessage("[Agent] 默认 Agent 配置", File.Exists(AppPaths.AgentsPath)));
 
         // MCP 服务器
         DeleteIfExists(AppPaths.McpServersPath);
         McpConfigService.EnsureDefaultExists();
         McpConfigService.Refresh();
-        messages.Add("[MCP] 已还原默认 MCP 配置");
+        messages.Add(StepMessage("[MCP] 默认 MCP 配置", File.Exists(AppPaths.McpServersPath)));
 
         // Roster 注入模板
         DeleteIfExists(AppPaths.RosterTemplatePath);
         RosterBuilder.WriteDefaultTemplate();
-        messages.Add("[Roster] 已还原默认 Roster 模板");
+        messages.Add(StepMessage("[Roster] 默认 Roster 模板", File.Exists(AppPaths.RosterTemplatePath)));
 
-        Log.Info("Config", "已还原全部默认设置");
+        Log.Info("Config", $"已还原默认设置: {string.Join("; ", messages)}");
         return messages;
     }
+
+    /// <summary>按生成结果组装步骤消息(生成失败标记 ⚠ 便于用户/日志定位)。</summary>
+    private static string StepMessage(string label, bool generated)
+        => generated ? $"{label} 已还原" : $"⚠ {label} 生成失败(见日志)";
 
     private static void DeleteIfExists(string path)
     {
