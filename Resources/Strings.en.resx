@@ -117,6 +117,8 @@
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>Pass persona to sub-agents</value></data>
   <data name="SubAgent_Compact" xml:space="preserve"><value>Compact sub-agent output</value></data>
   <data name="SubAgent_CompactTip" xml:space="preserve"><value>When enabled, long outputs of this sub-agent are condensed by the LLM into key-point summaries before returning to the AI; short outputs and failures are unaffected (applies to the current session only)</value></data>
+  <data name="SubAgent_UseInPlanMode" xml:space="preserve"><value>Use in Plan mode</value></data>
+  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>When the main conversation is in Plan mode, this sub-agent is launched with its plan-mode CLI arguments; configure plan_args for the agent in agents.toml first</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>Changes</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>Stage</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>Unstage</value></data>
@@ -176,8 +178,10 @@
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
   <data name="Settings_Mcp" xml:space="preserve"><value>MCP Servers</value></data>
-  <data name="Settings_McpHint" xml:space="preserve"><value>stdio transport; tools exposed to AI as mcp_&lt;ID&gt;_&lt;tool&gt;</value></data>
-  <data name="Settings_McpCommand" xml:space="preserve"><value>Command (e.g. npx / uvx)</value></data>
+  <data name="Settings_McpHint" xml:space="preserve"><value>stdio / http (Streamable) / sse transport; tools exposed to AI as mcp_&lt;ID&gt;_&lt;tool&gt;</value></data>
+  <data name="Settings_McpTransport" xml:space="preserve"><value>Transport</value></data>
+  <data name="Settings_McpUrl" xml:space="preserve"><value>URL (http/sse transport, e.g. https://example.com/mcp)</value></data>
+  <data name="Settings_McpCommand" xml:space="preserve"><value>Command (stdio transport, e.g. npx / uvx)</value></data>
   <data name="Settings_McpArgs" xml:space="preserve"><value>Arguments (space-separated)</value></data>
   <data name="Settings_McpEnv" xml:space="preserve"><value>Env KEY=VALUE (one per line)</value></data>
   <data name="Settings_McpRefresh" xml:space="preserve"><value>Reconnect all</value></data>

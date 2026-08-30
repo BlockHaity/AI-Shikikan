@@ -34,6 +34,9 @@ public partial class SubAgentItemViewModel : ViewModelBase
     private bool _compactEnabled;
 
     [ObservableProperty]
+    private bool _useInPlanMode;
+
+    [ObservableProperty]
     private string _description;
 
     [ObservableProperty]
@@ -49,6 +52,9 @@ public partial class SubAgentItemViewModel : ViewModelBase
         _enabled = true;
         _description = agent.Description;
     }
+
+    /// <summary>该 Agent 是否配置了 plan_args(决定"在 Plan 模式中使用"开关是否可用)。</summary>
+    public bool HasPlanArgs => Agent.PlanArgs is { Count: > 0 };
 
     partial void OnSelectedOptionChanged(PersonaOption? value)
     {
@@ -239,6 +245,7 @@ public partial class AgentPanelViewModel : ViewModelBase
     {
         item.Enabled = true;
         item.CompactEnabled = false;
+        item.UseInPlanMode = false;
         item.HasSessionOverride = false;
         item.Description = item.Agent.Description;
         item.SelectedOption = PersonaOptionFor(item.Agent.RecommendedPersonaId);
@@ -251,6 +258,7 @@ public partial class AgentPanelViewModel : ViewModelBase
 
         item.Enabled = entry.Enabled;
         item.CompactEnabled = entry.CompactEnabled;
+        item.UseInPlanMode = entry.UseInPlanMode;
         item.HasSessionOverride = !string.IsNullOrWhiteSpace(entry.Description)
                                   || !string.IsNullOrWhiteSpace(entry.PersonaId);
         if (item.HasSessionOverride)
@@ -274,7 +282,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             o.Value is not null && string.Equals(o.Value.Id, personaId, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>把启用条目推送给引擎(Roster 注入 + 压缩开关解析来源); 右侧栏重新打开时也由聊天页调用恢复。</summary>
+    /// <summary>把启用条目推送给引擎(Roster 注入 + 压缩/Plan 模式解析来源); 右侧栏重新打开时也由聊天页调用恢复。</summary>
     public void PushRoster()
     {
         var entries = SubAgents.Where(e => e.Enabled)
@@ -285,7 +293,8 @@ public partial class AgentPanelViewModel : ViewModelBase
                 Description = e.Description,
                 PersonaId = e.SelectedOption?.Value?.Id,
                 Enabled = true,
-                CompactEnabled = e.CompactEnabled
+                CompactEnabled = e.CompactEnabled,
+                UseInPlanMode = e.UseInPlanMode
             })
             .ToList();
         _runtime.SetRosterEntries(entries);
@@ -358,6 +367,7 @@ public partial class AgentPanelViewModel : ViewModelBase
     {
         var wasEnabled = item.Enabled;
         var wasCompact = item.CompactEnabled;
+        var wasPlanMode = item.UseInPlanMode;
         AgentConfigService.SaveUserAgent(Overlay(item.Agent, item.Description, item.SelectedOption?.Value?.Id));
         RosterConfigService.RemoveEntry(_sessionId, item.AgentId);
         if (!wasEnabled)
@@ -368,6 +378,11 @@ public partial class AgentPanelViewModel : ViewModelBase
         if (wasCompact)
         {
             RosterConfigService.SetCompact(_sessionId, item.AgentId, true);
+        }
+
+        if (wasPlanMode)
+        {
+            RosterConfigService.SetUseInPlanMode(_sessionId, item.AgentId, true);
         }
 
         _shell.ReloadAgents();
@@ -395,6 +410,20 @@ public partial class AgentPanelViewModel : ViewModelBase
     private void ToggleEntryCompact(SubAgentItemViewModel item)
     {
         RosterConfigService.SetCompact(_sessionId, item.AgentId, item.CompactEnabled);
+        PushRoster();
+    }
+
+    /// <summary>切换该子代理的 Plan 模式使用开关(会话级; 仅配置了 plan_args 的 Agent 可用)。</summary>
+    [RelayCommand]
+    private void ToggleEntryPlanMode(SubAgentItemViewModel item)
+    {
+        if (!item.HasPlanArgs)
+        {
+            item.UseInPlanMode = false;
+            return;
+        }
+
+        RosterConfigService.SetUseInPlanMode(_sessionId, item.AgentId, item.UseInPlanMode);
         PushRoster();
     }
 
@@ -441,6 +470,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             Name = source.Name,
             Executable = source.Executable,
             Args = source.Args.ToList(),
+            PlanArgs = source.PlanArgs.ToList(),
             DefaultMode = source.DefaultMode,
             MaxConcurrent = source.MaxConcurrent,
             RequireApproval = source.RequireApproval,

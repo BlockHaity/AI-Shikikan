@@ -137,6 +137,12 @@
                                                       ToolTip.Tip="{x:Static res:Strings.SubAgent_CompactTip}"
                                                       Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryCompactCommand}"
                                                       CommandParameter="{Binding}"/>
+                                        <ToggleSwitch IsChecked="{Binding UseInPlanMode}"
+                                                      IsEnabled="{Binding HasPlanArgs}"
+                                                      Content="{x:Static res:Strings.SubAgent_UseInPlanMode}"
+                                                      ToolTip.Tip="{x:Static res:Strings.SubAgent_UseInPlanModeTip}"
+                                                      Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryPlanModeCommand}"
+                                                      CommandParameter="{Binding}"/>
                                         <Grid ColumnDefinitions="*,Auto">
                                             <Button Content="{x:Static res:Strings.SubAgent_Save}"
                                                     Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).SaveEntryCommand}"

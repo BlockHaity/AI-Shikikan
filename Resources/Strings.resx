@@ -117,6 +117,8 @@
   <data name="SubAgent_UseCommanderPersona" xml:space="preserve"><value>同步专家到子代理</value></data>
   <data name="SubAgent_Compact" xml:space="preserve"><value>压缩子代理输出</value></data>
   <data name="SubAgent_CompactTip" xml:space="preserve"><value>开启后, 该子代理的长输出先经 LLM 压缩为要点纪要再返回给 AI, 节省上下文空间; 短输出与失败结果不受影响(仅对当前会话生效)</value></data>
+  <data name="SubAgent_UseInPlanMode" xml:space="preserve"><value>在 Plan 模式中使用</value></data>
+  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>主对话处于 Plan 模式时, 该子代理将追加 plan 模式参数启动; 需先在 agents.toml 为该 Agent 配置 plan_args</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>更改</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>暂存</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>撤销暂存</value></data>
@@ -176,8 +178,10 @@
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>修改可执行文件或参数模板后点保存</value></data>
   <data name="Settings_Mcp" xml:space="preserve"><value>MCP 服务器</value></data>
-  <data name="Settings_McpHint" xml:space="preserve"><value>stdio 传输; 工具以 mcp_&lt;ID&gt;_&lt;工具名&gt; 暴露给 AI</value></data>
-  <data name="Settings_McpCommand" xml:space="preserve"><value>启动命令 (如 npx / uvx)</value></data>
+  <data name="Settings_McpHint" xml:space="preserve"><value>stdio / http(Streamable) / sse 传输; 工具以 mcp_&lt;ID&gt;_&lt;工具名&gt; 暴露给 AI</value></data>
+  <data name="Settings_McpTransport" xml:space="preserve"><value>传输方式</value></data>
+  <data name="Settings_McpUrl" xml:space="preserve"><value>URL (http/sse 传输, 如 https://example.com/mcp)</value></data>
+  <data name="Settings_McpCommand" xml:space="preserve"><value>启动命令 (stdio 传输, 如 npx / uvx)</value></data>
   <data name="Settings_McpArgs" xml:space="preserve"><value>参数 (空格分隔)</value></data>
   <data name="Settings_McpEnv" xml:space="preserve"><value>环境变量 KEY=VALUE (每行一个)</value></data>
   <data name="Settings_McpRefresh" xml:space="preserve"><value>重连全部</value></data>
