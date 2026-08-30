@@ -193,6 +193,57 @@ public sealed class CommanderRuntime
         Log.Info("Engine", $"子代理工具{(visible ? "已注册" : "已移除")}, 当前工具数={Registry.All.Count}");
     }
 
+    /// <summary>一键还原默认设置: 删除 providers/agents/mcp-servers/roster.prompt(含旧 JSON 兼容文件)后
+    /// 按启动流程重新生成默认, 并让运行时即时生效(LLM client 缓存清空)。返回各步骤状态说明。
+    /// 界面偏好(preferences.toml)由 GUI 层的 ThemeService.ResetToDefault 负责; 人格/模板示例与会话/统计数据不受影响。</summary>
+    public List<string> ResetSettingsToDefault()
+    {
+        var messages = new List<string>();
+
+        // LLM Provider: 删除后重新生成, 并替换 Settings 触发 _clients 缓存清空
+        DeleteIfExists(AppPaths.ProvidersPath);
+        DeleteIfExists(Path.ChangeExtension(AppPaths.ProvidersPath, ".json"));
+        ProviderSettingsService.EnsureDefaultExists();
+        Llm.Settings = ProviderSettingsService.Load();
+        messages.Add("[Provider] 已还原默认 LLM 配置");
+
+        // Agent
+        DeleteIfExists(AppPaths.AgentsPath);
+        DeleteIfExists(Path.ChangeExtension(AppPaths.AgentsPath, ".json"));
+        AgentConfigService.EnsureDefaultExists();
+        AgentConfigService.Refresh();
+        messages.Add("[Agent] 已还原默认 Agent 配置");
+
+        // MCP 服务器
+        DeleteIfExists(AppPaths.McpServersPath);
+        McpConfigService.EnsureDefaultExists();
+        McpConfigService.Refresh();
+        messages.Add("[MCP] 已还原默认 MCP 配置");
+
+        // Roster 注入模板
+        DeleteIfExists(AppPaths.RosterTemplatePath);
+        RosterBuilder.WriteDefaultTemplate();
+        messages.Add("[Roster] 已还原默认 Roster 模板");
+
+        Log.Info("Config", "已还原全部默认设置");
+        return messages;
+    }
+
+    private static void DeleteIfExists(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Config", ex, $"删除配置文件失败: {path}");
+        }
+    }
+
     public void SetRosterEntries(IReadOnlyList<AgentRosterEntry> entries)
     {
         CurrentRosterEntries = entries;
