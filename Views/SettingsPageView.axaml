@@ -298,12 +298,22 @@
                         <StackPanel Spacing="8">
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentName}"
                                      Text="{Binding NewMcpName}" />
+                            <ComboBox SelectedIndex="{Binding NewMcpTransportIndex}"
+                                      ItemsSource="{Binding McpTransportOptions}"
+                                      PlaceholderText="{x:Static res:Strings.Settings_McpTransport}"
+                                      HorizontalAlignment="Stretch" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpUrl}"
+                                     Text="{Binding NewMcpUrl}"
+                                     IsVisible="{Binding IsHttpTransport}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpCommand}"
-                                     Text="{Binding NewMcpCommand}" />
+                                     Text="{Binding NewMcpCommand}"
+                                     IsVisible="{Binding IsStdioTransport}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpArgs}"
-                                     Text="{Binding NewMcpArgs}" />
+                                     Text="{Binding NewMcpArgs}"
+                                     IsVisible="{Binding IsStdioTransport}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_McpEnv}"
-                                     Text="{Binding NewMcpEnv}" AcceptsReturn="True" MinHeight="52" />
+                                     Text="{Binding NewMcpEnv}" AcceptsReturn="True" MinHeight="52"
+                                     IsVisible="{Binding IsStdioTransport}" />
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddMcpServerCommand}"/>
                         </StackPanel>

@@ -96,7 +96,9 @@ public partial class McpItemViewModel : ObservableObject
 
     public string Id => _def.Id;
     public string Name => string.IsNullOrWhiteSpace(_def.Name) ? _def.Id : _def.Name;
-    public string CommandSummary => $"{_def.Command} {string.Join(' ', _def.Args)}".Trim();
+    public string CommandSummary => McpHttpClient.IsHttpTransport(_def.Transport)
+        ? $"[{_def.Transport}] {_def.Url}"
+        : $"{_def.Command} {string.Join(' ', _def.Args)}".Trim();
 
     [ObservableProperty]
     private bool _isEnabled;
@@ -240,8 +242,28 @@ public partial class SettingsPageViewModel : ViewModelBase
     // MCP 服务器管理
     public ObservableCollection<McpItemViewModel> McpItems { get; } = [];
 
+    public IReadOnlyList<string> McpTransportOptions { get; } = ["stdio", "http", "sse"];
+
+    /// <summary>当前选择的传输方式是否为 stdio(决定新增表单显示命令/参数/环境变量还是 URL)。</summary>
+    public bool IsStdioTransport => NewMcpTransportIndex == 0;
+
+    /// <summary>当前选择的传输方式是否为 http/sse(显示 URL 输入)。</summary>
+    public bool IsHttpTransport => NewMcpTransportIndex > 0;
+
     [ObservableProperty]
     private string _newMcpName = string.Empty;
+
+    [ObservableProperty]
+    private int _newMcpTransportIndex;
+
+    partial void OnNewMcpTransportIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(IsStdioTransport));
+        OnPropertyChanged(nameof(IsHttpTransport));
+    }
+
+    [ObservableProperty]
+    private string _newMcpUrl = string.Empty;
 
     [ObservableProperty]
     private string _newMcpCommand = string.Empty;
@@ -258,7 +280,11 @@ public partial class SettingsPageViewModel : ViewModelBase
     [RelayCommand]
     private void AddMcpServer()
     {
-        if (string.IsNullOrWhiteSpace(NewMcpName) || string.IsNullOrWhiteSpace(NewMcpCommand)) return;
+        if (string.IsNullOrWhiteSpace(NewMcpName)) return;
+
+        var transport = McpTransportOptions[Math.Min(NewMcpTransportIndex, McpTransportOptions.Count - 1)];
+        if (transport == "stdio" && string.IsNullOrWhiteSpace(NewMcpCommand)) return;
+        if (transport != "stdio" && string.IsNullOrWhiteSpace(NewMcpUrl)) return;
 
         var name = NewMcpName.Trim();
         var id = name.ToLowerInvariant().Replace(" ", "-");
@@ -266,6 +292,8 @@ public partial class SettingsPageViewModel : ViewModelBase
         {
             Id = id,
             Name = name,
+            Transport = transport,
+            Url = NewMcpUrl.Trim(),
             Command = NewMcpCommand.Trim(),
             Args = ParseArgs(NewMcpArgs),
             Env = ParseEnv(NewMcpEnv),
@@ -277,6 +305,8 @@ public partial class SettingsPageViewModel : ViewModelBase
         _ = ReconnectAsync();
 
         NewMcpName = string.Empty;
+        NewMcpTransportIndex = 0;
+        NewMcpUrl = string.Empty;
         NewMcpCommand = string.Empty;
         NewMcpArgs = string.Empty;
         NewMcpEnv = string.Empty;
