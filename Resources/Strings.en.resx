@@ -145,6 +145,10 @@
   <data name="Settings_Language" xml:space="preserve"><value>Language</value></data>
   <data name="Settings_RestartHint" xml:space="preserve"><value>Language change takes effect after restart</value></data>
   <data name="Settings_About" xml:space="preserve"><value>About</value></data>
+  <data name="Settings_ResetTitle" xml:space="preserve"><value>Restore default settings</value></data>
+  <data name="Settings_ResetMessage" xml:space="preserve"><value>This will restore interface preferences, LLM providers, agent configuration, MCP servers and the Roster template to their defaults; custom changes will be lost. Sessions and usage statistics are not affected. Continue?</value></data>
+  <data name="Settings_ResetConfirm" xml:space="preserve"><value>Restore defaults</value></data>
+  <data name="Settings_Cancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Settings_AppName" xml:space="preserve"><value>App name</value></data>
   <data name="Settings_Version" xml:space="preserve"><value>Version</value></data>
   <data name="Settings_FontStandard" xml:space="preserve"><value>Standard Font</value></data>

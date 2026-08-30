@@ -323,6 +323,55 @@ public partial class SettingsPageViewModel : ViewModelBase
     [RelayCommand]
     private async Task RefreshMcp() => await ReconnectAsync().ConfigureAwait(true);
 
+    [ObservableProperty]
+    private string _resetStatus = string.Empty;
+
+    /// <summary>一键还原默认设置: 弹窗二次确认后, 重置界面偏好与 providers/agents/mcp-servers/roster.prompt,
+    /// 并让运行时即时生效; 人格/模板示例与会话/统计数据不受影响。</summary>
+    [RelayCommand]
+    private async Task ResetSettingsAsync()
+    {
+        var owner = GetMainWindow();
+        if (owner is null) return;
+
+        var confirmed = await Views.ConfirmDialog.ShowAsync(
+            owner,
+            Strings.Settings_ResetTitle,
+            Strings.Settings_ResetMessage,
+            Strings.Settings_ResetConfirm,
+            Strings.Settings_Cancel);
+        if (!confirmed) return;
+
+        // 界面偏好恢复默认(事件触发后主题/字体/背景即时跟随)
+        _themeService.ResetToDefault();
+        InitFonts();
+        BackgroundPreview = null;
+        HasBackground = false;
+        LanguageIndex = 0;
+
+        // 配置文件还原默认, Llm.Settings 已替换为默认实例
+        var runtime = AppShell.Instance.Runtime;
+        var messages = runtime.ResetSettingsToDefault();
+
+        // 设置页跟随新的 LlmSettings 实例
+        LlmSettings = runtime.Llm.Settings;
+        ProviderItems.Clear();
+        foreach (var p in LlmSettings.Providers)
+        {
+            ProviderItems.Add(p);
+        }
+
+        SelectedProvider = null;
+        SyncDefaultModelSelection();
+
+        // Agent 列表与 MCP 桥接工具重建
+        AppShell.Instance.ReloadAgents();
+        await ReconnectAsync().ConfigureAwait(true);
+        AppShell.Instance.NotifyDataChanged();
+
+        ResetStatus = string.Join("\n", messages) + "\n[偏好] 已还原默认界面设置";
+    }
+
     /// <summary>重连全部启用服务器并展示结果消息。</summary>
     private async Task ReconnectAsync()
     {

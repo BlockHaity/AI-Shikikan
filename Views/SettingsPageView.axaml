@@ -346,6 +346,14 @@
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                             <TextBlock Classes="BodyLarge" Text="{Binding MonoFontInfo}" Grid.Row="3" Grid.Column="1" />
                         </Grid>
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                            <Button Classes="FilledTonal" Content="{x:Static res:Strings.Settings_ResetTitle}"
+                                    Command="{Binding ResetSettingsCommand}"
+                                    ToolTip.Tip="{x:Static res:Strings.Settings_ResetMessage}" />
+                            <TextBlock Grid.Column="1" Classes="BodySmall" Text="{Binding ResetStatus}"
+                                       VerticalAlignment="Center" TextWrapping="Wrap"
+                                       Foreground="{DynamicResource OnSurfaceVariant}" />
+                        </Grid>
                     </StackPanel>
                 </StackPanel>
             </theme:Card>

@@ -145,6 +145,10 @@
   <data name="Settings_Language" xml:space="preserve"><value>语言</value></data>
   <data name="Settings_RestartHint" xml:space="preserve"><value>语言更改将在重启程序后生效</value></data>
   <data name="Settings_About" xml:space="preserve"><value>关于</value></data>
+  <data name="Settings_ResetTitle" xml:space="preserve"><value>还原默认设置</value></data>
+  <data name="Settings_ResetMessage" xml:space="preserve"><value>此操作会把界面偏好、LLM Provider、Agent 配置、MCP 服务器与 Roster 模板恢复为默认值, 自定义内容将丢失; 会话记录与用量统计不受影响。确定继续吗？</value></data>
+  <data name="Settings_ResetConfirm" xml:space="preserve"><value>确认还原</value></data>
+  <data name="Settings_Cancel" xml:space="preserve"><value>取消</value></data>
   <data name="Settings_AppName" xml:space="preserve"><value>应用名称</value></data>
   <data name="Settings_Version" xml:space="preserve"><value>版本</value></data>
   <data name="Settings_FontStandard" xml:space="preserve"><value>标准字体</value></data>
