@@ -158,7 +158,7 @@ public static class AgentTemplateService
             Id = "test-reviewer",
             Name = "测试回滚审查",
             Expertise = ["测试", "单测", "用例", "diff", "审查", "review", "回滚", "回归"],
-            DefaultAgentId = "reasonix",
+            DefaultAgentId = "dsh",
             SystemPrompt = """
                             # 角色: 测试与变更审查官
                             write-then-verify 工作流:
