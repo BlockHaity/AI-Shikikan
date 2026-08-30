@@ -1,6 +1,7 @@
 # 自定义 Agent 定义 + 分派规则模板
 # 首次启动时会自动生成默认 agents.toml, 此文件仅为参考示例
 # 参数通过 args 模板传入, 支持 {prompt} 占位符
+# plan_args 为主对话 Plan 模式下允许该 Agent 时追加的参数(为空表示不支持 Plan 模式)
 # 用户定义按 id 覆盖或作为独立条目
 
 rules = "优先选择专长与任务匹配的 Agent; 涉及多个领域时先拆分子任务再分配。"
@@ -10,6 +11,7 @@ id = "claude"
 name = "Claude Code"
 executable = "claude"
 args = ["-p", "{prompt}"]
+plan_args = ["--permission-mode", "plan"]
 default_mode = "sync"
 max_concurrent = 1
 require_approval = true

@@ -12,6 +12,7 @@ public class AgentRosterEntry : INotifyPropertyChanged
     private string? _personaId;
     private bool _enabled = true;
     private bool _compactEnabled;
+    private bool _useInPlanMode;
     private bool _isExpanded;
 
     public string AgentId
@@ -53,6 +54,13 @@ public class AgentRosterEntry : INotifyPropertyChanged
     {
         get => _compactEnabled;
         set { _compactEnabled = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>主对话处于 Plan 模式时是否允许以 Plan 模式(追加 plan_args)启动该子代理。</summary>
+    public bool UseInPlanMode
+    {
+        get => _useInPlanMode;
+        set { _useInPlanMode = value; OnPropertyChanged(); }
     }
 
     public bool IsExpanded

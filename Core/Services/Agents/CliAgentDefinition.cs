@@ -13,6 +13,10 @@ public record CliAgentDefinition
     /// <summary>参数模板, 支持 {prompt} 占位符。</summary>
     public List<string> Args { get; set; } = [];
 
+    /// <summary>Plan 模式附加 CLI 参数(如 claude 的 --permission-mode plan)。
+    /// 主对话处于 Plan 模式且该子代理被允许时追加; 为空表示该 Agent 不支持 Plan 模式。</summary>
+    public List<string> PlanArgs { get; set; } = [];
+
     /// <summary>"sync" 常规阻塞 | "async" 异步后台。</summary>
     public string DefaultMode { get; set; } = "sync";
 
@@ -57,6 +61,7 @@ public static class CliAgentRunner
         string prompt,
         string workingDirectory,
         IProgress<string>? progressOutput,
+        bool planMode = false,
         CancellationToken ct = default)
     {
         var startedAt = DateTime.Now;
@@ -78,6 +83,15 @@ public static class CliAgentRunner
         foreach (var arg in definition.Args)
         {
             psi.ArgumentList.Add(arg.Replace("{prompt}", prompt, StringComparison.Ordinal));
+        }
+
+        // Plan 模式: 追加 plan 专用参数(如 --permission-mode plan)
+        if (planMode)
+        {
+            foreach (var arg in definition.PlanArgs)
+            {
+                psi.ArgumentList.Add(arg.Replace("{prompt}", prompt, StringComparison.Ordinal));
+            }
         }
 
         try
