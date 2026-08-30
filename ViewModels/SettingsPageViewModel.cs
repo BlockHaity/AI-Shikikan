@@ -81,46 +81,29 @@ public partial class ModelItem : ObservableObject
     }
 }
 
-/// <summary>MCP 服务器条目: 展示连接状态与工具数, 开关切换即持久化并后台重连。</summary>
+/// <summary>MCP 服务器条目: 列表展示 + 选中后进入编辑区; StatusText 提供连接状态/工具数。</summary>
 public partial class McpItemViewModel : ObservableObject
 {
     private readonly McpServerDefinition _def;
-    private readonly Action _onReload;
 
-    public McpItemViewModel(McpServerDefinition def, Action onReload)
-    {
-        _def = def;
-        _onReload = onReload;
-        _isEnabled = def.Enabled;
-    }
+    public McpItemViewModel(McpServerDefinition def) => _def = def;
 
     public string Id => _def.Id;
     public string Name => string.IsNullOrWhiteSpace(_def.Name) ? _def.Id : _def.Name;
+
+    /// <summary>底层配置定义(编辑保存时直接修改此实例)。</summary>
+    public McpServerDefinition Definition => _def;
+
     public string CommandSummary => McpHttpClient.IsHttpTransport(_def.Transport)
         ? $"[{_def.Transport}] {_def.Url}"
         : $"{_def.Command} {string.Join(' ', _def.Args)}".Trim();
-
-    [ObservableProperty]
-    private bool _isEnabled;
 
     public bool IsConnected { get; private set; }
 
     public string StatusText { get; private set; } = string.Empty;
 
-    partial void OnIsEnabledChanged(bool value)
-    {
-        _def.Enabled = value;
-        McpConfigService.Upsert(_def);
-        // 后台重连, 完成后回调宿主重建列表以更新状态
-        _ = Task.Run(async () =>
-        {
-            await AppShell.Instance.Runtime.RefreshMcpToolsAsync().ConfigureAwait(false);
-            Avalonia.Threading.Dispatcher.UIThread.Post(_onReload);
-        });
-    }
-
     /// <summary>读取当前连接状态(供列表重建时刷新)。</summary>
-    public void Probe() 
+    public void Probe()
     {
         var mcp = AppShell.Instance.Runtime.Mcp;
         IsConnected = mcp.IsConnected(_def.Id);
@@ -129,6 +112,13 @@ public partial class McpItemViewModel : ObservableObject
         StatusText = IsConnected
             ? string.Format(Strings.Settings_McpToolCount, toolCount)
             : Strings.Settings_McpNotConnected;
+    }
+
+    /// <summary>配置被编辑保存后刷新行内展示。</summary>
+    public void RefreshDisplay()
+    {
+        OnPropertyChanged(nameof(Name));
+        OnPropertyChanged(nameof(CommandSummary));
     }
 }
 
@@ -312,10 +302,89 @@ public partial class SettingsPageViewModel : ViewModelBase
         NewMcpEnv = string.Empty;
     }
 
-    [RelayCommand]
-    private void RemoveMcpServer(McpItemViewModel item)
+    [ObservableProperty]
+    private McpItemViewModel? _selectedMcpItem;
+
+    [ObservableProperty]
+    private int _mcpEditTransportIndex;
+
+    [ObservableProperty]
+    private string _mcpEditUrl = string.Empty;
+
+    [ObservableProperty]
+    private string _mcpEditCommand = string.Empty;
+
+    [ObservableProperty]
+    private string _mcpEditArgs = string.Empty;
+
+    [ObservableProperty]
+    private string _mcpEditEnv = string.Empty;
+
+    [ObservableProperty]
+    private bool _mcpEditEnabled;
+
+    public bool IsMcpEditStdio => McpEditTransportIndex == 0;
+
+    public bool IsMcpEditHttp => McpEditTransportIndex > 0;
+
+    partial void OnMcpEditTransportIndexChanged(int value)
     {
+        OnPropertyChanged(nameof(IsMcpEditStdio));
+        OnPropertyChanged(nameof(IsMcpEditHttp));
+    }
+
+    partial void OnSelectedMcpItemChanged(McpItemViewModel? value)
+    {
+        var def = value?.Definition;
+        var transport = (def?.Transport ?? "stdio").Trim().ToLowerInvariant();
+        McpEditTransportIndex = transport switch
+        {
+            "http" or "streamable-http" or "streamable_http" => 1,
+            "sse" => 2,
+            _ => 0
+        };
+        McpEditUrl = def?.Url ?? string.Empty;
+        McpEditCommand = def?.Command ?? string.Empty;
+        McpEditArgs = def is { Args.Count: > 0 } ? string.Join(" ", def.Args) : string.Empty;
+        McpEditEnv = def?.Env is { Count: > 0 }
+            ? string.Join("\n", def.Env.Select(kv => $"{kv.Key}={kv.Value}"))
+            : string.Empty;
+        McpEditEnabled = def?.Enabled ?? false;
+    }
+
+    /// <summary>保存选中 MCP 服务器的编辑(含启用开关), 随后后台重连。</summary>
+    [RelayCommand]
+    private void SaveMcpServer()
+    {
+        var item = SelectedMcpItem;
+        if (item is null) return;
+
+        var def = item.Definition;
+        var transport = McpTransportOptions[Math.Min(McpEditTransportIndex, McpTransportOptions.Count - 1)];
+        if (transport == "stdio" && string.IsNullOrWhiteSpace(McpEditCommand)) return;
+        if (transport != "stdio" && string.IsNullOrWhiteSpace(McpEditUrl)) return;
+
+        def.Transport = transport;
+        def.Url = McpEditUrl.Trim();
+        def.Command = McpEditCommand.Trim();
+        def.Args = ParseArgs(McpEditArgs);
+        def.Env = ParseEnv(McpEditEnv);
+        def.Enabled = McpEditEnabled;
+
+        McpConfigService.Upsert(def);
+        item.RefreshDisplay();
+        _ = ReconnectAsync();
+    }
+
+    /// <summary>移除选中的 MCP 服务器并重连。</summary>
+    [RelayCommand]
+    private void RemoveSelectedMcpServer()
+    {
+        var item = SelectedMcpItem;
+        if (item is null) return;
+
         McpConfigService.Remove(item.Id);
+        SelectedMcpItem = null;
         ReloadMcpItems();
         _ = ReconnectAsync();
     }
@@ -398,7 +467,7 @@ public partial class SettingsPageViewModel : ViewModelBase
             McpItems.Clear();
             foreach (var def in McpConfigService.LoadAll())
             {
-                var item = new McpItemViewModel(def, ReloadMcpItems);
+                var item = new McpItemViewModel(def);
                 item.Probe();
                 McpItems.Add(item);
             }

@@ -184,6 +184,7 @@
   <data name="Settings_Mcp" xml:space="preserve"><value>MCP 服务器</value></data>
   <data name="Settings_McpHint" xml:space="preserve"><value>stdio / http(Streamable) / sse 传输; 工具以 mcp_&lt;ID&gt;_&lt;工具名&gt; 暴露给 AI</value></data>
   <data name="Settings_McpTransport" xml:space="preserve"><value>传输方式</value></data>
+  <data name="Settings_McpEnable" xml:space="preserve"><value>启用</value></data>
   <data name="Settings_McpUrl" xml:space="preserve"><value>URL (http/sse 传输, 如 https://example.com/mcp)</value></data>
   <data name="Settings_McpCommand" xml:space="preserve"><value>启动命令 (stdio 传输, 如 npx / uvx)</value></data>
   <data name="Settings_McpArgs" xml:space="preserve"><value>参数 (空格分隔)</value></data>

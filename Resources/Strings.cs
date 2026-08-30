@@ -178,6 +178,7 @@ public static class Strings
     public static string Settings_Mcp => Get(nameof(Settings_Mcp));
     public static string Settings_McpHint => Get(nameof(Settings_McpHint));
     public static string Settings_McpTransport => Get(nameof(Settings_McpTransport));
+    public static string Settings_McpEnable => Get(nameof(Settings_McpEnable));
     public static string Settings_McpUrl => Get(nameof(Settings_McpUrl));
     public static string Settings_McpCommand => Get(nameof(Settings_McpCommand));
     public static string Settings_McpArgs => Get(nameof(Settings_McpArgs));
