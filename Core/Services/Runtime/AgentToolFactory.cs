@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
@@ -26,6 +27,7 @@ public static class AgentToolFactory
             new GrepTool(),
             new ListDirectoryTool(),
             new GitStatusTool(git),
+            new GitCheckpointTool(git),
             new GitMergeStepTool(git),
             new GitDropStepTool(git),
             new GitRevertStepTool(git)
@@ -578,6 +580,56 @@ public class GitStatusTool : ITool
         }
 
         return Task.FromResult(ToolResult.Ok(sb.ToString()));
+    }
+}
+
+/// <summary>git_create_checkpoint: AI 主动打检查点(创建步骤分支), 后续可合并/丢弃/回滚。</summary>
+public class GitCheckpointTool : ITool
+{
+    private readonly GitStepService _git;
+
+    public GitCheckpointTool(GitStepService git) => _git = git;
+
+    public string Name => "git_create_checkpoint";
+
+    public string Description =>
+        "在当前仓库打一个 git 检查点: 创建并切换到步骤分支, 用于在执行有风险改动前留存可回滚快照。" +
+        "参数: label(可选, 检查点用途描述)。返回检查点 ID 与分支信息; " +
+        "之后可用 git_merge_step 合并 / git_drop_step 丢弃, 也可对返回的检查点 ID 调用 git_revert_step。不改动工作区文件。";
+
+    public JsonElement Parameters { get; } = ToolSchema.Json("""
+        {
+          "type": "object",
+          "properties": {
+            "label": { "type": "string", "description": "检查点用途描述(可选)" }
+          }
+        }
+        """);
+
+    public bool RequiresApproval => false;
+
+    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    {
+        var label = args.TryGetProperty("label", out var l) && l.ValueKind == JsonValueKind.String
+            ? l.GetString()?.Trim()
+            : null;
+
+        try
+        {
+            var step = _git.BeginStep(string.IsNullOrWhiteSpace(label) ? "ai-checkpoint" : label);
+            Log.Info("Git", $"AI 创建检查点: {step.StepId} (分支 {step.StepBranch}, 基于 {step.BaseBranch}, 标签 {step.Label})");
+            return Task.FromResult(new ToolResult
+            {
+                Content = $"检查点已创建: {step.StepId} [{step.Label}]\n" +
+                          $"分支: {step.StepBranch} (基于 {step.BaseBranch})\n" +
+                          "后续可用 git_merge_step 合并 / git_drop_step 丢弃 / git_revert_step 反做; UI 卡片支持一键回滚。",
+                StepId = step.StepId
+            });
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(ToolResult.Error($"创建检查点失败: {ex.Message}"));
+        }
     }
 }
 
