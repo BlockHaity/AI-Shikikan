@@ -137,6 +137,51 @@ public class ChatService
         SaveSession(session);
     }
 
+    /// <summary>删除一条用户消息及其后紧跟的助手回复(到下一条用户消息前)。返回是否删除。</summary>
+    public bool DeleteMessage(string sessionId, string messageId)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+
+        var idx = session.Messages.FindIndex(m => m.Id == messageId);
+        if (idx < 0) return false;
+
+        var removeCount = 1;
+        while (idx + removeCount < session.Messages.Count &&
+               session.Messages[idx + removeCount].Role != MessageRole.User)
+        {
+            removeCount++;
+        }
+
+        session.Messages.RemoveRange(idx, removeCount);
+        session.UpdatedAt = DateTime.Now;
+        SaveSession(session);
+        return true;
+    }
+
+    /// <summary>fork 编辑用户消息: 更新其文本并截断其后的全部助手回复(保留之前的对话作为分支基础)。
+    /// 返回是否成功。</summary>
+    public bool EditUserMessage(string sessionId, string messageId, string newText)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+
+        var idx = session.Messages.FindIndex(m => m.Id == messageId);
+        if (idx < 0 || session.Messages[idx].Role != MessageRole.User) return false;
+
+        // 截断其后所有回复
+        session.Messages.RemoveRange(idx + 1, session.Messages.Count - idx - 1);
+
+        // 更新用户消息文本(用户消息为单 Text 分段)
+        session.Messages[idx].Segments =
+        [
+            new MessageSegment { Kind = MessageSegmentKind.Text, Content = newText }
+        ];
+        session.UpdatedAt = DateTime.Now;
+        SaveSession(session);
+        return true;
+    }
+
     private void LoadAllSessions()
     {
         try

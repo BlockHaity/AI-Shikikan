@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
@@ -111,6 +112,48 @@ public sealed class AgentEngine
     }
 
     public void ClearConversation() => _conversation.Clear();
+
+    /// <summary>用 UI 会话消息重建引擎内部对话(删除/fork 编辑消息后调用, 保证 LLM 上下文一致)。
+    /// 工具分段压缩为简短摘要并入助手回合文本。</summary>
+    public void RebuildConversation(IReadOnlyList<ChatMessage> messages)
+    {
+        _conversation.Clear();
+        foreach (var m in messages)
+        {
+            var text = string.Join("\n", m.Segments
+                .Where(s => s.Kind == MessageSegmentKind.Text)
+                .Select(s => s.Content));
+
+            var tools = m.Segments.Where(s => s.Kind == MessageSegmentKind.Tool && s.Tool is not null).ToList();
+            if (tools.Count > 0)
+            {
+                var sb = new StringBuilder(text);
+                foreach (var t in tools)
+                {
+                    var tool = t.Tool!;
+                    sb.Append($"\n\n[已执行工具 {tool.Name}");
+                    if (tool.IsError) sb.Append(" (失败)");
+                    if (!string.IsNullOrWhiteSpace(tool.Result))
+                    {
+                        var r = tool.Result.Length > 1500 ? tool.Result[..1500] + "..." : tool.Result;
+                        sb.Append($": {r}");
+                    }
+
+                    sb.Append(']');
+                }
+
+                text = sb.ToString();
+            }
+
+            if (string.IsNullOrWhiteSpace(text)) continue;
+
+            _conversation.Add(new ChatTurnMessage
+            {
+                Role = m.Role == MessageRole.User ? ChatMsgRole.User : ChatMsgRole.Assistant,
+                Content = text
+            });
+        }
+    }
 
     public async Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default)
     {
