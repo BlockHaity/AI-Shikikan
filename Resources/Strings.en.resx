@@ -184,6 +184,7 @@
   <data name="Settings_Mcp" xml:space="preserve"><value>MCP Servers</value></data>
   <data name="Settings_McpHint" xml:space="preserve"><value>stdio / http (Streamable) / sse transport; tools exposed to AI as mcp_&lt;ID&gt;_&lt;tool&gt;</value></data>
   <data name="Settings_McpTransport" xml:space="preserve"><value>Transport</value></data>
+  <data name="Settings_McpEnable" xml:space="preserve"><value>Enabled</value></data>
   <data name="Settings_McpUrl" xml:space="preserve"><value>URL (http/sse transport, e.g. https://example.com/mcp)</value></data>
   <data name="Settings_McpCommand" xml:space="preserve"><value>Command (stdio transport, e.g. npx / uvx)</value></data>
   <data name="Settings_McpArgs" xml:space="preserve"><value>Arguments (space-separated)</value></data>

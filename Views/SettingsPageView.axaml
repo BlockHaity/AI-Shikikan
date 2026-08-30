@@ -273,31 +273,50 @@
                     <StackPanel Margin="24,12" Spacing="12">
                         <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_McpHint}"
                                    Foreground="{DynamicResource OnSurfaceVariant}" />
-                        <ItemsControl ItemsSource="{Binding McpItems}">
-                            <ItemsControl.ItemTemplate>
+                        <ListBox ItemsSource="{Binding McpItems}" SelectedItem="{Binding SelectedMcpItem}"
+                                 MaxHeight="200">
+                            <ListBox.ItemTemplate>
                                 <DataTemplate x:DataType="vm:McpItemViewModel">
-                                    <Border CornerRadius="8" Padding="12,8"
-                                            Background="{DynamicResource SurfaceContainerLow}">
-                                        <Grid ColumnDefinitions="Auto,*,Auto">
-                                            <ToggleButton IsChecked="{Binding IsEnabled}" Margin="0,0,10,0"/>
-                                            <StackPanel Grid.Column="1" Spacing="2">
-                                                <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
-                                                <TextBlock Text="{Binding CommandSummary}" Classes="LabelSmall"
-                                                           Foreground="{DynamicResource OnSurfaceVariant}" />
-                                            </StackPanel>
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="{Binding StatusText}" Classes="LabelSmall"
-                                                           Foreground="{DynamicResource Primary}" VerticalAlignment="Center"/>
-                                                <Button Classes="Text" Margin="8,0,0,0"
-                                                        Content="{x:Static res:Strings.Settings_Remove}"
-                                                        Command="{Binding $parent[ItemsControl].((vm:SettingsPageViewModel)DataContext).RemoveMcpServerCommand}"
-                                                        CommandParameter="{Binding}" />
-                                            </StackPanel>
-                                        </Grid>
-                                    </Border>
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
+                                        <TextBlock Text="{Binding CommandSummary}" Classes="LabelSmall"
+                                                   Foreground="{DynamicResource OnSurfaceVariant}" />
+                                    </StackPanel>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <StackPanel Spacing="8"
+                                    IsVisible="{Binding SelectedMcpItem, Converter={StaticResource NullToVisibilityConverter}}">
+                            <Grid ColumnDefinitions="*,Auto,Auto">
+                                <ComboBox SelectedIndex="{Binding McpEditTransportIndex}"
+                                          ItemsSource="{Binding McpTransportOptions}"
+                                          PlaceholderText="{x:Static res:Strings.Settings_McpTransport}"
+                                          HorizontalAlignment="Stretch" />
+                                <Button Grid.Column="1" Classes="FilledTonal" Margin="8,0,0,0"
+                                        Content="{x:Static res:Strings.Settings_AgentSave}"
+                                        Command="{Binding SaveMcpServerCommand}" />
+                                <Button Grid.Column="2" Classes="Text" Margin="8,0,0,0"
+                                        Content="{x:Static res:Strings.Settings_Remove}"
+                                        Command="{Binding RemoveSelectedMcpServerCommand}" />
+                            </Grid>
+                            <TextBox Text="{Binding McpEditUrl}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_McpUrl}"
+                                     IsVisible="{Binding IsMcpEditHttp}" />
+                            <TextBox Text="{Binding McpEditCommand}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_McpCommand}"
+                                     IsVisible="{Binding IsMcpEditStdio}" />
+                            <TextBox Text="{Binding McpEditArgs}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_McpArgs}"
+                                     IsVisible="{Binding IsMcpEditStdio}" />
+                            <TextBox Text="{Binding McpEditEnv}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_McpEnv}"
+                                     AcceptsReturn="True" MinHeight="52"
+                                     IsVisible="{Binding IsMcpEditStdio}" />
+                            <ToggleSwitch IsChecked="{Binding McpEditEnabled}"
+                                          Content="{x:Static res:Strings.Settings_McpEnable}" />
+                            <TextBlock Classes="LabelSmall" Text="{Binding SelectedMcpItem.StatusText}"
+                                       Foreground="{DynamicResource Primary}" />
+                        </StackPanel>
                         <theme:Divider />
                         <StackPanel Spacing="8">
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentName}"
