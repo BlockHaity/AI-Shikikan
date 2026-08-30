@@ -1,8 +1,9 @@
 namespace AIShikikan.Core.Services.Llm;
 
-/// <summary>思考深度等级。Auto 表示由模型/系统自动决定, 其余为内置档位。</summary>
+/// <summary>思考深度等级。Off 显式关闭思考, Auto 表示由模型/系统自动决定, 其余为内置档位。</summary>
 public enum ThinkingLevel
 {
+    Off = -1,
     Auto = 0,
     Low = 1,
     Medium = 2,
@@ -15,6 +16,7 @@ public static class ThinkingLevels
 {
     public static string ToConfigString(ThinkingLevel level) => level switch
     {
+        ThinkingLevel.Off => "off",
         ThinkingLevel.Auto => "auto",
         ThinkingLevel.Low => "low",
         ThinkingLevel.Medium => "medium",
@@ -28,6 +30,9 @@ public static class ThinkingLevels
         level = ThinkingLevel.Auto;
         switch (s?.Trim().ToLowerInvariant())
         {
+            case "off" or "none" or "disabled":
+                level = ThinkingLevel.Off;
+                return true;
             case "auto":
                 level = ThinkingLevel.Auto;
                 return true;
@@ -53,6 +58,7 @@ public static class ThinkingLevels
 
     public static string DisplayName(ThinkingLevel level) => level switch
     {
+        ThinkingLevel.Off => "关闭",
         ThinkingLevel.Auto => "自动",
         ThinkingLevel.Low => "低",
         ThinkingLevel.Medium => "中",
@@ -64,6 +70,7 @@ public static class ThinkingLevels
     /// <summary>注入系统提示词的思考深度指令。</summary>
     public static string Directive(ThinkingLevel level) => level switch
     {
+        ThinkingLevel.Off => "思考深度: 关闭。不要展开长篇分析, 直接给出最终答案。",
         ThinkingLevel.Low => "思考深度: 低。直接回答, 无需深入分析。",
         ThinkingLevel.Medium => "思考深度: 中。适度分析后回答。",
         ThinkingLevel.High => "思考深度: 高。进行深入、全面的分析后再回答。",

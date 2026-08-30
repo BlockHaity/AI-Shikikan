@@ -211,11 +211,11 @@ public partial class ChatPageViewModel : ViewModelBase
         return provider?.GetMaxThinking(model) ?? ThinkingLevel.Max;
     }
 
-    /// <summary>按当前模型上限重建思考菜单(自动 + 不超过上限的档位), 并夹紧当前选中值。</summary>
+    /// <summary>按当前模型上限重建思考菜单(关闭/自动 + 不超过上限的档位), 并夹紧当前选中值。</summary>
     private void RefreshThinkingOptions()
     {
         var cap = CurrentMaxThinking();
-        var options = new List<ThinkingLevel> { ThinkingLevel.Auto };
+        var options = new List<ThinkingLevel> { ThinkingLevel.Off, ThinkingLevel.Auto };
         for (var l = ThinkingLevel.Low; l <= cap; l++)
         {
             options.Add(l);
