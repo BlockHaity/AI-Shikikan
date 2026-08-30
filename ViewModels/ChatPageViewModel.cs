@@ -419,6 +419,66 @@ public partial class ChatPageViewModel : ViewModelBase
         CanContinue = false;
     }
 
+    /// <summary>进入用户消息 fork 编辑态。</summary>
+    [RelayCommand]
+    private void StartEditUserMessage(ChatItemViewModel item)
+    {
+        if (IsSending || !item.IsUser) return;
+        item.BeginEdit(item.UserBody);
+    }
+
+    [RelayCommand]
+    private void CancelEditUserMessage(ChatItemViewModel item) => item.CancelEdit();
+
+    /// <summary>确认 fork 编辑: 截断该消息之后的回复并更新文本, 引擎历史重建到该消息之前后重发。</summary>
+    [RelayCommand]
+    private async Task ConfirmEditUserMessageAsync(ChatItemViewModel item)
+    {
+        if (IsSending || !item.IsUser) return;
+        var newText = item.ConfirmEdit();
+        if (string.IsNullOrWhiteSpace(newText)) return;
+        if (CurrentSession is null || string.IsNullOrEmpty(item.MessageId)) return;
+
+        var messageId = item.MessageId;
+        if (!_chatService.EditUserMessage(CurrentSession.Id, messageId, newText)) return;
+
+        RefreshMessages();
+        CanContinue = false;
+
+        // 引擎历史重建到该消息之前, 新文本由本轮引擎调用追加
+        var session = CurrentSession;
+        var idx = session.Messages.FindIndex(m => m.Id == messageId);
+        _runtime.Engine.RebuildConversation(session.Messages.Take(idx).ToList());
+
+        AIShikikan.Core.Logging.Log.Info("Session", $"fork 编辑消息 {messageId}, 截断后重发");
+        IsSending = true;
+        await RunTurnCoreAsync(newText);
+    }
+
+    /// <summary>删除用户消息(两段式确认): 连同其后紧跟的助手回复一并移除, 并重建引擎历史。</summary>
+    [RelayCommand]
+    private void DeleteUserMessage(ChatItemViewModel item)
+    {
+        if (IsSending || !item.IsUser) return;
+
+        if (!item.IsDeleteConfirming)
+        {
+            item.IsDeleteConfirming = true;
+            return;
+        }
+
+        item.IsDeleteConfirming = false;
+        if (CurrentSession is null || string.IsNullOrEmpty(item.MessageId)) return;
+
+        if (_chatService.DeleteMessage(CurrentSession.Id, item.MessageId))
+        {
+            AIShikikan.Core.Logging.Log.Info("Session", $"删除消息 {item.MessageId} 及其回复");
+            RefreshMessages();
+            _runtime.Engine.RebuildConversation(CurrentSession.Messages);
+            CanContinue = false;
+        }
+    }
+
     [RelayCommand]
     private void SendMessage()
     {

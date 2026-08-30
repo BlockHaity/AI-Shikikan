@@ -86,15 +86,52 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChatItemViewModel">
                             <Panel>
-                                <!-- 用户消息: 满宽 + 浅色背景, 右对齐正文 -->
+                                <!-- 用户消息: 满宽 + 浅色背景, 右对齐正文; 附带 fork 编辑/删除操作 -->
                                 <Border IsVisible="{Binding IsUser}" Margin="0,4"
                                         Padding="16,10" CornerRadius="8"
                                         Background="{DynamicResource SurfaceContainerHigh}"
                                         HorizontalAlignment="Stretch">
-                                    <SelectableTextBlock Classes="BodyMedium"
-                                                         Text="{Binding UserBody}"
-                                                         TextWrapping="Wrap"
-                                                         HorizontalAlignment="Right"/>
+                                    <StackPanel>
+                                        <!-- 编辑态: 内联编辑器 + 重新发送/取消 -->
+                                        <StackPanel IsVisible="{Binding IsEditing}" Spacing="8">
+                                            <TextBox Text="{Binding EditText}"
+                                                     AcceptsReturn="True"
+                                                     TextWrapping="Wrap"
+                                                     MaxHeight="200"/>
+                                            <StackPanel Orientation="Horizontal"
+                                                        HorizontalAlignment="Right"
+                                                        Spacing="8">
+                                                <Button Classes="Text" Padding="8,2" FontSize="12"
+                                                        Content="{x:Static res:Strings.Chat_MsgCancel}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).CancelEditUserMessageCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Classes="Filled" Padding="8,2" FontSize="12"
+                                                        Content="{x:Static res:Strings.Chat_MsgResend}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).ConfirmEditUserMessageCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                        <!-- 正常态: 正文 + 编辑/删除(删除为两段式确认) -->
+                                        <DockPanel IsVisible="{Binding !IsEditing}">
+                                            <StackPanel DockPanel.Dock="Right"
+                                                        Orientation="Horizontal" Spacing="2"
+                                                        VerticalAlignment="Top"
+                                                        Margin="8,0,0,0">
+                                                <Button Classes="Text" Padding="4,0" FontSize="11"
+                                                        Content="{x:Static res:Strings.Chat_MsgEdit}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).StartEditUserMessageCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Classes="Text" Padding="4,0" FontSize="11"
+                                                        Content="{Binding DeleteText}"
+                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).DeleteUserMessageCommand}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                            <SelectableTextBlock Classes="BodyMedium"
+                                                                 Text="{Binding UserBody}"
+                                                                 TextWrapping="Wrap"
+                                                                 HorizontalAlignment="Right"/>
+                                        </DockPanel>
+                                    </StackPanel>
                                 </Border>
 
                                 <!-- AI 消息: 无气泡, 分段堆叠 (思考/工具卡片 + 正文 markdown) -->

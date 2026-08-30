@@ -24,6 +24,9 @@ public partial class ChatItemViewModel : ViewModelBase
 
     public MessageRole Role { get; }
 
+    /// <summary>持久化的消息 Id(历史重建时赋值; 流式期间的临时分段为 null)。</summary>
+    public string? MessageId { get; private set; }
+
     public ObservableRange<SegmentItemViewModel> Segments { get; } = [];
 
     public bool IsUser => Role == MessageRole.User;
@@ -40,13 +43,54 @@ public partial class ChatItemViewModel : ViewModelBase
 
     public static ChatItemViewModel From(ChatMessage m)
     {
-        var item = new ChatItemViewModel(m.Role);
+        var item = new ChatItemViewModel(m.Role) { MessageId = m.Id };
         foreach (var seg in m.Segments)
         {
             item.Segments.Add(SegmentItemViewModel.From(seg));
         }
 
         return item;
+    }
+
+    // ---- 用户消息: fork 编辑 / 删除(两段式确认) ----
+    [ObservableProperty]
+    private bool _isEditing;
+
+    [ObservableProperty]
+    private string _editText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isDeleteConfirming;
+
+    public string DeleteText => IsDeleteConfirming ? Strings.Chat_MsgDeleteConfirm : Strings.Chat_MsgDelete;
+
+    partial void OnIsDeleteConfirmingChanged(bool value) => OnPropertyChanged(nameof(DeleteText));
+
+    public void BeginEdit(string text)
+    {
+        IsDeleteConfirming = false;
+        EditText = text;
+        IsEditing = true;
+    }
+
+    public void CancelEdit()
+    {
+        IsEditing = false;
+        EditText = string.Empty;
+    }
+
+    /// <summary>结束编辑并返回编辑后文本(空文本返回 null 且保持编辑态交由调用方处理)。</summary>
+    public string? ConfirmEdit()
+    {
+        var text = EditText.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        IsEditing = false;
+        EditText = string.Empty;
+        return text;
     }
 }
 
