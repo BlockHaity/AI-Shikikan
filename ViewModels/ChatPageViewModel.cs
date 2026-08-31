@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
 using AIShikikan.Gui.Resources;
+using AIShikikan.Gui.Services;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -58,6 +60,12 @@ public partial class ChatPageViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _inputText = string.Empty;
+
+    /// <summary>待发送的图片附件(输入区缩略图条带)。</summary>
+    public ObservableCollection<PendingImageAttachment> PendingAttachments { get; } = [];
+
+    /// <summary>是否存在待发送附件(控制附件条带可见性)。</summary>
+    public bool HasPendingAttachments => PendingAttachments.Count > 0;
 
     [ObservableProperty]
     private bool _isSending;
@@ -566,14 +574,19 @@ public partial class ChatPageViewModel : ViewModelBase
         Sessions = _chatService.Sessions;
         CanContinue = false;
 
-        // 引擎历史重建到该消息之前, 新文本由本轮引擎调用追加
+        // 引擎历史重建到该消息之前, 新文本由本轮引擎调用追加(原消息的图片附件随本轮重发)
         var session = CurrentSession;
         var idx = session.Messages.FindIndex(m => m.Id == messageId);
         _runtime.Engine.RebuildConversation(session.Messages.Take(idx).ToList());
 
+        var resendImages = session.Messages[idx].Segments
+            .Where(s => s.Kind == MessageSegmentKind.Image && !string.IsNullOrEmpty(s.ImageData))
+            .Select(s => new ChatImagePart { Base64Data = s.ImageData!, MimeType = s.ImageMimeType ?? "image/png" })
+            .ToList();
+
         AIShikikan.Core.Logging.Log.Info("Session", $"fork 编辑消息 {messageId}, 截断后重发");
         IsSending = true;
-        await RunTurnCoreAsync(newText);
+        await RunTurnCoreAsync(newText, resendImages.Count > 0 ? resendImages : null);
     }
 
     /// <summary>删除用户消息(两段式确认): 连同其后紧跟的助手回复一并移除, 并重建引擎历史。</summary>
@@ -741,7 +754,8 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void SendMessage()
     {
-        if (string.IsNullOrWhiteSpace(InputText)) return;
+        var hasAttachments = PendingAttachments.Count > 0;
+        if (string.IsNullOrWhiteSpace(InputText) && !hasAttachments) return;
         if (CurrentSession is null)
         {
             NewSession();
@@ -751,20 +765,81 @@ public partial class ChatPageViewModel : ViewModelBase
         InputText = string.Empty;
         HistoryReset(); // 发送后该条已进入会话历史, 退出浏览态
 
+        // 附件转图片分段(与引擎侧 ChatImagePart 同源), 发送后清空待发送条带
+        var attachments = PendingAttachments.ToList();
+        PendingAttachments.Clear();
+
         var isFirstMessage = CurrentSession!.MessageCount == 0;
+        var segments = new List<MessageSegment>();
+        foreach (var att in attachments)
+        {
+            segments.Add(new MessageSegment
+            {
+                Kind = MessageSegmentKind.Image,
+                ImageData = att.Base64,
+                ImageMimeType = att.MimeType,
+                ImageName = att.Name
+            });
+        }
+
+        if (!string.IsNullOrWhiteSpace(content))
+        {
+            segments.Add(new MessageSegment { Kind = MessageSegmentKind.Text, Content = content });
+        }
+
         // AddMessage 同步触发 MessageAdded 处理器完成列表重建, 无需在此重复 RefreshMessages
-        _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
+        _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, segments);
         // 记录会话绑定的工作目录(用于按目录整理会话与切换会话时恢复)
         _chatService.SetSessionWorkDir(CurrentSession.Id, WorkDir);
 
-        if (isFirstMessage)
+        if (isFirstMessage && !string.IsNullOrWhiteSpace(content))
         {
             _ = AutoGenerateTitleAsync(CurrentSession, content);
         }
 
         CanContinue = false;
         IsSending = true;
-        _ = RespondAsync(content);
+        var images = attachments
+            .Select(a => new ChatImagePart { Base64Data = a.Base64, MimeType = a.MimeType })
+            .ToList();
+        _ = RespondAsync(content, images.Count > 0 ? images : null);
+    }
+
+    /// <summary>把本地图片文件加入待发送附件(去重、限制数量; 全程 UI 线程访问集合)。</summary>
+    public async Task AddImageFilesAsync(IEnumerable<string> paths)
+    {
+        foreach (var path in paths)
+        {
+            if (PendingAttachments.Count >= ImageAttachmentService.MaxAttachments) break;
+
+            var att = await ImageAttachmentService.FromFileAsync(path);
+            if (att is null) continue;
+
+            if (PendingAttachments.Any(a => a.Name == att.Name && a.Base64 == att.Base64)) continue;
+
+            PendingAttachments.Add(att);
+            OnPropertyChanged(nameof(HasPendingAttachments));
+        }
+    }
+
+    /// <summary>把剪贴板位图加入待发送附件。</summary>
+    public void AddImageFromBitmap(Avalonia.Media.Imaging.Bitmap bmp, string name)
+    {
+        if (PendingAttachments.Count >= ImageAttachmentService.MaxAttachments) return;
+
+        var att = ImageAttachmentService.FromBitmap(bmp, name);
+        if (att is null) return;
+
+        PendingAttachments.Add(att);
+        OnPropertyChanged(nameof(HasPendingAttachments));
+    }
+
+    /// <summary>移除一个待发送附件。</summary>
+    [RelayCommand]
+    private void RemoveAttachment(PendingImageAttachment attachment)
+    {
+        PendingAttachments.Remove(attachment);
+        OnPropertyChanged(nameof(HasPendingAttachments));
     }
 
     /// <summary>手动终止当前生成(发送/工具循环均会收到取消信号)。</summary>
@@ -795,13 +870,13 @@ public partial class ChatPageViewModel : ViewModelBase
         }
     }
 
-    private async Task RespondAsync(string userMessage)
+    private async Task RespondAsync(string userMessage, IReadOnlyList<ChatImagePart>? images = null)
     {
-        await RunTurnCoreAsync(userMessage);
+        await RunTurnCoreAsync(userMessage, images);
     }
 
-    /// <summary>驱动一轮引擎调用: 流式呈现、取消处理与分段持久化。</summary>
-    private async Task RunTurnCoreAsync(string engineMessage)
+    /// <summary>驱动一轮引擎调用: 流式呈现、取消处理与分段持久化。images 为用户本轮附带的多模态图片。</summary>
+    private async Task RunTurnCoreAsync(string engineMessage, IReadOnlyList<ChatImagePart>? images = null)
     {
         var assistantItem = new ChatItemViewModel(MessageRole.Assistant);
         Messages.Add(assistantItem);
@@ -929,7 +1004,7 @@ public partial class ChatPageViewModel : ViewModelBase
             _runtime.Engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
             _runtime.Engine.Options.IsPlanMode = IsPlanMode;
 
-            var reply = await _runtime.Engine.RunTurnAsync(engineMessage, _turnCts.Token);
+            var reply = await _runtime.Engine.RunTurnAsync(engineMessage, images, _turnCts.Token);
             FlushUi(); // 兜底同步一次, 确保最终增量已呈现
 
             // 全程无流式文本时(如纯最终回复), 将整体回复作为正文分段补到时间线末尾

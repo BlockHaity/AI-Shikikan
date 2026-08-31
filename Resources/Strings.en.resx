@@ -56,6 +56,9 @@
   <data name="Home_Legend_InputNote" xml:space="preserve"><value>Total input tokens · incl. cached hits</value></data>
   <data name="Home_Legend_OutputNote" xml:space="preserve"><value>Model-generated tokens</value></data>
   <data name="Home_Legend_CacheNote" xml:space="preserve"><value>Cached-hit tokens; miss = input − hit</value></data>
+  <data name="Chat_AttachImage" xml:space="preserve"><value>Add image</value></data>
+  <data name="Chat_AttachImageTip" xml:space="preserve"><value>Add image attachments (paste / drag-drop supported, up to 4)</value></data>
+  <data name="Chat_AttachRemove" xml:space="preserve"><value>Remove</value></data>
   <data name="Theme_ToggleTip" xml:space="preserve"><value>Toggle Theme</value></data>
   <data name="Nav_CollapseTip" xml:space="preserve"><value>Collapse/Expand Navigation</value></data>
   <data name="Chat_NewSession" xml:space="preserve"><value>New Session</value></data>

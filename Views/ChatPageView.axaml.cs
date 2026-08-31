@@ -1,15 +1,18 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Gui.Resources;
+using AIShikikan.Gui.Services;
 using AIShikikan.Gui.ViewModels;
 
 namespace AIShikikan.Gui.Views;
@@ -29,6 +32,9 @@ public partial class ChatPageView : UserControl
 
         // 隧道方式捕获 ESC(无论焦点在哪个控件上), 双击终止生成
         AddHandler(KeyDownEvent, OnTunnelKeyDown, RoutingStrategies.Tunnel);
+
+        // 输入框 Ctrl+V 隧道阶段: 剪贴板图片转附件(先于 TextBox 默认粘贴)
+        InputBox.AddHandler(KeyDownEvent, OnInputPreviewKeyDown, RoutingStrategies.Tunnel);
 
         // 模板应用后拿到 ListBox 内部 ScrollViewer, 用于贴底滚动
         MessageList.TemplateApplied += (_, _) => AttachScroller();
@@ -320,6 +326,97 @@ public partial class ChatPageView : UserControl
         {
             var path = folders[0].TryGetLocalPath();
             vm.WorkDir = path ?? string.Empty;
+        }
+    }
+
+    /// <summary>回形针按钮: 选择图片文件加入待发送附件。</summary>
+    private async void OnAttachImageClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not ChatPageViewModel vm) return;
+
+        var topLevel = TopLevel.GetTopLevel(this);
+        if (topLevel is null) return;
+
+        var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = Strings.Chat_AttachImage,
+            AllowMultiple = true,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("图片")
+                {
+                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.webp", "*.bmp"]
+                }
+            ]
+        });
+
+        var paths = files.Select(f => f.TryGetLocalPath())
+                        .Where(p => !string.IsNullOrEmpty(p))
+                        .Cast<string>();
+        await vm.AddImageFilesAsync(paths);
+    }
+
+    private void OnInputDragOver(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = e.DataTransfer.Formats.Contains(DataFormat.File)
+            ? e.DragEffects & DragDropEffects.Copy
+            : DragDropEffects.None;
+    }
+
+    /// <summary>拖放图片文件到输入区加入待发送附件。</summary>
+    private async void OnInputDrop(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not ChatPageViewModel vm) return;
+        if (!e.DataTransfer.Formats.Contains(DataFormat.File)) return;
+
+        var files = e.DataTransfer.TryGetFiles();
+        if (files is null) return;
+
+        var paths = files
+            .Select(f => f.TryGetLocalPath())
+            .Where(p => !string.IsNullOrEmpty(p) && ImageAttachmentService.IsSupportedImage(p!))
+            .Cast<string>();
+        await vm.AddImageFilesAsync(paths);
+    }
+
+    /// <summary>输入框 Ctrl+V(隧道阶段, 先于默认粘贴): 剪贴板含图片/文件时转为附件并拦截, 否则放行文本粘贴。</summary>
+    private async void OnInputPreviewKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.V || !e.KeyModifiers.HasFlag(KeyModifiers.Control)) return;
+        if (DataContext is not ChatPageViewModel vm || vm.IsSending) return;
+
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard is null) return;
+
+        try
+        {
+            // 文件优先(资源管理器复制的图片文件), 其次位图(截图工具)
+            var files = await clipboard.TryGetFilesAsync();
+            if (files is { Length: > 0 })
+            {
+                var paths = files
+                    .Select(f => f.TryGetLocalPath())
+                    .Where(p => !string.IsNullOrEmpty(p) && ImageAttachmentService.IsSupportedImage(p!))
+                    .Cast<string>()
+                    .ToList();
+                if (paths.Count > 0)
+                {
+                    await vm.AddImageFilesAsync(paths);
+                    e.Handled = true;
+                    return;
+                }
+            }
+
+            var bmp = await clipboard.TryGetBitmapAsync();
+            if (bmp is not null)
+            {
+                vm.AddImageFromBitmap(bmp, "clipboard-image");
+                e.Handled = true;
+            }
+        }
+        catch
+        {
+            // 剪贴板不可用/格式异常: 不拦截, 回退默认文本粘贴
         }
     }
 }

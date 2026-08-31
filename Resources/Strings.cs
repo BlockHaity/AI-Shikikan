@@ -70,6 +70,9 @@ public static class Strings
     public static string Chat_HistoryTop => Get(nameof(Chat_HistoryTop));
     public static string Chat_HistoryBottom => Get(nameof(Chat_HistoryBottom));
     public static string Chat_Send => Get(nameof(Chat_Send));
+    public static string Chat_AttachImage => Get(nameof(Chat_AttachImage));
+    public static string Chat_AttachImageTip => Get(nameof(Chat_AttachImageTip));
+    public static string Chat_AttachRemove => Get(nameof(Chat_AttachRemove));
     public static string Chat_Stop => Get(nameof(Chat_Stop));
     public static string Chat_StopTip => Get(nameof(Chat_StopTip));
     public static string Chat_Continue => Get(nameof(Chat_Continue));
