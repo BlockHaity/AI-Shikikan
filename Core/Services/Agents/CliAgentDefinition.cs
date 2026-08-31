@@ -17,6 +17,10 @@ public record CliAgentDefinition
     /// 主对话处于 Plan 模式且该子代理被允许时追加; 为空表示该 Agent 不支持 Plan 模式。</summary>
     public List<string> PlanArgs { get; set; } = [];
 
+    /// <summary>即使未配置 plan_args 也允许该 Agent 在 Plan 模式中被使用(以普通参数启动)。
+    /// 默认 false: Plan 模式下仅 plan_args 非空的 Agent 可被授权。</summary>
+    public bool AllowPlanModeWithoutArgs { get; set; }
+
     /// <summary>额外 CLI 参数: 始终附加到子 Agent 命令末尾(在 args / plan_args 之后), 支持 {prompt} 占位符。</summary>
     public List<string> ExtraArgs { get; set; } = [];
 

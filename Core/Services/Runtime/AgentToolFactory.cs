@@ -223,10 +223,12 @@ public static class AgentExecutor
         }
     }
 
-    /// <summary>主对话处于 Plan 模式且该子代理被会话配置允许时, 以 Plan 模式启动(需 Agent 配置了 plan_args)。</summary>
+    /// <summary>主对话处于 Plan 模式且该子代理被会话配置允许时, 以 Plan 模式启动
+    /// (需 Agent 配置了 plan_args, 或开启"无 plan 参数也可在 Plan 模式使用"开关)。</summary>
     private static bool ShouldRunInPlanMode(CliAgentDefinition agent, ToolContext ctx)
     {
-        if (!ctx.IsPlanMode || agent.PlanArgs is not { Count: > 0 })
+        if (!ctx.IsPlanMode ||
+            (agent.PlanArgs is not { Count: > 0 } && !agent.AllowPlanModeWithoutArgs))
         {
             return false;
         }
