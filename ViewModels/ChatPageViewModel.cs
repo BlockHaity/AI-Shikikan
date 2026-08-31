@@ -149,10 +149,21 @@ public partial class ChatPageViewModel : ViewModelBase
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
-        _chatService.MessageAdded += (_, _) =>
+        _chatService.MessageAdded += (_, msg) =>
         {
             if (IsSending) return; // 流式期间由 RespondAsync 维护, 避免重建列表
-            RefreshMessages();
+
+            // 增量追加优先: 整集合替换会大规模回收容器, 触发 Material 主题过渡 NRE
+            if (CurrentSession is { } s && s.Messages.Count == Messages.Count + 1 &&
+                s.Messages[^1].Id == msg.Id)
+            {
+                Messages.Add(ChatItemViewModel.From(msg));
+            }
+            else
+            {
+                RefreshMessages();
+            }
+
             Sessions = _chatService.Sessions;
         };
 
@@ -446,7 +457,11 @@ public partial class ChatPageViewModel : ViewModelBase
         var messageId = item.MessageId;
         if (!_chatService.EditUserMessage(CurrentSession.Id, messageId, newText)) return;
 
-        RefreshMessages();
+        // 原地精准更新: 正文改文本 + 移除该消息之后的条目,
+        // 不整集合替换(容器大规模回收级联会触发 Material 主题过渡 NRE)
+        item.SetUserBodyInPlace(newText);
+        RemoveMessagesAfter(item);
+        Sessions = _chatService.Sessions;
         CanContinue = false;
 
         // 引擎历史重建到该消息之前, 新文本由本轮引擎调用追加
@@ -477,9 +492,30 @@ public partial class ChatPageViewModel : ViewModelBase
         if (_chatService.DeleteMessage(CurrentSession.Id, item.MessageId))
         {
             AIShikikan.Core.Logging.Log.Info("Session", $"删除消息 {item.MessageId} 及其回复");
-            RefreshMessages();
+
+            // 原地精准移除(含其后回复), 避免整集合替换
+            var pos = Messages.IndexOf(item);
+            if (pos >= 0)
+            {
+                RemoveMessagesAfter(item);
+                Messages.RemoveAt(pos);
+            }
+
+            Sessions = _chatService.Sessions;
             _runtime.Engine.RebuildConversation(CurrentSession.Messages);
             CanContinue = false;
+        }
+    }
+
+    /// <summary>移除显示列表中该条目之后的全部消息(自尾向前逐项移除)。</summary>
+    private void RemoveMessagesAfter(ChatItemViewModel item)
+    {
+        var pos = Messages.IndexOf(item);
+        if (pos < 0) return;
+
+        for (var i = Messages.Count - 1; i > pos; i--)
+        {
+            Messages.RemoveAt(i);
         }
     }
 
