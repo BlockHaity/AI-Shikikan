@@ -46,6 +46,26 @@ public partial class ChatItemViewModel : ViewModelBase
         }
     }
 
+    /// <summary>用户消息附带的图片分段(气泡内缩略图展示)。</summary>
+    public IReadOnlyList<SegmentItemViewModel> UserImageSegments
+    {
+        get
+        {
+            MaterializeSegments();
+            return Segments.Where(s => s.Kind == MessageSegmentKind.Image).ToList();
+        }
+    }
+
+    /// <summary>用户消息是否含图片附件。</summary>
+    public bool HasUserImages
+    {
+        get
+        {
+            MaterializeSegments();
+            return Segments.Any(s => s.Kind == MessageSegmentKind.Image);
+        }
+    }
+
     public static ChatItemViewModel From(ChatMessage m)
     {
         // 不在此处构建分段 VM, 仅记录源消息; 视图绑定 Segments/UserBody 时再物化
@@ -158,7 +178,16 @@ public partial class SegmentItemViewModel : ViewModelBase
     public bool IsText => Kind == MessageSegmentKind.Text;
     public bool IsThinking => Kind == MessageSegmentKind.Thinking;
     public bool IsTool => Kind == MessageSegmentKind.Tool;
-    public bool IsCard => Kind != MessageSegmentKind.Text;
+    public bool IsImage => Kind == MessageSegmentKind.Image;
+    public bool IsCard => Kind is MessageSegmentKind.Thinking or MessageSegmentKind.Tool;
+
+    /// <summary>图片分段: 解码后的位图(供气泡缩略图)。</summary>
+    [ObservableProperty]
+    private Avalonia.Media.Imaging.Bitmap? _imageBitmap;
+
+    /// <summary>图片分段: 原始文件名(悬浮提示)。</summary>
+    [ObservableProperty]
+    private string _imageName = string.Empty;
 
     public string ArgumentsToggleText => IsArgumentsJsonView ? "Markdown" : "JSON";
 
@@ -182,6 +211,22 @@ public partial class SegmentItemViewModel : ViewModelBase
                 vm.ToolStatus = t.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
                 vm.StepId = t.StepId;
                 vm.ToolCardDetail = t.Detail;
+                break;
+            case MessageSegmentKind.Image:
+                vm.ImageName = seg.ImageName ?? string.Empty;
+                try
+                {
+                    if (!string.IsNullOrEmpty(seg.ImageData))
+                    {
+                        vm.ImageBitmap = new Avalonia.Media.Imaging.Bitmap(
+                            new System.IO.MemoryStream(System.Convert.FromBase64String(seg.ImageData)));
+                    }
+                }
+                catch
+                {
+                    // 解码失败: 气泡显示占位(无位图)
+                }
+
                 break;
         }
 
