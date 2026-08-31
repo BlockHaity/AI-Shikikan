@@ -208,7 +208,6 @@ jobs:
           body_path: release_body.md
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
-          generate_release_notes: true
           files: |
             artifacts/**/*
         env:
