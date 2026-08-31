@@ -471,6 +471,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             Executable = source.Executable,
             Args = source.Args.ToList(),
             PlanArgs = source.PlanArgs.ToList(),
+            ExtraArgs = source.ExtraArgs.ToList(),
             DefaultMode = source.DefaultMode,
             MaxConcurrent = source.MaxConcurrent,
             RequireApproval = source.RequireApproval,

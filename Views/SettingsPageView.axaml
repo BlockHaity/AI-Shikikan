@@ -250,6 +250,8 @@
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentArgsPlaceholder}" />
                             <TextBox Text="{Binding AgentPlanArgsEdit}"
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentPlanArgs}" />
+                            <TextBox Text="{Binding AgentExtraArgsEdit}"
+                                     PlaceholderText="{x:Static res:Strings.Settings_AgentExtraArgs}" />
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_AgentEditHint}"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                         </StackPanel>
@@ -263,6 +265,8 @@
                                      Text="{Binding NewAgentArgs}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentPlanArgs}"
                                      Text="{Binding NewAgentPlanArgs}" />
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentExtraArgs}"
+                                     Text="{Binding NewAgentExtraArgs}" />
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddAgentCommand}"/>
                         </StackPanel>
