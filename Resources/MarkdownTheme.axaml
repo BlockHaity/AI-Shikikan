@@ -135,12 +135,13 @@
         <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
     </Style>
     <Style Selector=".Markdown_Avalonia_MarkdownViewer TextBlock.CodeBlock">
-        <Setter Property="FontFamily" Value="menlo,monaco,consolas,droid sans mono,inconsolata,courier new,monospace,dejavu sans mono"/>
+        <Setter Property="FontFamily" Value="{DynamicResource MonoThemeFontFamily}"/>
         <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
     </Style>
 
     <!-- 行内代码 -->
     <Style Selector=".Markdown_Avalonia_MarkdownViewer ctxt|CCode">
+        <Setter Property="FontFamily" Value="{DynamicResource MonoThemeFontFamily}"/>
         <Setter Property="Foreground" Value="{DynamicResource OnSurface}"/>
         <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
     </Style>
