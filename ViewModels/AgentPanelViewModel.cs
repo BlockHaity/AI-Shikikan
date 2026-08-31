@@ -56,6 +56,9 @@ public partial class SubAgentItemViewModel : ViewModelBase
     /// <summary>该 Agent 是否配置了 plan_args(决定"在 Plan 模式中使用"开关是否可用)。</summary>
     public bool HasPlanArgs => Agent.PlanArgs is { Count: > 0 };
 
+    /// <summary>是否可开启"在 Plan 模式中使用": 配置了 plan_args, 或 Agent 开启了"无 plan 参数也可在 Plan 模式使用"。</summary>
+    public bool CanUseInPlanMode => HasPlanArgs || Agent.AllowPlanModeWithoutArgs;
+
     partial void OnSelectedOptionChanged(PersonaOption? value)
     {
         OnPropertyChanged(nameof(PersonaName));
@@ -413,11 +416,11 @@ public partial class AgentPanelViewModel : ViewModelBase
         PushRoster();
     }
 
-    /// <summary>切换该子代理的 Plan 模式使用开关(会话级; 仅配置了 plan_args 的 Agent 可用)。</summary>
+    /// <summary>切换该子代理的 Plan 模式使用开关(会话级; 需配置 plan_args 或开启无参数放行开关)。</summary>
     [RelayCommand]
     private void ToggleEntryPlanMode(SubAgentItemViewModel item)
     {
-        if (!item.HasPlanArgs)
+        if (!item.CanUseInPlanMode)
         {
             item.UseInPlanMode = false;
             return;
@@ -472,6 +475,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             Args = source.Args.ToList(),
             PlanArgs = source.PlanArgs.ToList(),
             ExtraArgs = source.ExtraArgs.ToList(),
+            AllowPlanModeWithoutArgs = source.AllowPlanModeWithoutArgs,
             DefaultMode = source.DefaultMode,
             MaxConcurrent = source.MaxConcurrent,
             RequireApproval = source.RequireApproval,

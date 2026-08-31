@@ -517,6 +517,9 @@ public partial class SettingsPageViewModel : ViewModelBase
     private string _agentExtraArgsEdit = string.Empty;
 
     [ObservableProperty]
+    private bool _agentAllowPlanNoArgsEdit;
+
+    [ObservableProperty]
     private string _newAgentArgs = string.Empty;
 
     [ObservableProperty]
@@ -524,6 +527,9 @@ public partial class SettingsPageViewModel : ViewModelBase
 
     [ObservableProperty]
     private string _newAgentExtraArgs = string.Empty;
+
+    [ObservableProperty]
+    private bool _newAgentAllowPlanNoArgs;
 
     public SettingsPageViewModel(ThemeService themeService)
     {
@@ -680,6 +686,7 @@ public partial class SettingsPageViewModel : ViewModelBase
         AgentArgsEdit = value is { Args.Count: > 0 } ? string.Join(" ", value.Args) : string.Empty;
         AgentPlanArgsEdit = value is { PlanArgs.Count: > 0 } ? string.Join(" ", value.PlanArgs) : string.Empty;
         AgentExtraArgsEdit = value is { ExtraArgs.Count: > 0 } ? string.Join(" ", value.ExtraArgs) : string.Empty;
+        AgentAllowPlanNoArgsEdit = value?.AllowPlanModeWithoutArgs ?? false;
     }
 
     private void OnModelConfigChanged()
@@ -939,6 +946,7 @@ public partial class SettingsPageViewModel : ViewModelBase
             Args = ParseArgs(NewAgentArgs),
             PlanArgs = ParseArgs(NewAgentPlanArgs),
             ExtraArgs = ParseArgs(NewAgentExtraArgs),
+            AllowPlanModeWithoutArgs = NewAgentAllowPlanNoArgs,
             DefaultMode = "sync",
             MaxConcurrent = 1,
             RequireApproval = true,
@@ -954,6 +962,7 @@ public partial class SettingsPageViewModel : ViewModelBase
         NewAgentArgs = string.Empty;
         NewAgentPlanArgs = string.Empty;
         NewAgentExtraArgs = string.Empty;
+        NewAgentAllowPlanNoArgs = false;
     }
 
     /// <summary>把空格分隔的参数模板解析为参数列表(支持 {prompt} 占位符)。</summary>
@@ -974,6 +983,7 @@ public partial class SettingsPageViewModel : ViewModelBase
         SelectedAgent.Args = ParseArgs(AgentArgsEdit);
         SelectedAgent.PlanArgs = ParseArgs(AgentPlanArgsEdit);
         SelectedAgent.ExtraArgs = ParseArgs(AgentExtraArgsEdit);
+        SelectedAgent.AllowPlanModeWithoutArgs = AgentAllowPlanNoArgsEdit;
 
         AgentConfigService.SaveUserAgent(SelectedAgent);
         UserAgents = AgentConfigService.LoadAll().ToList();

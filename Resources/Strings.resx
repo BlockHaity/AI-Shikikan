@@ -131,7 +131,7 @@
   <data name="SubAgent_Compact" xml:space="preserve"><value>压缩子代理输出</value></data>
   <data name="SubAgent_CompactTip" xml:space="preserve"><value>开启后, 该子代理的长输出先经 LLM 压缩为要点纪要再返回给 AI, 节省上下文空间; 短输出与失败结果不受影响(仅对当前会话生效)</value></data>
   <data name="SubAgent_UseInPlanMode" xml:space="preserve"><value>在 Plan 模式中使用</value></data>
-  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>主对话处于 Plan 模式时, 该子代理将追加 plan 模式参数启动; 需先在 agents.toml 为该 Agent 配置 plan_args</value></data>
+  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>主对话处于 Plan 模式时, 该子代理将追加 plan 模式参数启动; 需为该 Agent 配置 plan_args, 或在设置中开启"无 plan 参数也可在 Plan 模式使用"(以普通参数启动)</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>更改</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>暂存</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>撤销暂存</value></data>
@@ -225,6 +225,8 @@
   <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
   <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan 模式参数 (空格分隔, 如: --permission-mode plan)</value></data>
   <data name="Settings_AgentExtraArgs" xml:space="preserve"><value>额外参数 (空格分隔, 始终附加到命令末尾, 支持 {prompt})</value></data>
+  <data name="Settings_AgentAllowPlanNoArgs" xml:space="preserve"><value>即使不提供 plan 模式参数也在 Plan 模式中可用</value></data>
+  <data name="Settings_AgentAllowPlanNoArgsTip" xml:space="preserve"><value>默认关闭: Plan 模式下仅配置了 plan_args 的 Agent 可被授权。开启后该 Agent 即使没有 plan_args, 也可在会话面板勾选"在 Plan 模式中使用"以普通参数启动。</value></data>
   <data name="Chat_ApprovalTitle" xml:space="preserve"><value>工具调用需要确认</value></data>
   <data name="Chat_ApprovalApprove" xml:space="preserve"><value>批准</value></data>
   <data name="Chat_ApprovalReject" xml:space="preserve"><value>拒绝</value></data>

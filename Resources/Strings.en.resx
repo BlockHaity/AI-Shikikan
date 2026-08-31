@@ -131,7 +131,7 @@
   <data name="SubAgent_Compact" xml:space="preserve"><value>Compact sub-agent output</value></data>
   <data name="SubAgent_CompactTip" xml:space="preserve"><value>When enabled, long outputs of this sub-agent are condensed by the LLM into key-point summaries before returning to the AI; short outputs and failures are unaffected (applies to the current session only)</value></data>
   <data name="SubAgent_UseInPlanMode" xml:space="preserve"><value>Use in Plan mode</value></data>
-  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>When the main conversation is in Plan mode, this sub-agent is launched with its plan-mode CLI arguments; configure plan_args for the agent in agents.toml first</value></data>
+  <data name="SubAgent_UseInPlanModeTip" xml:space="preserve"><value>When the main conversation is in Plan mode, this sub-agent is launched with its plan-mode CLI arguments; configure plan_args for the agent, or enable "Available in Plan mode even without plan-mode arguments" in settings (launches with regular arguments)</value></data>
   <data name="GitPanel_Changes" xml:space="preserve"><value>Changes</value></data>
   <data name="GitPanel_Stage" xml:space="preserve"><value>Stage</value></data>
   <data name="GitPanel_Unstage" xml:space="preserve"><value>Unstage</value></data>
@@ -223,6 +223,8 @@
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
   <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan-mode arguments (space-separated, e.g. --permission-mode plan)</value></data>
   <data name="Settings_AgentExtraArgs" xml:space="preserve"><value>Extra arguments (space-separated, always appended to the command, {prompt} supported)</value></data>
+  <data name="Settings_AgentAllowPlanNoArgs" xml:space="preserve"><value>Available in Plan mode even without plan-mode arguments</value></data>
+  <data name="Settings_AgentAllowPlanNoArgsTip" xml:space="preserve"><value>Off by default: in Plan mode only agents with plan_args can be authorized. When enabled, this agent can be checked "Use in Plan mode" in the session panel and launched with its regular arguments even without plan_args.</value></data>
   <data name="Chat_ApprovalTitle" xml:space="preserve"><value>Tool call needs approval</value></data>
   <data name="Chat_ApprovalApprove" xml:space="preserve"><value>Approve</value></data>
   <data name="Chat_ApprovalReject" xml:space="preserve"><value>Reject</value></data>

@@ -138,7 +138,7 @@
                                                       Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryCompactCommand}"
                                                       CommandParameter="{Binding}"/>
                                         <ToggleSwitch IsChecked="{Binding UseInPlanMode}"
-                                                      IsEnabled="{Binding HasPlanArgs}"
+                                                      IsEnabled="{Binding CanUseInPlanMode}"
                                                       Content="{x:Static res:Strings.SubAgent_UseInPlanMode}"
                                                       ToolTip.Tip="{x:Static res:Strings.SubAgent_UseInPlanModeTip}"
                                                       Command="{Binding $parent[UserControl].((vm:AgentPanelViewModel)DataContext).ToggleEntryPlanModeCommand}"

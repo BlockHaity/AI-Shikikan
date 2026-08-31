@@ -216,6 +216,8 @@ public static class Strings
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
     public static string Settings_AgentPlanArgs => Get(nameof(Settings_AgentPlanArgs));
     public static string Settings_AgentExtraArgs => Get(nameof(Settings_AgentExtraArgs));
+    public static string Settings_AgentAllowPlanNoArgs => Get(nameof(Settings_AgentAllowPlanNoArgs));
+    public static string Settings_AgentAllowPlanNoArgsTip => Get(nameof(Settings_AgentAllowPlanNoArgsTip));
     public static string Chat_ApprovalTitle => Get(nameof(Chat_ApprovalTitle));
     public static string Chat_ApprovalApprove => Get(nameof(Chat_ApprovalApprove));
     public static string Chat_ApprovalReject => Get(nameof(Chat_ApprovalReject));
