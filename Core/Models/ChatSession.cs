@@ -10,6 +10,9 @@ public class ChatSession
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
     public List<ChatMessage> Messages { get; set; } = [];
 
+    /// <summary>会话绑定的工作目录(首次发送消息时记录, 用于按目录整理会话与切换会话时恢复)。</summary>
+    public string WorkDir { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? "New Session" : Title;
 

@@ -12,6 +12,8 @@
         <StreamGeometry x:Key="IconChatSmall">M22,9v6c0,1.1-0.9,2-2,2h-1v2c0,1.1-0.9,2-2,2H7c-1.1,0-2-0.9-2-2v-2H4c-1.1,0-2-0.9-2-2V9c0-1.1,0.9-2,2-2h1V5c0-1.1,0.9-2,2-2h10c1.1,0,2,0.9,2,2v2h1C21.1,7,22,7.9,22,9zM8,13h6v-2H8V13zM18,11h-2v2h2V11zM19,7h-2v2h2V7zM20,9h-2v2h2V9z</StreamGeometry>
         <StreamGeometry x:Key="IconEdit">M3,17.25V21h3.75L17.81,9.94l-3.75-3.75L3,17.25zM20.71,7.04c0.39-0.39,0.39-1.02,0-1.41l-2.34-2.34c-0.39-0.39-1.02-0.39-1.41,0l-1.83,1.83l3.75,3.75L20.71,7.04z</StreamGeometry>
         <StreamGeometry x:Key="IconDelete">M6,19c0,1.1,0.9,2,2,2h8c1.1,0,2-0.9,2-2V7H6V19zM19,4h-3.5l-1-1h-5l-1,1H5v2h14V4z</StreamGeometry>
+        <StreamGeometry x:Key="IconFolder">M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z</StreamGeometry>
+        <StreamGeometry x:Key="IconChevronDown">M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6l-6-6L7.41,8.59Z</StreamGeometry>
         <MenuFlyout x:Key="SessionItemFlyout" Placement="BottomEdgeAlignedLeft">
             <MenuItem Header="{x:Static res:Strings.Session_Rename}"
                       Command="{Binding $parent[UserControl].((vm:SessionPanelViewModel)DataContext).ContextRenameCommand}"
@@ -43,15 +45,32 @@
             <Setter Property="Foreground" Value="{DynamicResource OnSurfaceVariant}"/>
             <Setter Property="CornerRadius" Value="12"/>
         </Style>
+        <Style Selector="Button.groupHeader">
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="Margin" Value="4,6,4,0"/>
+            <Setter Property="HorizontalAlignment" Value="Stretch"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="CornerRadius" Value="6"/>
+        </Style>
+        <Style Selector="Button.groupHeader:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- 标题 + 新建按钮 -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,10,8,4">
+        <!-- 标题 + 分组开关 + 新建按钮 -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="8,10,8,4">
             <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Session_Panel_Title}"
                        VerticalAlignment="Center"/>
-            <Button Grid.Column="1" Classes="FilledTonal" Padding="8,4"
+            <ToggleButton Grid.Column="1" Classes="sessionAction" Padding="4" Margin="0,0,6,0"
+                          IsChecked="{Binding GroupByWorkDir}"
+                          ToolTip.Tip="{x:Static res:Strings.Session_GroupByWorkDir}">
+                <PathIcon Data="{StaticResource IconFolder}" Width="16" Height="16"/>
+            </ToggleButton>
+            <Button Grid.Column="2" Classes="FilledTonal" Padding="8,4"
                     Command="{Binding NewSessionCommand}"
                     ToolTip.Tip="{x:Static res:Strings.Session_New}">
                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -61,11 +80,34 @@
             </Button>
         </Grid>
 
-        <!-- 会话列表 -->
+        <!-- 会话列表(分组模式下混排目录组头) -->
         <ScrollViewer Grid.Row="1">
             <Panel>
-                <ItemsControl ItemsSource="{Binding Sessions}">
-                    <ItemsControl.ItemTemplate>
+                <ItemsControl ItemsSource="{Binding DisplayItems}">
+                    <ItemsControl.DataTemplates>
+                        <!-- 组头: 目录名 + 会话数, 点击折叠/展开 -->
+                        <DataTemplate x:DataType="vm:SessionGroupHeaderViewModel">
+                            <Button Classes="groupHeader"
+                                    Command="{Binding ToggleExpandCommand}"
+                                    ToolTip.Tip="{Binding FullPath}">
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="▾" Width="12" FontSize="11"
+                                               IsVisible="{Binding IsExpanded}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    <TextBlock Text="▸" Width="12" FontSize="11"
+                                               IsVisible="{Binding !IsExpanded}"
+                                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    <PathIcon Data="{StaticResource IconFolder}" Width="14" Height="14"
+                                              Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    <TextBlock Classes="LabelLarge" Text="{Binding Title}"
+                                               TextTrimming="CharacterEllipsis"
+                                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                    <TextBlock Text="{Binding Count}" FontSize="10" Opacity="0.6"
+                                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                </StackPanel>
+                            </Button>
+                        </DataTemplate>
+                        <!-- 会话项 -->
                         <DataTemplate x:DataType="vm:SessionItemViewModel">
                             <Border Classes="sessionItem"
                                     Classes.selected="{Binding IsSelected}"
@@ -118,7 +160,7 @@
                                 </StackPanel>
                             </Border>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
+                    </ItemsControl.DataTemplates>
                 </ItemsControl>
                 <TextBlock Text="{x:Static res:Strings.Session_Empty}" FontSize="12" Opacity="0.6"
                            HorizontalAlignment="Center" VerticalAlignment="Center"

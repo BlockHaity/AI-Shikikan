@@ -197,6 +197,8 @@
   <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} tools</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>Sessions</value></data>
+  <data name="Session_GroupByWorkDir" xml:space="preserve"><value>Group by working directory</value></data>
+  <data name="Session_GroupUnassigned" xml:space="preserve"><value>No directory</value></data>
   <data name="Session_New" xml:space="preserve"><value>New Session</value></data>
   <data name="Session_Messages" xml:space="preserve"><value>{0} messages</value></data>
   <data name="Session_Rename" xml:space="preserve"><value>Rename</value></data>

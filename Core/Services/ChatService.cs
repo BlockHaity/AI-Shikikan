@@ -28,6 +28,7 @@ public class ChatService
     public event EventHandler<ChatSession?>? CurrentSessionChanged;
     public event EventHandler<ChatMessage>? MessageAdded;
     public event EventHandler<ChatSession>? SessionRenamed;
+    public event EventHandler<ChatSession>? SessionWorkDirChanged;
 
     public ChatService()
     {
@@ -98,6 +99,20 @@ public class ChatService
         SaveSession(session);
         SessionRenamed?.Invoke(this, session);
         return true;
+    }
+
+    /// <summary>记录会话绑定的工作目录(发生变化才落盘), 供按目录整理会话与切换会话时恢复。</summary>
+    public void SetSessionWorkDir(string sessionId, string? workDir)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return;
+
+        var dir = workDir?.Trim() ?? string.Empty;
+        if (string.Equals(session.WorkDir, dir, StringComparison.Ordinal)) return;
+
+        session.WorkDir = dir;
+        SaveSession(session);
+        SessionWorkDirChanged?.Invoke(this, session);
     }
 
     public ChatMessage AddMessage(string sessionId, MessageRole role, string content)
@@ -249,6 +264,9 @@ public class ChatService
             Title = root.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String
                 ? t.GetString() ?? "New Session"
                 : "New Session",
+            WorkDir = root.TryGetProperty("workDir", out var w) && w.ValueKind == JsonValueKind.String
+                ? w.GetString() ?? string.Empty
+                : string.Empty,
             UpdatedAt = root.TryGetProperty("updatedAt", out var u) && u.TryGetDateTime(out var ut)
                 ? ut
                 : DateTime.Now

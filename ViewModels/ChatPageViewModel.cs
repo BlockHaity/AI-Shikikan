@@ -146,6 +146,11 @@ public partial class ChatPageViewModel : ViewModelBase
             RefreshMessages();
             _currentSessionId = session?.Id;
             CanContinue = false;
+            // 切换会话时恢复该会话绑定的工作目录(未绑定的新会话保留当前选择)
+            if (!string.IsNullOrWhiteSpace(session?.WorkDir))
+            {
+                WorkDir = session!.WorkDir;
+            }
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         };
@@ -652,6 +657,8 @@ public partial class ChatPageViewModel : ViewModelBase
         var isFirstMessage = CurrentSession!.MessageCount == 0;
         // AddMessage 同步触发 MessageAdded 处理器完成列表重建, 无需在此重复 RefreshMessages
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
+        // 记录会话绑定的工作目录(用于按目录整理会话与切换会话时恢复)
+        _chatService.SetSessionWorkDir(CurrentSession.Id, WorkDir);
 
         if (isFirstMessage)
         {
