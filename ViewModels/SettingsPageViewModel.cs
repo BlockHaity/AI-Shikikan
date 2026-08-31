@@ -39,6 +39,7 @@ public partial class ModelItem : ObservableObject
         _isEnabled = provider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase);
         // 直接写 backing field, 避免构造时触发持久化
         _maxThinking = provider.GetMaxThinking(id);
+        _contextTokensText = provider.GetContextTokens(id)?.ToString() ?? string.Empty;
     }
 
     public string Id { get; }
@@ -50,6 +51,28 @@ public partial class ModelItem : ObservableObject
     partial void OnMaxThinkingChanged(ThinkingLevel value)
     {
         _provider.ModelMaxThinking[Id] = ThinkingLevels.ToConfigString(value);
+        ProviderSettingsService.Save(_settings);
+        _onChanged();
+    }
+
+    /// <summary>该模型手动配置的上下文窗口大小(token 数字文本; 留空表示跟随模型档案)。</summary>
+    [ObservableProperty]
+    private string _contextTokensText = string.Empty;
+
+    partial void OnContextTokensTextChanged(string value)
+    {
+        var text = value.Trim();
+        if (text.Length == 0)
+        {
+            _provider.ModelContextTokens.Remove(Id);
+        }
+        else
+        {
+            // 仅接受正整数, 非法输入不落盘
+            if (!long.TryParse(text, out var tokens) || tokens <= 0) return;
+            _provider.ModelContextTokens[Id] = tokens;
+        }
+
         ProviderSettingsService.Save(_settings);
         _onChanged();
     }

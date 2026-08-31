@@ -63,6 +63,12 @@
   <data name="Chat_SelectModel" xml:space="preserve"><value>选择模型</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>输入消息...</value></data>
   <data name="Chat_HistoryPosition" xml:space="preserve"><value>历史 {0}/{1} (↑↓ 浏览, ESC 取消)</value></data>
+  <data name="Chat_CtxNoInfo" xml:space="preserve"><value>暂无上下文信息(发送消息后显示)</value></data>
+  <data name="Chat_CtxCompactAsk" xml:space="preserve"><value>是否压缩当前上下文？较早的历史将替换为 AI 摘要, 最近消息保留。</value></data>
+  <data name="Chat_CtxCompactConfirm" xml:space="preserve"><value>压缩</value></data>
+  <data name="Chat_CtxCompactCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Chat_CtxCompacted" xml:space="preserve"><value>🗜 上下文已压缩: 较早历史已替换为摘要。</value></data>
+  <data name="Chat_CtxCompactShort" xml:space="preserve"><value>当前上下文较短, 无需压缩。</value></data>
   <data name="Chat_HistoryTop" xml:space="preserve"><value>已是最早一条历史</value></data>
   <data name="Chat_HistoryBottom" xml:space="preserve"><value>已是最新一条历史</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
@@ -180,6 +186,9 @@
   <data name="Settings_DisableAll" xml:space="preserve"><value>全部关闭</value></data>
   <data name="Settings_ModelNameHeader" xml:space="preserve"><value>模型</value></data>
   <data name="Settings_MaxThinking" xml:space="preserve"><value>最大思考深度</value></data>
+  <data name="Settings_ContextWindow" xml:space="preserve"><value>上下文窗口(tokens)</value></data>
+  <data name="Settings_ContextWindowTip" xml:space="preserve"><value>留空表示跟随模型档案(API/内置)自动值</value></data>
+  <data name="Settings_ContextWindowAuto" xml:space="preserve"><value>自动</value></data>
   <data name="Settings_DetectThinking" xml:space="preserve"><value>自动检测思考等级</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>默认模型</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>

@@ -37,6 +37,16 @@
             <Setter Property="Background" Value="{DynamicResource SecondaryContainer}"/>
             <Setter Property="Foreground" Value="{DynamicResource OnSecondaryContainer}"/>
         </Style>
+        <Style Selector="Button.ctxRing">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="4"/>
+            <Setter Property="CornerRadius" Value="18"/>
+            <Setter Property="MinWidth" Value="0"/>
+            <Setter Property="MinHeight" Value="0"/>
+        </Style>
+        <Style Selector="Button.ctxRing:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+        </Style>
     </UserControl.Styles>
 
     <Grid>
@@ -61,24 +71,64 @@
         <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto">
 
             <Border Grid.Row="0" Padding="16,8" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <TextBlock Classes="TitleSmall" VerticalAlignment="Center"
-                               Text="{Binding ActiveModelText}" TextTrimming="CharacterEllipsis"/>
-                    <ComboBox ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}"
-                              MinWidth="140" VerticalAlignment="Center"
-                              PlaceholderText="{x:Static res:Strings.Chat_SelectProvider}">
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate x:DataType="llm:ProviderConfig">
-                                <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                    </ComboBox>
-                    <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}"
-                              MinWidth="180" VerticalAlignment="Center"
-                              PlaceholderText="{x:Static res:Strings.Chat_SelectModel}" />
-                    <Button Classes="Text" Content="{x:Static res:Strings.Chat_ClearSession}"
-                            Command="{Binding ClearMessagesCommand}" IsEnabled="{Binding !IsSending}"/>
-                </StackPanel>
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Classes="TitleSmall" VerticalAlignment="Center"
+                                   Text="{Binding ActiveModelText}" TextTrimming="CharacterEllipsis"/>
+                        <ComboBox ItemsSource="{Binding AvailableProviders}" SelectedItem="{Binding SelectedProvider}"
+                                  MinWidth="140" VerticalAlignment="Center"
+                                  PlaceholderText="{x:Static res:Strings.Chat_SelectProvider}">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="llm:ProviderConfig">
+                                    <TextBlock Text="{Binding Name}" Classes="BodyMedium" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <ComboBox ItemsSource="{Binding AvailableModels}" SelectedItem="{Binding SelectedModel}"
+                                  MinWidth="180" VerticalAlignment="Center"
+                                  PlaceholderText="{x:Static res:Strings.Chat_SelectModel}" />
+                        <Button Classes="Text" Content="{x:Static res:Strings.Chat_ClearSession}"
+                                Command="{Binding ClearMessagesCommand}" IsEnabled="{Binding !IsSending}"/>
+                    </StackPanel>
+
+                    <!-- 上下文占用圆环: 点击弹出压缩确认气泡 -->
+                    <Button x:Name="ContextRingButton" Grid.Column="1" Classes="ctxRing"
+                            VerticalAlignment="Center" ToolTip.Tip="{Binding ContextDetailText}">
+                        <Panel Width="30" Height="30">
+                            <!-- 底环 -->
+                            <Ellipse Width="30" Height="30" StrokeThickness="3"
+                                     HorizontalAlignment="Center" VerticalAlignment="Center"
+                                     Stroke="{DynamicResource SurfaceContainerHigh}"/>
+                            <!-- 进度弧: 从顶部(270°)顺时针, 角度 = 百分比 * 3.6 -->
+                            <Arc Width="30" Height="30" StrokeThickness="3"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                                 StartAngle="270" SweepAngle="{Binding ContextArcAngle}"
+                                 StrokeLineCap="Round"
+                                 Stroke="{DynamicResource Primary}"/>
+                            <TextBlock Text="{Binding ContextPercentText}" FontSize="8"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource OnSurface}"/>
+                        </Panel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedRight">
+                                <StackPanel Spacing="10" Width="240">
+                                    <TextBlock Classes="BodyMedium" TextWrapping="Wrap"
+                                               Text="{x:Static res:Strings.Chat_CtxCompactAsk}"/>
+                                    <TextBlock Classes="LabelSmall"
+                                               Foreground="{DynamicResource OnSurfaceVariant}"
+                                               Text="{Binding ContextDetailText}"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                        <Button Classes="Text" Content="{x:Static res:Strings.Chat_CtxCompactCancel}"
+                                                Click="OnContextCompactCancel"/>
+                                        <Button Classes="Filled" Content="{x:Static res:Strings.Chat_CtxCompactConfirm}"
+                                                IsEnabled="{Binding !IsCompacting}"
+                                                Click="OnContextCompactConfirm"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </Grid>
             </Border>
 
             <!-- 消息列表: ListBox(自带受限 ScrollViewer) + VirtualizingStackPanel 真虚拟化(懒加载),

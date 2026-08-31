@@ -60,6 +60,12 @@ public static class Strings
     public static string Chat_SelectModel => Get(nameof(Chat_SelectModel));
     public static string Chat_InputPlaceholder => Get(nameof(Chat_InputPlaceholder));
     public static string Chat_HistoryPosition => Get(nameof(Chat_HistoryPosition));
+    public static string Chat_CtxNoInfo => Get(nameof(Chat_CtxNoInfo));
+    public static string Chat_CtxCompactAsk => Get(nameof(Chat_CtxCompactAsk));
+    public static string Chat_CtxCompactConfirm => Get(nameof(Chat_CtxCompactConfirm));
+    public static string Chat_CtxCompactCancel => Get(nameof(Chat_CtxCompactCancel));
+    public static string Chat_CtxCompacted => Get(nameof(Chat_CtxCompacted));
+    public static string Chat_CtxCompactShort => Get(nameof(Chat_CtxCompactShort));
     public static string Chat_HistoryTop => Get(nameof(Chat_HistoryTop));
     public static string Chat_HistoryBottom => Get(nameof(Chat_HistoryBottom));
     public static string Chat_Send => Get(nameof(Chat_Send));
@@ -207,6 +213,9 @@ public static class Strings
     public static string Settings_AgentPlanArgs => Get(nameof(Settings_AgentPlanArgs));
     public static string Settings_ModelNameHeader => Get(nameof(Settings_ModelNameHeader));
     public static string Settings_MaxThinking => Get(nameof(Settings_MaxThinking));
+    public static string Settings_ContextWindow => Get(nameof(Settings_ContextWindow));
+    public static string Settings_ContextWindowTip => Get(nameof(Settings_ContextWindowTip));
+    public static string Settings_ContextWindowAuto => Get(nameof(Settings_ContextWindowAuto));
     public static string Settings_DetectThinking => Get(nameof(Settings_DetectThinking));
     public static string Chat_Thinking => Get(nameof(Chat_Thinking));
     public static string Chat_WorkDir => Get(nameof(Chat_WorkDir));

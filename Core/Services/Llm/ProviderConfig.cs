@@ -19,6 +19,9 @@ public class ProviderConfig
     /// <summary>各模型可用的最大思考等级(键为模型 ID, 值为 low/medium/high/xhigh/max); 未配置表示不限。</summary>
     public Dictionary<string, string> ModelMaxThinking { get; set; } = [];
 
+    /// <summary>各模型手动配置的上下文窗口大小(token); 未配置时回退模型档案/默认值。</summary>
+    public Dictionary<string, long> ModelContextTokens { get; set; } = [];
+
     /// <summary>返回指定模型的最大思考等级; 未配置时默认允许全部等级(Max)。</summary>
     public ThinkingLevel GetMaxThinking(string? modelId)
     {
@@ -29,6 +32,18 @@ public class ProviderConfig
         }
 
         return ThinkingLevel.Max;
+    }
+
+    /// <summary>返回指定模型手动配置的上下文窗口 token 数; 未配置或非法时返回 null。</summary>
+    public long? GetContextTokens(string? modelId)
+    {
+        if (modelId is not null &&
+            ModelContextTokens.TryGetValue(modelId, out var tokens) && tokens > 0)
+        {
+            return tokens;
+        }
+
+        return null;
     }
 
     [JsonIgnore]
