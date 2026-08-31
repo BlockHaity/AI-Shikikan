@@ -84,9 +84,10 @@ public static class RosterBuilder
         {
             if (!agentMap.TryGetValue(entry.AgentId, out var agent)) continue;
 
-            // Plan 模式下仅列出配置了 plan_args 且开启"在 Plan 模式中使用"的子代理,
+            // Plan 模式下仅列出被授权(开启 UseInPlanMode, 且有 plan_args 或开启无参数放行开关)的子代理,
             // 与工具注册过滤保持一致: AI 无法发现未授权的子代理
-            if (planMode && !(agent.PlanArgs is { Count: > 0 } && entry.UseInPlanMode))
+            if (planMode && !(entry.UseInPlanMode &&
+                              (agent.PlanArgs is { Count: > 0 } || agent.AllowPlanModeWithoutArgs)))
             {
                 continue;
             }
@@ -101,7 +102,8 @@ public static class RosterBuilder
             {
                 parts.Add($"推荐专家: {persona.Display}");
             }
-            if (entry.UseInPlanMode && agent.PlanArgs is { Count: > 0 })
+            if (entry.UseInPlanMode &&
+                (agent.PlanArgs is { Count: > 0 } || agent.AllowPlanModeWithoutArgs))
             {
                 parts.Add("Plan 模式可用");
             }

@@ -204,10 +204,11 @@ public sealed class CommanderRuntime
         Log.Info("Engine", $"Plan 模式切换为 {planMode}, 当前工具数={Registry.All.Count}");
     }
 
-    /// <summary>Plan 模式下允许注册/执行的子代理: 配置了 plan_args 且当前会话 Roster 条目开启 UseInPlanMode。</summary>
+    /// <summary>Plan 模式下允许注册/执行的子代理: 当前会话 Roster 条目开启 UseInPlanMode,
+    /// 且 Agent 配置了 plan_args 或开启了"无 plan 参数也可在 Plan 模式使用"。</summary>
     public bool IsAgentAllowedInPlanMode(CliAgentDefinition agent)
     {
-        return agent.PlanArgs is { Count: > 0 } &&
+        return (agent.PlanArgs is { Count: > 0 } || agent.AllowPlanModeWithoutArgs) &&
                CurrentRosterEntries.Any(e =>
                    string.Equals(e.AgentId, agent.Id, StringComparison.OrdinalIgnoreCase) && e.UseInPlanMode);
     }
