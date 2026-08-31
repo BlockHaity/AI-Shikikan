@@ -33,7 +33,8 @@ public static class RosterBuilder
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
         string rules, GitStepService? git = null,
         IReadOnlyList<AgentRosterEntry>? rosterEntries = null,
-        bool enabled = true)
+        bool enabled = true,
+        bool planMode = false)
     {
         if (!enabled)
         {
@@ -43,7 +44,7 @@ public static class RosterBuilder
         var template = LoadTemplate() ?? DefaultTemplate;
 
         var agentsText = rosterEntries is { Count: > 0 }
-            ? BuildAgentsSectionFromRoster(rosterEntries, agents, personas)
+            ? BuildAgentsSectionFromRoster(rosterEntries, agents, personas, planMode)
             : BuildAgentsSection(agents);
         var personasText = personas.Count == 0
             ? "(无)"
@@ -69,7 +70,8 @@ public static class RosterBuilder
     private static string BuildAgentsSectionFromRoster(
         IReadOnlyList<AgentRosterEntry> rosterEntries,
         IReadOnlyList<CliAgentDefinition> agents,
-        IReadOnlyList<Persona> personas)
+        IReadOnlyList<Persona> personas,
+        bool planMode)
     {
         var sb = new StringBuilder();
         var agentMap = new Dictionary<string, CliAgentDefinition>(StringComparer.OrdinalIgnoreCase);
@@ -81,6 +83,13 @@ public static class RosterBuilder
         foreach (var entry in rosterEntries.Where(e => e.Enabled))
         {
             if (!agentMap.TryGetValue(entry.AgentId, out var agent)) continue;
+
+            // Plan 模式下仅列出配置了 plan_args 且开启"在 Plan 模式中使用"的子代理,
+            // 与工具注册过滤保持一致: AI 无法发现未授权的子代理
+            if (planMode && !(agent.PlanArgs is { Count: > 0 } && entry.UseInPlanMode))
+            {
+                continue;
+            }
 
             var parts = new List<string> { entry.DisplayText };
             if (!string.IsNullOrWhiteSpace(entry.Description))

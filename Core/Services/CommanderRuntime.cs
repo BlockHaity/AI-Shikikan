@@ -164,6 +164,61 @@ public sealed class CommanderRuntime
 
     private bool _subagentToolsVisible = true;
 
+    private bool _isPlanMode;
+
+    /// <summary>当前是否处于 Plan 模式(由聊天页切换, 联动子代理工具注册与 Roster 注入过滤)。</summary>
+    public bool IsPlanMode => _isPlanMode;
+
+    /// <summary>切换 Plan 模式: 重建子代理工具注册(Plan 模式下仅保留开启"在 Plan 模式中使用"
+    /// 且配置了 plan_args 的 Agent), 下一回合 AI 工具列表即不再包含未授权子代理。</summary>
+    public void SetPlanMode(bool planMode)
+    {
+        if (_isPlanMode == planMode) return;
+        _isPlanMode = planMode;
+        Engine.Options.IsPlanMode = planMode;
+        RebuildSubagentTools();
+        Log.Info("Engine", $"Plan 模式切换为 {planMode}, 当前工具数={Registry.All.Count}");
+    }
+
+    /// <summary>Plan 模式下允许注册/执行的子代理: 配置了 plan_args 且当前会话 Roster 条目开启 UseInPlanMode。</summary>
+    public bool IsAgentAllowedInPlanMode(CliAgentDefinition agent)
+    {
+        return agent.PlanArgs is { Count: > 0 } &&
+               CurrentRosterEntries.Any(e =>
+                   string.Equals(e.AgentId, agent.Id, StringComparison.OrdinalIgnoreCase) && e.UseInPlanMode);
+    }
+
+    /// <summary>按右侧栏可见性与 Plan 模式重建子代理工具注册。</summary>
+    private void RebuildSubagentTools()
+    {
+        Registry.UnregisterWhere(t =>
+            t is AgentExecutionTool or AssignTaskTool or SubagentGroupTool);
+
+        if (!_subagentToolsVisible) return;
+
+        // 从配置服务重新加载, 保证增删后的 Agent/专家/模板即时生效
+        var agents = AgentConfigService.LoadAll();
+        var personas = PersonaService.LoadAll();
+        var templates = AgentTemplateService.LoadAll();
+
+        if (_isPlanMode)
+        {
+            agents = agents.Where(IsAgentAllowedInPlanMode).ToList();
+            if (agents.Count == 0)
+            {
+                // Plan 模式下无任何授权子代理: 不注册组工具, AI 无法分派任务
+                Log.Info("Engine", "Plan 模式: 无授权子代理, 子代理工具全部移除");
+                return;
+            }
+        }
+
+        foreach (var tool in AgentToolFactory.CreateSubagentTools(
+                     agents, personas, templates, Git, Assignments, Llm))
+        {
+            Registry.Register(tool);
+        }
+    }
+
     /// <summary>右侧栏可见性联动: 关闭时从注册表移除子代理工具(AI 下一回合不再可见), 打开时重新注册。
     /// Roster 注入由 GUI 在打开后调用 SetRosterEntries 恢复。</summary>
     public void SetSubagentToolsVisible(bool visible)
@@ -171,25 +226,12 @@ public sealed class CommanderRuntime
         if (_subagentToolsVisible == visible) return;
         _subagentToolsVisible = visible;
 
-        if (visible)
+        if (!visible)
         {
-            // 从配置服务重新加载, 保证增删后的 Agent/专家/模板即时生效
-            var agents = AgentConfigService.LoadAll();
-            var personas = PersonaService.LoadAll();
-            var templates = AgentTemplateService.LoadAll();
-            foreach (var tool in AgentToolFactory.CreateSubagentTools(
-                         agents, personas, templates, Git, Assignments, Llm))
-            {
-                Registry.Register(tool);
-            }
-        }
-        else
-        {
-            Registry.UnregisterWhere(t =>
-                t is AgentExecutionTool or AssignTaskTool or SubagentGroupTool);
             SetRosterEntries([]);
         }
 
+        RebuildSubagentTools();
         Log.Info("Engine", $"子代理工具{(visible ? "已注册" : "已移除")}, 当前工具数={Registry.All.Count}");
     }
 
@@ -252,5 +294,11 @@ public sealed class CommanderRuntime
     {
         CurrentRosterEntries = entries;
         Engine.SetRosterEntries(entries);
+
+        // Plan 模式下 Roster 变化(如切换"在 Plan 模式中使用")需同步重建工具注册
+        if (_isPlanMode && _subagentToolsVisible)
+        {
+            RebuildSubagentTools();
+        }
     }
 }
