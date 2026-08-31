@@ -224,6 +224,13 @@
   <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>
   <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
   <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan 模式参数 (空格分隔, 如: --permission-mode plan)</value></data>
+  <data name="Settings_AgentExtraArgs" xml:space="preserve"><value>额外参数 (空格分隔, 始终附加到命令末尾, 支持 {prompt})</value></data>
+  <data name="Chat_ApprovalTitle" xml:space="preserve"><value>工具调用需要确认</value></data>
+  <data name="Chat_ApprovalApprove" xml:space="preserve"><value>批准</value></data>
+  <data name="Chat_ApprovalReject" xml:space="preserve"><value>拒绝</value></data>
+  <data name="Chat_AskUserTitle" xml:space="preserve"><value>AI 向您提问</value></data>
+  <data name="Chat_AskUserPlaceholder" xml:space="preserve"><value>输入回答…</value></data>
+  <data name="Chat_AskUserUnavailable" xml:space="preserve"><value>当前界面无法向用户提问(主窗口不可用)。</value></data>
   <data name="Chat_Thinking" xml:space="preserve"><value>思考</value></data>
   <data name="Chat_WorkDir" xml:space="preserve"><value>工作目录</value></data>
   <data name="Chat_WorkDirDefault" xml:space="preserve"><value>默认</value></data>

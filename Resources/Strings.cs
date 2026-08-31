@@ -215,6 +215,13 @@ public static class Strings
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
     public static string Settings_AgentPlanArgs => Get(nameof(Settings_AgentPlanArgs));
+    public static string Settings_AgentExtraArgs => Get(nameof(Settings_AgentExtraArgs));
+    public static string Chat_ApprovalTitle => Get(nameof(Chat_ApprovalTitle));
+    public static string Chat_ApprovalApprove => Get(nameof(Chat_ApprovalApprove));
+    public static string Chat_ApprovalReject => Get(nameof(Chat_ApprovalReject));
+    public static string Chat_AskUserTitle => Get(nameof(Chat_AskUserTitle));
+    public static string Chat_AskUserPlaceholder => Get(nameof(Chat_AskUserPlaceholder));
+    public static string Chat_AskUserUnavailable => Get(nameof(Chat_AskUserUnavailable));
     public static string Settings_ModelNameHeader => Get(nameof(Settings_ModelNameHeader));
     public static string Settings_MaxThinking => Get(nameof(Settings_MaxThinking));
     public static string Settings_ContextWindow => Get(nameof(Settings_ContextWindow));

@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="440" d:DesignHeight="240"
+        x:Class="AIShikikan.Gui.Views.InputDialog"
+        Title="Input"
+        Width="440" SizeToContent="Height" CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+
+    <StackPanel Margin="24" Spacing="12">
+        <TextBlock x:Name="MessageText" TextWrapping="Wrap" Classes="BodyMedium"/>
+        <TextBox x:Name="InputBox" AcceptsReturn="True" TextWrapping="Wrap"
+                 MinHeight="64" MaxHeight="200"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="CancelButton" Classes="Text" Click="OnCancelClick"/>
+            <Button x:Name="OkButton" Classes="Filled" Click="OnOkClick"/>
+        </StackPanel>
+    </StackPanel>
+
+</Window>
