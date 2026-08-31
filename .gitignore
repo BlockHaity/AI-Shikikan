@@ -1,50 +1,68 @@
-# IDE
+# ---------- IDE ----------
 .vs/
 .vscode/
 .idea/
+.rider/
+.trae/
 *.user
 *.suo
 *.userosscache
 *.sln.docstates
 
-# Build results
+# ---------- 构建输出 ----------
 artifacts/
+bin/
+obj/
 [Dd]ebug/
 [Rr]elease/
 x64/
 x86/
 bld/
-[Bb]in/
-[Oo]bj/
 [Ll]og/
 [Ll]ogs/
+# 本地临时/打包目录 (勿提交大体积构建产物)
+temp/
+tmp/
+stage/
+dist/
+publish/
+out/
+# 根目录可执行产物 (Linux 构建输出)
+/AIShikikan.Gui
+*.binlog
 
-# NuGet
+# ---------- NuGet ----------
 *.nupkg
 *.snupkg
+project.lock.json
+packages/
+!packages/build/
 ~$*
 *.nuspec
 *.cache
 
-# Test results
+# ---------- 测试结果 ----------
 [Tt]est[Rr]esult*/
 *.trx
 *.coverage
 *.coveragexml
 
-# OS
+# ---------- OS ----------
 .DS_Store
+._*
 Thumbs.db
+desktop.ini
 
-# Rider
-.idea/
+# ---------- 压缩/二进制产物 ----------
+*.tar.gz
+*.zip
+*.7z
 
-# IDE
-.trae/
-
-# misc
+# ---------- misc ----------
 *.orig
 *.rej
+.opencode/
 
-# OpenCode
-.opencode
+# ---------- 本地机密 ----------
+.env
+*.local
