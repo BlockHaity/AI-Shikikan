@@ -3,6 +3,7 @@ using System.Text.Json;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Serialization;
+using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services;
 
@@ -61,6 +62,8 @@ public class ChatService
 
         _sessions.Remove(session);
         DeleteSessionFile(sessionId);
+        // 主页会话分布不再展示该会话(原始用量记录保留)
+        UsageStatsService.MarkSessionDeleted(sessionId);
 
         if (CurrentSession?.Id == sessionId)
         {

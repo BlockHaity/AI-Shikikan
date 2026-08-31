@@ -33,6 +33,9 @@ public sealed class UsageData
     public List<LlmUsageEntry> LlmEntries { get; set; } = [];
     public List<AgentCallEntry> AgentEntries { get; set; } = [];
 
+    /// <summary>已删除会话 Id 墓碑: 原始用量记录全部保留, 仅会话分布不再展示这些会话。</summary>
+    public List<string> DeletedSessionIds { get; set; } = [];
+
     private const int MaxEntries = 5000;
 
     public void Trim()
@@ -204,6 +207,31 @@ public static class UsageStatsService
         }
     }
 
+    /// <summary>记录会话已删除: 写入墓碑使会话分布不再展示该会话, 原始用量记录全部保留。</summary>
+    public static void MarkSessionDeleted(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return;
+
+        lock (Lock)
+        {
+            var data = Data;
+            var exists = false;
+            foreach (var id in data.DeletedSessionIds)
+            {
+                if (string.Equals(id, sessionId, StringComparison.OrdinalIgnoreCase))
+                {
+                    exists = true;
+                    break;
+                }
+            }
+
+            if (exists) return;
+
+            data.DeletedSessionIds.Add(sessionId);
+            Save();
+        }
+    }
+
     /// <summary>聚合指定会话的用量(调用次数 + 输入/输出/缓存 token)。</summary>
     public static SessionUsageStat GetSessionStat(string sessionId)
     {
@@ -243,7 +271,10 @@ public static class UsageStatsService
         }
     }
 
-    /// <summary>生成统计快照(今日/累计 + 按模型/会话/子Agent 分布)。</summary>
+    /// <summary>
+    /// 生成统计快照(今日/累计 + 按模型/会话/子Agent 分布)。
+    /// 已删除会话(墓碑)不再计入会话分布, 但原始用量记录保留并仍计入总量、模型分布与趋势。
+    /// </summary>
     public static UsageSnapshot GetSnapshot()
     {
         lock (Lock)
@@ -252,6 +283,7 @@ public static class UsageStatsService
             var today = DateTime.Today;
             var snapshot = new UsageSnapshot();
 
+            var deleted = new HashSet<string>(data.DeletedSessionIds, StringComparer.OrdinalIgnoreCase);
             var modelMap = new Dictionary<string, ModelUsageStat>(StringComparer.OrdinalIgnoreCase);
             var sessionMap = new Dictionary<string, SessionUsageStat>(StringComparer.OrdinalIgnoreCase);
             var dayMap = new Dictionary<DateTime, DailyUsageStat>();
@@ -290,6 +322,12 @@ public static class UsageStatsService
                 ms.OutputTokens += e.OutputTokens;
 
                 var sessionKey = string.IsNullOrWhiteSpace(e.SessionId) ? "unknown" : e.SessionId;
+                // 已删除的会话不再计入会话分布(原始记录保留, 仍计入总量/模型/趋势)
+                if (deleted.Contains(sessionKey))
+                {
+                    continue;
+                }
+
                 if (!sessionMap.TryGetValue(sessionKey, out var ss))
                 {
                     sessionMap[sessionKey] = ss = new SessionUsageStat
