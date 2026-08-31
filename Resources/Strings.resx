@@ -197,6 +197,8 @@
   <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} 个工具</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>模型</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>会话列表</value></data>
+  <data name="Session_GroupByWorkDir" xml:space="preserve"><value>按工作目录分组</value></data>
+  <data name="Session_GroupUnassigned" xml:space="preserve"><value>未指定目录</value></data>
   <data name="Session_New" xml:space="preserve"><value>新建会话</value></data>
   <data name="Session_Messages" xml:space="preserve"><value>{0} 条消息</value></data>
   <data name="Session_Rename" xml:space="preserve"><value>重命名</value></data>

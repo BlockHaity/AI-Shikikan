@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
@@ -87,142 +88,218 @@ public partial class SessionItemViewModel : ViewModelBase
     }
 }
 
-/// <summary>右侧"会话列表"侧栏: 新建/切换/删除/重命名会话。</summary>
+/// <summary>按工作目录分组时的组头: 目录名 + 会话数, 可折叠。</summary>
+public partial class SessionGroupHeaderViewModel : ViewModelBase
+{
+    private readonly Action<SessionGroupHeaderViewModel> _onToggled;
+
+    public string Key { get; }
+
+    /// <summary>完整目录路径(未分组占位组为空串), 用于悬浮提示。</summary>
+    public string FullPath { get; }
+
+    [ObservableProperty]
+    private string _title;
+
+    [ObservableProperty]
+    private int _count;
+
+    [ObservableProperty]
+    private bool _isExpanded = true;
+
+    public SessionGroupHeaderViewModel(string key, string title, string fullPath,
+        Action<SessionGroupHeaderViewModel> onToggled)
+    {
+        Key = key;
+        Title = title;
+        FullPath = fullPath;
+        _onToggled = onToggled;
+    }
+
+    [RelayCommand]
+    private void ToggleExpand()
+    {
+        IsExpanded = !IsExpanded;
+        _onToggled(this);
+    }
+}
+
+/// <summary>右侧"会话列表"侧栏: 新建/切换/删除/重命名会话, 支持按工作目录分组整理。</summary>
 public partial class SessionPanelViewModel : ViewModelBase
 {
     private readonly ChatService _chatService;
 
-    public ObservableCollection<SessionItemViewModel> Sessions { get; } = [];
+    /// <summary>展示项: 会话项与(分组模式下的)组头混合。</summary>
+    public ObservableCollection<object> DisplayItems { get; } = [];
 
-    public bool HasSessions => Sessions.Count > 0;
+    private readonly Dictionary<string, SessionItemViewModel> _items = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SessionGroupHeaderViewModel> _headers = new(StringComparer.Ordinal);
+
+    [ObservableProperty]
+    private bool _groupByWorkDir;
+
+    public bool HasSessions => _chatService.Sessions.Count > 0;
+
+    partial void OnGroupByWorkDirChanged(bool value) => Reload();
 
     public SessionPanelViewModel(ChatService chatService)
     {
         _chatService = chatService;
-        Sessions.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasSessions));
         Reload();
 
-        _chatService.CurrentSessionChanged += (_, _) =>
+        _chatService.CurrentSessionChanged += (_, _) => Dispatcher.UIThread.Post(Reload);
+        _chatService.MessageAdded += (_, _) => Dispatcher.UIThread.Post(Reload);
+        _chatService.SessionWorkDirChanged += (_, _) => Dispatcher.UIThread.Post(Reload);
+        _chatService.SessionRenamed += (_, session) => Dispatcher.UIThread.Post(() =>
         {
-            Dispatcher.UIThread.Post(() =>
-            {
-                Reload();
-                SyncSelection();
-            });
-        };
-
-        _chatService.MessageAdded += (_, _) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                foreach (var item in Sessions)
-                {
-                    if (item.Session.Id == _chatService.CurrentSession?.Id)
-                    {
-                        item.Update(_chatService.CurrentSession);
-                        break;
-                    }
-                }
-
-                SyncOrder();
-            });
-        };
-
-        _chatService.SessionRenamed += (_, session) =>
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                foreach (var item in Sessions)
-                {
-                    if (item.Session.Id == session.Id)
-                    {
-                        item.Update(session);
-                        break;
-                    }
-                }
-            });
-        };
-    }
-
-    private void Reload()
-    {
-        var currentId = _chatService.CurrentSession?.Id;
-
-        // 批量对账: 已有项原地更新, 仅增删真正变化的会话, 避免 Clear+重建触发主题过渡在
-        // 控件移除级联中的 Avalonia 内部 NRE(Avalonia 12.0.4 未修复)
-        var remaining = new Dictionary<string, SessionItemViewModel>(StringComparer.Ordinal);
-        foreach (var item in Sessions)
-        {
-            if (string.IsNullOrEmpty(item.Session.Id)) continue;
-            remaining[item.Session.Id] = item;
-        }
-
-        var desired = new List<SessionItemViewModel>(_chatService.Sessions.Count);
-        foreach (var session in _chatService.Sessions)
-        {
-            // 防御: 损坏的会话文件可能带空 Id, 直接跳过
-            if (string.IsNullOrEmpty(session.Id)) continue;
-
-            if (remaining.Remove(session.Id, out var item))
+            if (_items.TryGetValue(session.Id, out var item))
             {
                 item.Update(session);
             }
-            else
-            {
-                item = new SessionItemViewModel(session);
-            }
+        });
+    }
 
-            item.IsSelected = session.Id == currentId;
-            desired.Add(item);
+    /// <summary>重建期望顺序并对账到 DisplayItems(原地增/移/删, 避免整集合替换触发容器回收级联 NRE)。</summary>
+    private void Reload()
+    {
+        OnPropertyChanged(nameof(HasSessions));
+        var currentId = _chatService.CurrentSession?.Id;
+        var desired = GroupByWorkDir ? BuildGrouped(currentId) : BuildFlat(currentId);
+        Reconcile(desired);
+    }
+
+    private List<object> BuildFlat(string? currentId)
+    {
+        var list = new List<object>();
+        foreach (var session in _chatService.Sessions)
+        {
+            var item = GetOrCreateItem(session, currentId);
+            if (item is null) continue;
+            list.Add(item);
         }
 
-        for (var i = Sessions.Count - 1; i >= 0; i--)
+        return list;
+    }
+
+    private List<object> BuildGrouped(string? currentId)
+    {
+        var groups = new List<(string Key, string Title, string FullPath, List<SessionItemViewModel> Items)>();
+        var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
+        const string unassignedKey = "\0unassigned";
+
+        foreach (var session in _chatService.Sessions)
         {
-            if (remaining.ContainsKey(Sessions[i].Session.Id))
+            var item = GetOrCreateItem(session, currentId);
+            if (item is null) continue;
+
+            var dir = session.WorkDir?.Trim() ?? string.Empty;
+            var key = string.IsNullOrEmpty(dir) ? unassignedKey : dir;
+            if (!byKey.TryGetValue(key, out var gi))
             {
-                Sessions.RemoveAt(i);
+                var title = string.IsNullOrEmpty(dir)
+                    ? Strings.Session_GroupUnassigned
+                    : (Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } name
+                        ? name
+                        : dir);
+                groups.Add((key, title, dir, []));
+                gi = groups.Count - 1;
+                byKey[key] = gi;
+            }
+
+            groups[gi].Items.Add(item);
+        }
+
+        // 组按组内最新活跃时间降序; 未指定目录组固定排最后
+        var ordered = groups
+            .OrderBy(g => g.Key == unassignedKey)
+            .ThenByDescending(g => g.Items.Count > 0 ? g.Items.Max(i => i.Session.UpdatedAt).Ticks : 0L)
+            .ToList();
+
+        var list = new List<object>();
+        foreach (var g in ordered)
+        {
+            var header = GetOrCreateHeader(g.Key, g.Title, g.FullPath);
+            header.Count = g.Items.Count;
+            list.Add(header);
+            if (header.IsExpanded)
+            {
+                foreach (var item in g.Items.OrderByDescending(i => i.Session.UpdatedAt))
+                {
+                    list.Add(item);
+                }
+            }
+        }
+
+        return list;
+    }
+
+    private SessionItemViewModel? GetOrCreateItem(ChatSession session, string? currentId)
+    {
+        // 防御: 损坏的会话文件可能带空 Id, 直接跳过
+        if (string.IsNullOrEmpty(session.Id)) return null;
+
+        if (!_items.TryGetValue(session.Id, out var item))
+        {
+            item = new SessionItemViewModel(session);
+            _items[session.Id] = item;
+        }
+        else
+        {
+            item.Update(session);
+        }
+
+        item.IsSelected = session.Id == currentId;
+        return item;
+    }
+
+    private SessionGroupHeaderViewModel GetOrCreateHeader(string key, string title, string fullPath)
+    {
+        if (!_headers.TryGetValue(key, out var header))
+        {
+            header = new SessionGroupHeaderViewModel(key, title, fullPath, _ => Dispatcher.UIThread.Post(Reload));
+            _headers[key] = header;
+        }
+        else
+        {
+            header.Title = title;
+        }
+
+        return header;
+    }
+
+    /// <summary>把 desired 序列对账到 DisplayItems: 只移动/插入/移除真正变化的项。</summary>
+    private void Reconcile(List<object> desired)
+    {
+        var keep = new HashSet<object>(desired);
+        for (var i = DisplayItems.Count - 1; i >= 0; i--)
+        {
+            if (!keep.Contains(DisplayItems[i]))
+            {
+                DisplayItems.RemoveAt(i);
             }
         }
 
         for (var i = 0; i < desired.Count; i++)
         {
-            var item = desired[i];
-            if (i < Sessions.Count && ReferenceEquals(Sessions[i], item)) continue;
+            var target = desired[i];
+            if (i < DisplayItems.Count && ReferenceEquals(DisplayItems[i], target)) continue;
 
-            var idx = Sessions.IndexOf(item);
+            var idx = DisplayItems.IndexOf(target);
             if (idx < 0)
             {
-                Sessions.Insert(Math.Min(i, Sessions.Count), item);
+                DisplayItems.Insert(Math.Min(i, DisplayItems.Count), target);
             }
             else if (idx != i)
             {
-                Sessions.Move(idx, i);
+                DisplayItems.Move(idx, i);
             }
         }
-    }
 
-    private void SyncSelection()
-    {
-        var currentId = _chatService.CurrentSession?.Id;
-        foreach (var item in Sessions)
+        // 清理不再使用的组头缓存
+        var usedKeys = desired.OfType<SessionGroupHeaderViewModel>().Select(h => h.Key).ToHashSet(StringComparer.Ordinal);
+        foreach (var key in _headers.Keys.Where(k => !usedKeys.Contains(k)).ToList())
         {
-            item.IsSelected = item.Session.Id == currentId;
-        }
-    }
-
-    private void SyncOrder()
-    {
-        // 会话按 UpdatedAt 降序: 仅用 Move 调整顺序, 避免 Clear+重建销毁控件
-        var expected = Sessions.OrderByDescending(s => s.Session.UpdatedAt).ToList();
-        for (var i = 0; i < expected.Count; i++)
-        {
-            if (Sessions[i] == expected[i]) continue;
-
-            var idx = Sessions.IndexOf(expected[i]);
-            if (idx >= 0)
-            {
-                Sessions.Move(idx, i);
-            }
+            _headers.Remove(key);
         }
     }
 

@@ -191,6 +191,8 @@ public static class Strings
     public static string Settings_McpToolCount => Get(nameof(Settings_McpToolCount));
     public static string Chat_Model => Get(nameof(Chat_Model));
     public static string Session_Panel_Title => Get(nameof(Session_Panel_Title));
+    public static string Session_GroupByWorkDir => Get(nameof(Session_GroupByWorkDir));
+    public static string Session_GroupUnassigned => Get(nameof(Session_GroupUnassigned));
     public static string Session_New => Get(nameof(Session_New));
     public static string Session_Messages => Get(nameof(Session_Messages));
     public static string Session_Rename => Get(nameof(Session_Rename));
