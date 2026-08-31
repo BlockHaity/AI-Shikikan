@@ -1,9 +1,13 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Gui.Resources;
 using AIShikikan.Gui.ViewModels;
@@ -13,7 +17,10 @@ namespace AIShikikan.Gui.Views;
 public partial class ChatPageView : UserControl
 {
     private INotifyCollectionChanged? _messagesCollection;
-
+    private ChatItemViewModel? _tailItem;
+    private ScrollViewer? _listScroller;
+    private bool _atBottom = true; // 用户滚上去看历史时暂停自动滚动
+    private bool _scrollScheduled;
     private DateTime _lastEscUtc; // 双击 ESC 判定窗口
 
     public ChatPageView()
@@ -22,6 +29,9 @@ public partial class ChatPageView : UserControl
 
         // 隧道方式捕获 ESC(无论焦点在哪个控件上), 双击终止生成
         AddHandler(KeyDownEvent, OnTunnelKeyDown, RoutingStrategies.Tunnel);
+
+        // 模板应用后拿到 ListBox 内部 ScrollViewer, 用于贴底滚动
+        MessageList.TemplateApplied += (_, _) => AttachScroller();
     }
 
     private void OnTunnelKeyDown(object? sender, KeyEventArgs e)
@@ -66,45 +76,158 @@ public partial class ChatPageView : UserControl
     protected override void OnDataContextChanged(System.EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (DataContext is ChatPageViewModel vm)
+        if (DataContext is not ChatPageViewModel vm) return;
+
+        void AttachMessages()
         {
-            // 虚拟化列表用 ScrollIntoView 定位到最后一项(ScrollToEnd 会强制全量测量)
-            void Scroll() => Dispatcher.UIThread.Post(() =>
+            if (_messagesCollection is not null)
             {
-                if (MessageList is not null && vm.Messages.Count > 0)
-                {
-                    MessageList.ScrollIntoView(vm.Messages[^1]);
-                }
-            }, DispatcherPriority.Background);
-
-            void AttachMessages()
-            {
-                if (_messagesCollection is not null)
-                {
-                    _messagesCollection.CollectionChanged -= M;
-                    _messagesCollection = null;
-                }
-
-                if (vm.Messages is { } col)
-                {
-                    _messagesCollection = col;
-                    col.CollectionChanged += M;
-                }
+                _messagesCollection.CollectionChanged -= OnMessagesChanged;
+                _messagesCollection = null;
             }
 
-            void M(object? s, NotifyCollectionChangedEventArgs a) => Scroll();
-
-            vm.PropertyChanged += (_, args) =>
+            if (vm.Messages is { } col)
             {
-                // 流式期间在同一个集合上 Add, 仅靠 PropertyChanged 不够; 集合变化也要触发
-                if (args.PropertyName == nameof(ChatPageViewModel.Messages))
-                {
-                    AttachMessages();
-                    Scroll();
-                }
-            };
-            AttachMessages();
+                _messagesCollection = col;
+                col.CollectionChanged += OnMessagesChanged;
+            }
+
+            AttachTail(vm);
         }
+
+        vm.PropertyChanged += (_, args) =>
+        {
+            // 流式期间在同一个集合上 Add, 仅靠 PropertyChanged 不够; 集合变化也要触发
+            if (args.PropertyName == nameof(ChatPageViewModel.Messages))
+            {
+                AttachMessages();
+                ScheduleScroll();
+            }
+        };
+        AttachMessages();
+    }
+
+    /// <summary>获取 ListBox 模板内部的 ScrollViewer 并观察滚动偏移(判断用户是否贴底)。</summary>
+    private void AttachScroller()
+    {
+        if (_listScroller is not null)
+        {
+            _listScroller.PropertyChanged -= OnScrollerPropertyChanged;
+        }
+
+        _listScroller = MessageList.FindDescendantOfType<ScrollViewer>();
+        if (_listScroller is not null)
+        {
+            _listScroller.PropertyChanged += OnScrollerPropertyChanged;
+        }
+
+        UpdateAtBottom();
+    }
+
+    private void OnScrollerPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        // 只观察 Offset: 内容增长不改 offset, 避免把"贴底跟随"误判为"已离开底部"
+        if (e.Property == ScrollViewer.OffsetProperty)
+        {
+            UpdateAtBottom();
+        }
+    }
+
+    private void UpdateAtBottom()
+    {
+        if (_listScroller is not { } s) return;
+        // 距底部 48px 内视为贴底; 用户向上翻阅历史时自动暂停跟随
+        var distance = s.Extent.Height - s.Offset.Y - s.Viewport.Height;
+        _atBottom = distance <= 48;
+    }
+
+    private void OnMessagesChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        if (DataContext is ChatPageViewModel vm)
+        {
+            AttachTail(vm);
+        }
+
+        // 新消息到达强制回到底部跟随
+        if (e.Action == NotifyCollectionChangedAction.Add)
+        {
+            _atBottom = true;
+        }
+
+        ScheduleScroll();
+    }
+
+    /// <summary>切换尾部消息订阅: 流式输出只改尾部消息的分段, 外层集合不变。</summary>
+    private void AttachTail(ChatPageViewModel vm)
+    {
+        var tail = vm.Messages.Count > 0 ? vm.Messages[^1] : null;
+        if (ReferenceEquals(tail, _tailItem)) return;
+
+        if (_tailItem is not null)
+        {
+            _tailItem.Segments.CollectionChanged -= OnTailSegmentsChanged;
+            foreach (var seg in _tailItem.Segments)
+            {
+                seg.PropertyChanged -= OnSegmentPropChanged;
+            }
+        }
+
+        _tailItem = tail;
+
+        if (_tailItem is not null)
+        {
+            _tailItem.Segments.CollectionChanged += OnTailSegmentsChanged;
+            foreach (var seg in _tailItem.Segments)
+            {
+                seg.PropertyChanged += OnSegmentPropChanged;
+            }
+        }
+    }
+
+    private void OnTailSegmentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        // 分段内容(正文/思考/工具输出)增长只触发分段 VM 的 PropertyChanged, 需逐个订阅
+        if (e.NewItems is not null)
+        {
+            foreach (SegmentItemViewModel seg in e.NewItems)
+            {
+                seg.PropertyChanged += OnSegmentPropChanged;
+            }
+        }
+
+        if (e.OldItems is not null)
+        {
+            foreach (SegmentItemViewModel seg in e.OldItems)
+            {
+                seg.PropertyChanged -= OnSegmentPropChanged;
+            }
+        }
+
+        ScheduleScroll();
+    }
+
+    private void OnSegmentPropChanged(object? sender, PropertyChangedEventArgs e) => ScheduleScroll();
+
+    /// <summary>渲染优先级延后滚动, 确保新增分段/文本增长已完成布局测量。</summary>
+    private void ScheduleScroll()
+    {
+        if (_scrollScheduled) return;
+        _scrollScheduled = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _scrollScheduled = false;
+            if (!_atBottom) return;
+            if (_tailItem is not null)
+            {
+                MessageList.ScrollIntoView(_tailItem);
+            }
+
+            // 布局完成后再贴底一次: 尾部项首次 realize 时 extent 估算可能偏小
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (_atBottom) _listScroller?.ScrollToEnd();
+            }, DispatcherPriority.Loaded);
+        }, DispatcherPriority.Render);
     }
 
     private void OnInputKeyDown(object? sender, KeyEventArgs e)
