@@ -11,6 +11,9 @@ using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
 using AIShikikan.Gui.Resources;
 using AIShikikan.Gui.Services;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -340,6 +343,20 @@ public partial class ChatPageViewModel : ViewModelBase
             return;
         }
 
+        // AI 反问(ask_user): 切 UI 线程弹输入框, 回答经 TCS 回传引擎
+        if (e is EngineQuestionRequested question)
+        {
+            Dispatcher.UIThread.Post(() => _ = AnswerQuestionAsync(question));
+            return;
+        }
+
+        // 工具审批: 弹确认框应答(此前 GUI 无订阅者会导致引擎永久挂起)
+        if (e is EngineApprovalRequested approval)
+        {
+            Dispatcher.UIThread.Post(() => _ = DecideApprovalAsync(approval));
+            return;
+        }
+
         if (e is not EngineUsageRecorded usage) return;
 
         var title = CurrentSession?.DisplayTitle ?? "未知会话";
@@ -352,6 +369,59 @@ public partial class ChatPageViewModel : ViewModelBase
         // 顶栏圆环: 每次记录用量后刷新上下文占用
         Dispatcher.UIThread.Post(RefreshContextUsage);
     }
+
+    /// <summary>弹输入框回答 AI 提问; 主窗口不可用时以 null 结束(工具侧视为跳过)。</summary>
+    private static async Task AnswerQuestionAsync(EngineQuestionRequested q)
+    {
+        var owner = GetMainWindow();
+        if (owner is null)
+        {
+            q.UserAnswer.TrySetResult(null);
+            return;
+        }
+
+        try
+        {
+            var answer = await Views.InputDialog.ShowAsync(
+                owner, Strings.Chat_AskUserTitle, q.Question,
+                Strings.Chat_AskUserPlaceholder, Strings.Chat_Send, Strings.Settings_Cancel);
+            q.UserAnswer.TrySetResult(answer);
+        }
+        catch
+        {
+            q.UserAnswer.TrySetResult(null);
+        }
+    }
+
+    /// <summary>弹确认框决定工具审批; 主窗口不可用时默认拒绝, 避免未经确认执行。</summary>
+    private static async Task DecideApprovalAsync(EngineApprovalRequested a)
+    {
+        var owner = GetMainWindow();
+        if (owner is null)
+        {
+            a.UserDecision.TrySetResult(false);
+            return;
+        }
+
+        try
+        {
+            var args = a.Arguments.Length > 400 ? a.Arguments[..400] + "…" : a.Arguments;
+            var approved = await Views.ConfirmDialog.ShowAsync(
+                owner, Strings.Chat_ApprovalTitle,
+                $"{a.ToolName}\n{args}",
+                Strings.Chat_ApprovalApprove, Strings.Chat_ApprovalReject);
+            a.UserDecision.TrySetResult(approved);
+        }
+        catch
+        {
+            a.UserDecision.TrySetResult(false);
+        }
+    }
+
+    private static Window? GetMainWindow() =>
+        Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime { MainWindow: { } w }
+            ? w
+            : null;
 
     // ---- 顶栏上下文占用圆环 ----
 
