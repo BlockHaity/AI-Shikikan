@@ -324,8 +324,10 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private void RefreshShellDataChanged()
     {
-        RefreshActiveModel();
         RefreshProviders();
+        // 必须显式刷新模型列表: 设置页与聊天页共享同一 ProviderConfig 实例,
+        // 引用相同不会触发 OnSelectedProviderChanged, 勾选/拉取的新模型否则不进下拉
+        RefreshModels();
         RefreshThinkingOptions();
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
