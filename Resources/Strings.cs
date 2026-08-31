@@ -66,6 +66,7 @@ public static class Strings
     public static string Chat_CtxCompactCancel => Get(nameof(Chat_CtxCompactCancel));
     public static string Chat_CtxCompacted => Get(nameof(Chat_CtxCompacted));
     public static string Chat_CtxCompactShort => Get(nameof(Chat_CtxCompactShort));
+    public static string Chat_CtxAutoCompacted => Get(nameof(Chat_CtxAutoCompacted));
     public static string Chat_HistoryTop => Get(nameof(Chat_HistoryTop));
     public static string Chat_HistoryBottom => Get(nameof(Chat_HistoryBottom));
     public static string Chat_Send => Get(nameof(Chat_Send));

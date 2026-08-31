@@ -325,6 +325,13 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private void OnEngineUsageRecorded(AgentEngineEvent e)
     {
+        if (e is EngineContextCompacted)
+        {
+            // 自动压缩发生: 圆环占用清零(ContextUsed 变化自带派生通知), 待下一次真实用量刷新
+            Dispatcher.UIThread.Post(() => ContextUsed = 0);
+            return;
+        }
+
         if (e is not EngineUsageRecorded usage) return;
 
         var title = CurrentSession?.DisplayTitle ?? "未知会话";
@@ -838,6 +845,11 @@ public partial class ChatPageViewModel : ViewModelBase
                     break;
                 case EngineToolFinished f:
                     toolFinished[f.ToolCallId] = (f.Result.Content, f.Result.IsError, f.Result.StepId, f.Result.Detail);
+                    break;
+                case EngineContextCompacted:
+                    // 自动压缩发生: 在时间线当前位置追加提示文本段
+                    entries.Add(new TimelineEntry(MessageSegmentKind.Text));
+                    entries[^1].Sb.Append(Strings.Chat_CtxAutoCompacted);
                     break;
             }
 
