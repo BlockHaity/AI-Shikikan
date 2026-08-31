@@ -148,6 +148,14 @@ public static class AgentExecutor
             return ToolResult.Error("缺少参数: task");
         }
 
+        // Plan 模式执行层兜底: 仅允许配置了 plan_args 且开启"在 Plan 模式中使用"的子代理,
+        // 防止 AI 通过 assign_task / run_subagents 的 agentId 参数绕过工具注册过滤
+        if (ctx.IsPlanMode &&
+            CommanderRuntime.Instance is { } runtime && !runtime.IsAgentAllowedInPlanMode(agent))
+        {
+            return ToolResult.Error($"[agent:{agent.Id}] 拒绝执行: 该子代理未开启\"在 Plan 模式中使用\", Plan 模式下不可调用。");
+        }
+
         var finalPrompt = BuildFinalPrompt(task, personaText);
 
         var assignment = assignments.Create(agent, task,

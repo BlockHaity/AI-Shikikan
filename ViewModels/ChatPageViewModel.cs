@@ -105,6 +105,8 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(ModeLabel));
         OnPropertyChanged(nameof(ModeTip));
+        // 联动子代理工具注册: Plan 模式下 AI 只能发现/调用开启"在 Plan 模式中使用"的子代理
+        _runtime.SetPlanMode(value);
     }
 
     public AgentPanelViewModel AgentPanel { get; }

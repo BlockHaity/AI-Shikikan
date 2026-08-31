@@ -406,7 +406,8 @@ public sealed class AgentEngine
         var roster = RosterBuilder.Build(_agents, _personas, _templates,
             AgentConfigService.LoadUserFile().Rules, _git,
             rosterEntries: _rosterEntries,
-            enabled: true);
+            enabled: true,
+            planMode: _options.IsPlanMode);
         if (!string.IsNullOrWhiteSpace(roster))
         {
             parts.Add(roster);
