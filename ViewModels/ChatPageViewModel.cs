@@ -153,6 +153,7 @@ public partial class ChatPageViewModel : ViewModelBase
             }
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
+            RefreshContextUsage();
         };
         _chatService.MessageAdded += (_, msg) =>
         {
@@ -182,6 +183,7 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshActiveModel();
         RefreshProviders();
         RefreshThinkingOptions();
+        RefreshContextUsage();
     }
 
     partial void OnSelectedModelChanged(string value)
@@ -194,6 +196,7 @@ public partial class ChatPageViewModel : ViewModelBase
         AIShikikan.Core.Services.Llm.ProviderSettingsService.Save(settings);
         RefreshActiveModel();
         RefreshThinkingOptions();
+        RefreshContextUsage(); // 上下文窗口总量随模型变化
     }
 
     partial void OnPanelModeChanged(RightPanelMode value)
@@ -330,6 +333,91 @@ public partial class ChatPageViewModel : ViewModelBase
             usage.Provider, usage.Model,
             usage.Usage.InputTokens, usage.Usage.OutputTokens,
             usage.Usage.CachedInputTokens);
+
+        // 顶栏圆环: 每次记录用量后刷新上下文占用
+        Dispatcher.UIThread.Post(RefreshContextUsage);
+    }
+
+    // ---- 顶栏上下文占用圆环 ----
+
+    [ObservableProperty]
+    private long _contextUsed;
+
+    [ObservableProperty]
+    private long _contextTotal;
+
+    /// <summary>当前上下文占用百分比(0-100)。</summary>
+    public double ContextPercent => ContextTotal > 0
+        ? Math.Clamp(ContextUsed * 100.0 / ContextTotal, 0, 100)
+        : 0;
+
+    /// <summary>圆环进度弧扫过角度(0-360)。</summary>
+    public double ContextArcAngle => ContextPercent * 3.6;
+
+    public string ContextPercentText => ContextTotal > 0 ? $"{ContextPercent:0.#}%" : "-";
+
+    public string ContextDetailText => ContextTotal > 0
+        ? $"{ContextUsed:N0} / {ContextTotal:N0} tokens ({ContextPercent:0.#}%)"
+        : Strings.Chat_CtxNoInfo;
+
+    [ObservableProperty]
+    private bool _isCompacting;
+
+    partial void OnContextUsedChanged(long value) => NotifyContextDerived();
+
+    partial void OnContextTotalChanged(long value) => NotifyContextDerived();
+
+    private void NotifyContextDerived()
+    {
+        OnPropertyChanged(nameof(ContextPercent));
+        OnPropertyChanged(nameof(ContextArcAngle));
+        OnPropertyChanged(nameof(ContextPercentText));
+        OnPropertyChanged(nameof(ContextDetailText));
+    }
+
+    /// <summary>刷新上下文占用: 总量优先取模型设置手配值, 回退模型档案; 已用取最近一次输入 token。</summary>
+    private void RefreshContextUsage()
+    {
+        var model = _runtime.Llm.ResolveModel();
+        var provider = _runtime.Llm.GetProvider();
+        ContextTotal = provider?.GetContextTokens(model)
+            ?? ModelProfileService.Resolve(model, provider?.Id).ContextTokens;
+        ContextUsed = UsageStatsService.GetLastContextTokens(_currentSessionId ?? string.Empty);
+    }
+
+    /// <summary>压缩当前会话上下文: 历史较早部分经 LLM 摘要替换, 保留最近消息。</summary>
+    [RelayCommand]
+    private async Task CompactContextAsync()
+    {
+        if (IsCompacting || IsSending) return;
+        IsCompacting = true;
+        try
+        {
+            var compacted = await _runtime.Engine.CompactConversationAsync();
+            // 增量追加系统提示条(避免整集合重建触发容器回收级联)
+            AppendNotice(compacted ? Strings.Chat_CtxCompacted : Strings.Chat_CtxCompactShort);
+            if (compacted)
+            {
+                // 压缩只影响引擎内部对话, 下一回合的 input_tokens 才能反映新占用, 此处先清零估算
+                ContextUsed = 0;
+            }
+        }
+        finally
+        {
+            IsCompacting = false;
+        }
+    }
+
+    /// <summary>向消息时间线追加一条提示文本(助手样式, 不持久化)。</summary>
+    private void AppendNotice(string text)
+    {
+        var item = new ChatItemViewModel(MessageRole.Assistant);
+        item.Segments.Add(SegmentItemViewModel.From(new MessageSegment
+        {
+            Kind = MessageSegmentKind.Text,
+            Content = text
+        }));
+        Messages.Add(item);
     }
 
     /// <summary>从当前会话消息重建显示层消息列表。</summary>
@@ -347,6 +435,7 @@ public partial class ChatPageViewModel : ViewModelBase
         // 引用相同不会触发 OnSelectedProviderChanged, 勾选/拉取的新模型否则不进下拉
         RefreshModels();
         RefreshThinkingOptions();
+        RefreshContextUsage(); // 模型设置里的上下文窗口大小可能已变化
         AgentPanel.RefreshAll();
         GitPanel.Refresh();
         StatusPanel.Refresh();

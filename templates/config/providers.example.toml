@@ -16,6 +16,8 @@ active_provider_id = ""
 # enabled_models = ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3"]
 # 每个模型的最大思考深度, 取值 low / medium / high / xhigh / max(未配置则不限)
 # model_max_thinking = { "gpt-4o" = "medium", "o3" = "max" }
+# 每个模型的上下文窗口大小(token, 未配置则跟随模型档案 API/内置自动值)
+# model_context_tokens = { "gpt-4o" = 128000, "o3" = 200000 }
 #
 # [[providers]]
 # id = "anthropic"

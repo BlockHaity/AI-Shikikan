@@ -271,6 +271,26 @@ public partial class ChatPageView : UserControl
         }
     }
 
+    /// <summary>气泡内确认压缩上下文: 关气泡后执行压缩命令。</summary>
+    private void OnContextCompactConfirm(object? sender, RoutedEventArgs e)
+    {
+        HideContextFlyout();
+        if (DataContext is ChatPageViewModel vm)
+        {
+            vm.CompactContextCommand.Execute(null);
+        }
+    }
+
+    private void OnContextCompactCancel(object? sender, RoutedEventArgs e) => HideContextFlyout();
+
+    private void HideContextFlyout()
+    {
+        if (ContextRingButton.Flyout is { } flyout)
+        {
+            flyout.Hide();
+        }
+    }
+
     private void OnThinkingSelected(object? sender, SelectionChangedEventArgs e)
     {
         if (DataContext is not ChatPageViewModel vm) return;

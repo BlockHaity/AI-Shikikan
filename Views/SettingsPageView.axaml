@@ -130,20 +130,29 @@
                                        Foreground="{DynamicResource Error}"
                                        IsVisible="{Binding ModelFetchError, Converter={StaticResource NotEmptyToVisibilityConverter}}"
                                        TextWrapping="Wrap" />
-                            <Grid ColumnDefinitions="*,Auto" Margin="0,4">
+                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
                                 <TextBlock Classes="LabelSmall" Text="{x:Static res:Strings.Settings_ModelNameHeader}"
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                <TextBlock Grid.Column="1" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_MaxThinking}"
+                                <TextBlock Grid.Column="1" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_ContextWindow}"
+                                           Margin="8,0"
+                                           ToolTip.Tip="{x:Static res:Strings.Settings_ContextWindowTip}"
+                                           Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                <TextBlock Grid.Column="2" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_MaxThinking}"
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
                             </Grid>
                             <ListBox ItemsSource="{Binding ModelItems}" MaxHeight="180">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                                             <CheckBox IsChecked="{Binding IsEnabled}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="1" Text="{Binding Id}" Classes="BodyMedium"
                                                        VerticalAlignment="Center" Margin="8,0,8,0"/>
-                                            <ComboBox Grid.Column="2" ItemsSource="{x:Static vm:ModelItem.LevelOptions}"
+                                            <TextBox Grid.Column="2" Width="92" Margin="0,0,8,0"
+                                                     VerticalAlignment="Center" FontSize="12"
+                                                     PlaceholderText="{x:Static res:Strings.Settings_ContextWindowAuto}"
+                                                     Text="{Binding ContextTokensText}"
+                                                     ToolTip.Tip="{x:Static res:Strings.Settings_ContextWindowTip}"/>
+                                            <ComboBox Grid.Column="3" ItemsSource="{x:Static vm:ModelItem.LevelOptions}"
                                                       SelectedItem="{Binding MaxThinking}" MinWidth="84">
                                                 <ComboBox.ItemTemplate>
                                                     <DataTemplate x:DataType="llm:ThinkingLevel">

@@ -63,6 +63,12 @@
   <data name="Chat_SelectModel" xml:space="preserve"><value>Select Model</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>Type a message...</value></data>
   <data name="Chat_HistoryPosition" xml:space="preserve"><value>History {0}/{1} (↑↓ browse, ESC cancel)</value></data>
+  <data name="Chat_CtxNoInfo" xml:space="preserve"><value>No context info yet (shown after sending a message)</value></data>
+  <data name="Chat_CtxCompactAsk" xml:space="preserve"><value>Compact the current context? Older history will be replaced by an AI summary; recent messages are kept.</value></data>
+  <data name="Chat_CtxCompactConfirm" xml:space="preserve"><value>Compact</value></data>
+  <data name="Chat_CtxCompactCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Chat_CtxCompacted" xml:space="preserve"><value>🗜 Context compacted: older history replaced with a summary.</value></data>
+  <data name="Chat_CtxCompactShort" xml:space="preserve"><value>Context is short; nothing to compact.</value></data>
   <data name="Chat_HistoryTop" xml:space="preserve"><value>Oldest entry reached</value></data>
   <data name="Chat_HistoryBottom" xml:space="preserve"><value>Latest entry reached</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>Send</value></data>
@@ -180,6 +186,9 @@
   <data name="Settings_DisableAll" xml:space="preserve"><value>Disable All</value></data>
   <data name="Settings_ModelNameHeader" xml:space="preserve"><value>Model</value></data>
   <data name="Settings_MaxThinking" xml:space="preserve"><value>Max Thinking Depth</value></data>
+  <data name="Settings_ContextWindow" xml:space="preserve"><value>Context Window (tokens)</value></data>
+  <data name="Settings_ContextWindowTip" xml:space="preserve"><value>Leave empty to follow the model profile (API/built-in) value</value></data>
+  <data name="Settings_ContextWindowAuto" xml:space="preserve"><value>Auto</value></data>
   <data name="Settings_DetectThinking" xml:space="preserve"><value>Auto-detect Thinking Level</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>Default Model</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>

@@ -113,6 +113,78 @@ public sealed class AgentEngine
 
     public void ClearConversation() => _conversation.Clear();
 
+    /// <summary>压缩主对话上下文: 保留最近 KeepRecent 条消息, 其余历史交由 LLM 摘要为一条
+    /// 上下文消息替换。返回是否发生压缩(历史不足以压缩时 false)。失败时保持原样不误删。</summary>
+    public async Task<bool> CompactConversationAsync(CancellationToken ct = default)
+    {
+        const int KeepRecent = 6;
+        if (_conversation.Count <= KeepRecent + 1)
+        {
+            return false; // 历史太短, 无需压缩
+        }
+
+        var toCompact = _conversation.Take(_conversation.Count - KeepRecent).ToList();
+        var provider = _llm.GetProvider(_options.ProviderId);
+        if (provider is null) return false;
+
+        var model = _llm.ResolveModel(_options.Model, _options.ProviderId);
+
+        try
+        {
+            var sb = new StringBuilder();
+            foreach (var m in toCompact)
+            {
+                var role = m.Role == ChatMsgRole.User ? "用户" : "助手";
+                var body = m.Content.Length > 4000 ? m.Content[..4000] + "..." : m.Content;
+                sb.Append($"\n[{role}] {body}");
+            }
+
+            var request = new ChatRequest
+            {
+                Model = model,
+                MaxTokens = 2048,
+                Temperature = 0.1,
+                System = """
+                    你是对话历史压缩器。把给定的多轮对话历史压缩为一份结构化摘要, 供后续对话作为上下文继续。要求:
+                    1. 保留: 用户的总体目标、已达成的关键结论、修改/创建的文件路径、未决事项与约束;
+                    2. 剔除: 寒暄、冗余过程、重复内容;
+                    3. 用简洁的分点中文输出, 不要开场白, 不要臆造未出现的信息。
+                    """,
+                Messages =
+                [
+                    new ChatTurnMessage { Role = ChatMsgRole.User, Content = sb.ToString() }
+                ]
+            };
+
+            var response = await _llm.GetClient(provider.Id).CompleteAsync(request, ct)
+                .ConfigureAwait(false);
+            if (response.IsError || string.IsNullOrWhiteSpace(response.Content))
+            {
+                Log.Warn("Engine", $"上下文压缩未生效: {response.Error ?? "空内容"}");
+                return false;
+            }
+
+            // 用摘要替换被压缩的历史, 保留最近 KeepRecent 条
+            var summary = new ChatTurnMessage
+            {
+                Role = ChatMsgRole.User,
+                Content = $"# 前情摘要(已压缩 {toCompact.Count} 条历史)\n{response.Content.Trim()}"
+            };
+            var recent = _conversation.TakeLast(KeepRecent).ToList();
+            _conversation.Clear();
+            _conversation.Add(summary);
+            _conversation.AddRange(recent);
+
+            Log.Info("Engine", $"上下文已压缩: {toCompact.Count} 条 → 摘要 1 条, 保留最近 {recent.Count} 条");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Engine", ex, "上下文压缩失败, 保持原对话不变");
+            return false;
+        }
+    }
+
     /// <summary>用 UI 会话消息重建引擎内部对话(删除/fork 编辑消息后调用, 保证 LLM 上下文一致)。
     /// 工具分段压缩为简短摘要并入助手回合文本。</summary>
     public void RebuildConversation(IReadOnlyList<ChatMessage> messages)

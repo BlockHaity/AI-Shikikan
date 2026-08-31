@@ -117,8 +117,9 @@ public partial class StatusPanelViewModel : ViewModelBase
         ModelText = string.IsNullOrWhiteSpace(model) ? "-" : model;
 
         var profile = ModelProfileService.Resolve(model, provider?.Id);
-        ContextTotal = profile.ContextTokens;
-        HasContextInfo = profile.Source != ProfileSource.Unknown && ContextTotal > 0;
+        // 模型设置里手动配置的上下文窗口优先于档案值
+        ContextTotal = provider?.GetContextTokens(model) ?? profile.ContextTokens;
+        HasContextInfo = ContextTotal > 0;
         ContextUsed = UsageStatsService.GetLastContextTokens(_sessionId);
 
         var stat = UsageStatsService.GetSessionStat(_sessionId);
