@@ -23,12 +23,22 @@ public class ToolCallData
     public string Arguments { get; set; } = string.Empty;
 }
 
+/// <summary>用户消息附带的图片(多模态输入): base64 数据 + MIME 类型。</summary>
+public class ChatImagePart
+{
+    public string Base64Data { get; set; } = string.Empty;
+    public string MimeType { get; set; } = "image/png";
+}
+
 public class ChatTurnMessage
 {
     public ChatMsgRole Role { get; set; }
     public string Content { get; set; } = string.Empty;
     public string? ToolCallId { get; set; }
     public List<ToolCallData>? ToolCalls { get; set; }
+
+    /// <summary>用户消息的图片附件(可选, 仅 User 角色使用)。</summary>
+    public List<ChatImagePart>? Images { get; set; }
 }
 
 public class ToolSpec

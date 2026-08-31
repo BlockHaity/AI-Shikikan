@@ -12,7 +12,10 @@ public enum MessageSegmentKind
     Thinking,
 
     /// <summary>工具调用。</summary>
-    Tool
+    Tool,
+
+    /// <summary>图片(多模态输入)。</summary>
+    Image
 }
 
 /// <summary>工具调用分段的数据细节。</summary>
@@ -35,7 +38,7 @@ public class ToolSegment
     public ToolCardDetail? Detail { get; set; }
 }
 
-/// <summary>会话消息的一个分段(正文 / 思考 / 工具调用)。</summary>
+/// <summary>会话消息的一个分段(正文 / 思考 / 工具调用 / 图片)。</summary>
 public class MessageSegment
 {
     public MessageSegmentKind Kind { get; set; } = MessageSegmentKind.Text;
@@ -45,6 +48,15 @@ public class MessageSegment
 
     /// <summary>Kind 为 Tool 时的工具调用细节。</summary>
     public ToolSegment? Tool { get; set; }
+
+    /// <summary>Kind 为 Image 时的图片数据(base64, 不含 dataURL 前缀)。</summary>
+    public string? ImageData { get; set; }
+
+    /// <summary>Kind 为 Image 时的 MIME 类型(如 image/png)。</summary>
+    public string? ImageMimeType { get; set; }
+
+    /// <summary>Kind 为 Image 时的原始文件名(展示与提示用)。</summary>
+    public string? ImageName { get; set; }
 }
 
 public class ChatMessage

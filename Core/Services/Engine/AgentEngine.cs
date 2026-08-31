@@ -184,6 +184,14 @@ public sealed class AgentEngine
                     ChatMsgRole.Tool => ("工具结果", m.Content),
                     _ => ("其他", m.Content)
                 };
+                // 摘要为纯文本: 图片不进入摘要, 但标注数量避免后续上下文误判"用户从未发图"
+                if (m.Images is { Count: > 0 })
+                {
+                    body = string.IsNullOrWhiteSpace(body)
+                        ? $"(发送了 {m.Images.Count} 张图片)"
+                        : $"{body}\n(并发送了 {m.Images.Count} 张图片)";
+                }
+
                 if (string.IsNullOrWhiteSpace(body)) continue;
                 sb.Append($"\n[{label}] {(body.Length > 4000 ? body[..4000] + "..." : body)}");
             }
@@ -243,7 +251,7 @@ public sealed class AgentEngine
     }
 
     /// <summary>用 UI 会话消息重建引擎内部对话(删除/fork 编辑消息后调用, 保证 LLM 上下文一致)。
-    /// 工具分段压缩为简短摘要并入助手回合文本。</summary>
+    /// 工具分段压缩为简短摘要并入助手回合文本; 图片分段作为多模态附件保留。</summary>
     public void RebuildConversation(IReadOnlyList<ChatMessage> messages)
     {
         _conversation.Clear();
@@ -275,27 +283,47 @@ public sealed class AgentEngine
                 text = sb.ToString();
             }
 
-            if (string.IsNullOrWhiteSpace(text)) continue;
+            var images = m.Segments
+                .Where(s => s.Kind == MessageSegmentKind.Image && !string.IsNullOrEmpty(s.ImageData))
+                .Select(s => new ChatImagePart { Base64Data = s.ImageData!, MimeType = s.ImageMimeType ?? "image/png" })
+                .ToList();
+
+            if (string.IsNullOrWhiteSpace(text) && images.Count == 0) continue;
 
             _conversation.Add(new ChatTurnMessage
             {
                 Role = m.Role == MessageRole.User ? ChatMsgRole.User : ChatMsgRole.Assistant,
-                Content = text
+                Content = text,
+                Images = images.Count > 0 ? images : null
             });
         }
     }
 
-    public async Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default)
+    public Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default) =>
+        RunTurnAsync(userMessage, null, ct);
+
+    /// <summary>发起一轮对话; images 为用户消息附带的多模态图片(base64)。</summary>
+    public async Task<string> RunTurnAsync(string userMessage, IReadOnlyList<ChatImagePart>? images, CancellationToken ct = default)
     {
         // 连续用户消息合并为一条(继续输出场景), 避免部分 API 要求严格角色交替
         var last = _conversation.Count > 0 ? _conversation[^1] : null;
         if (last is { Role: ChatMsgRole.User })
         {
             last.Content += $"\n\n{userMessage}";
+            if (images is { Count: > 0 })
+            {
+                last.Images ??= [];
+                last.Images.AddRange(images);
+            }
         }
         else
         {
-            _conversation.Add(new ChatTurnMessage { Role = ChatMsgRole.User, Content = userMessage });
+            _conversation.Add(new ChatTurnMessage
+            {
+                Role = ChatMsgRole.User,
+                Content = userMessage,
+                Images = images is { Count: > 0 } ? images.ToList() : null
+            });
         }
 
         try
