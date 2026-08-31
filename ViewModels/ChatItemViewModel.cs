@@ -75,6 +75,24 @@ public partial class ChatItemViewModel : ViewModelBase
         }
     }
 
+    /// <summary>fork 编辑确认后原地更新用户消息正文(避免整列表重建触发容器回收级联)。</summary>
+    public void SetUserBodyInPlace(string text)
+    {
+        MaterializeSegments();
+        var seg = Segments.FirstOrDefault(s => s.Kind == MessageSegmentKind.Text);
+        if (seg is not null)
+        {
+            seg.SetBody(text);
+        }
+        else
+        {
+            Segments.Add(SegmentItemViewModel.From(new MessageSegment
+            {
+                Kind = MessageSegmentKind.Text, Content = text
+            }));
+        }
+    }
+
     // ---- 用户消息: fork 编辑 / 删除(两段式确认) ----
     [ObservableProperty]
     private bool _isEditing;
