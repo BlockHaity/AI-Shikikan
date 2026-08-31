@@ -8,6 +8,7 @@ using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Tools;
+using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services.Engine;
 
@@ -33,6 +34,9 @@ public sealed record EngineAssignmentChanged(Assignment Assignment) : AgentEngin
 
 public sealed record EngineUsageRecorded(string Provider, string Model, ChatUsage Usage) : AgentEngineEvent;
 
+/// <summary>上下文自动压缩完成事件(达到阈值后由引擎在发起请求前触发)。</summary>
+public sealed record EngineContextCompacted : AgentEngineEvent;
+
 public sealed class EngineOptions
 {
     public int MaxTurns { get; set; } = 10;
@@ -44,6 +48,12 @@ public sealed class EngineOptions
     public ThinkingLevel Thinking { get; set; } = ThinkingLevel.Auto;
     public string? WorkDir { get; set; }
     public bool IsPlanMode { get; set; }
+
+    /// <summary>是否启用上下文自动压缩(达到阈值后在发起请求前压缩历史)。</summary>
+    public bool AutoCompactEnabled { get; set; } = true;
+
+    /// <summary>自动压缩触发阈值(最近一次 input tokens / 上下文窗口大小), 默认 85%。</summary>
+    public double AutoCompactThreshold { get; set; } = 0.85;
 }
 
 /// <summary>对话引擎: 组装 system(人格 + Roster) → LLM → 工具(批准/只读/子代理) → 循环至完成。</summary>
@@ -61,6 +71,9 @@ public sealed class AgentEngine
     private readonly EngineOptions _options;
     private readonly List<ChatTurnMessage> _conversation = [];
     private IReadOnlyList<AgentRosterEntry>? _rosterEntries;
+
+    /// <summary>最近一次 LLM 调用的输入 token 数(即上下文占用), 供自动压缩阈值判断。</summary>
+    private int _lastInputTokens;
 
     public AgentEngine(
         LlmService llm,
@@ -111,7 +124,18 @@ public sealed class AgentEngine
         _rosterEntries = entries;
     }
 
-    public void ClearConversation() => _conversation.Clear();
+    public void ClearConversation()
+    {
+        _conversation.Clear();
+        _lastInputTokens = 0;
+    }
+
+    /// <summary>解析模型上下文窗口大小: 模型设置手配值优先, 回退模型档案(API/内置); 无信息返回 0。</summary>
+    private long ResolveContextTokens(string model, ProviderConfig provider)
+    {
+        return provider.GetContextTokens(model)
+            ?? ModelProfileService.Resolve(model, provider.Id).ContextTokens;
+    }
 
     /// <summary>压缩主对话上下文: 保留最近 KeepRecent 条消息, 其余历史交由 LLM 摘要为一条
     /// 上下文消息替换。返回是否发生压缩(历史不足以压缩时 false)。失败时保持原样不误删。</summary>
@@ -123,7 +147,24 @@ public sealed class AgentEngine
             return false; // 历史太短, 无需压缩
         }
 
-        var toCompact = _conversation.Take(_conversation.Count - KeepRecent).ToList();
+        // 边界回退: 保留段不得以 tool 结果开头, 也不得切断 assistant(tool_calls) 与其结果
+        var keepFrom = _conversation.Count - KeepRecent;
+        while (keepFrom > 0)
+        {
+            var first = _conversation[keepFrom];
+            var prev = _conversation[keepFrom - 1];
+            var breaksPair = first.Role == ChatMsgRole.Tool ||
+                             (prev.Role == ChatMsgRole.Assistant && prev.ToolCalls is { Count: > 0 });
+            if (!breaksPair) break;
+            keepFrom--;
+        }
+
+        if (keepFrom <= 0)
+        {
+            return false; // 全部属于最近交互, 无完整可压缩前缀
+        }
+
+        var toCompact = _conversation.Take(keepFrom).ToList();
         var provider = _llm.GetProvider(_options.ProviderId);
         if (provider is null) return false;
 
@@ -134,9 +175,24 @@ public sealed class AgentEngine
             var sb = new StringBuilder();
             foreach (var m in toCompact)
             {
-                var role = m.Role == ChatMsgRole.User ? "用户" : "助手";
-                var body = m.Content.Length > 4000 ? m.Content[..4000] + "..." : m.Content;
-                sb.Append($"\n[{role}] {body}");
+                var (label, body) = m.Role switch
+                {
+                    ChatMsgRole.User => ("用户", m.Content),
+                    ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 } =>
+                        ("助手", $"(调用工具: {string.Join(", ", m.ToolCalls.Select(t => t.Name))})"),
+                    ChatMsgRole.Assistant => ("助手", m.Content),
+                    ChatMsgRole.Tool => ("工具结果", m.Content),
+                    _ => ("其他", m.Content)
+                };
+                if (string.IsNullOrWhiteSpace(body)) continue;
+                sb.Append($"\n[{label}] {(body.Length > 4000 ? body[..4000] + "..." : body)}");
+            }
+
+            // 摘要请求自身也要防超长: 中段截断保留头尾
+            var transcript = sb.ToString();
+            if (transcript.Length > 24000)
+            {
+                transcript = transcript[..12000] + "\n...(中段过长已省略)...\n" + transcript[^6000..];
             }
 
             var request = new ChatRequest
@@ -146,13 +202,13 @@ public sealed class AgentEngine
                 Temperature = 0.1,
                 System = """
                     你是对话历史压缩器。把给定的多轮对话历史压缩为一份结构化摘要, 供后续对话作为上下文继续。要求:
-                    1. 保留: 用户的总体目标、已达成的关键结论、修改/创建的文件路径、未决事项与约束;
+                    1. 保留: 用户的总体目标、已达成的关键结论、修改/创建的文件路径、工具执行结果要点、未决事项与约束;
                     2. 剔除: 寒暄、冗余过程、重复内容;
                     3. 用简洁的分点中文输出, 不要开场白, 不要臆造未出现的信息。
                     """,
                 Messages =
                 [
-                    new ChatTurnMessage { Role = ChatMsgRole.User, Content = sb.ToString() }
+                    new ChatTurnMessage { Role = ChatMsgRole.User, Content = transcript }
                 ]
             };
 
@@ -164,16 +220,17 @@ public sealed class AgentEngine
                 return false;
             }
 
-            // 用摘要替换被压缩的历史, 保留最近 KeepRecent 条
+            // 用摘要替换被压缩的历史, 保留 keepFrom 之后的消息
             var summary = new ChatTurnMessage
             {
                 Role = ChatMsgRole.User,
                 Content = $"# 前情摘要(已压缩 {toCompact.Count} 条历史)\n{response.Content.Trim()}"
             };
-            var recent = _conversation.TakeLast(KeepRecent).ToList();
+            var recent = _conversation.Skip(keepFrom).ToList();
             _conversation.Clear();
             _conversation.Add(summary);
             _conversation.AddRange(recent);
+            _lastInputTokens = 0; // 压缩后占用待下一次真实用量刷新, 避免连续误触发
 
             Log.Info("Engine", $"上下文已压缩: {toCompact.Count} 条 → 摘要 1 条, 保留最近 {recent.Count} 条");
             return true;
@@ -190,6 +247,7 @@ public sealed class AgentEngine
     public void RebuildConversation(IReadOnlyList<ChatMessage> messages)
     {
         _conversation.Clear();
+        _lastInputTokens = 0; // 历史已重建, 旧的占用读数作废
         foreach (var m in messages)
         {
             var text = string.Join("\n", m.Segments
@@ -260,6 +318,19 @@ public sealed class AgentEngine
             {
                 ct.ThrowIfCancellationRequested();
 
+                // 自动压缩: 上下文占用达到阈值(默认 85%)时, 发起请求前先压缩较早历史
+                if (_options.AutoCompactEnabled && _lastInputTokens > 0)
+                {
+                    var total = ResolveContextTokens(model, provider);
+                    if (total > 0 && _lastInputTokens >= total * _options.AutoCompactThreshold)
+                    {
+                        if (await CompactConversationAsync(ct).ConfigureAwait(false))
+                        {
+                            OnEvent?.Invoke(new EngineContextCompacted());
+                        }
+                    }
+                }
+
                 var request = new ChatRequest
                 {
                     Model = model,
@@ -301,6 +372,7 @@ public sealed class AgentEngine
 
                 if (response.Usage is { InputTokens: > 0 } or { OutputTokens: > 0 })
                 {
+                    _lastInputTokens = response.Usage.InputTokens;
                     OnEvent?.Invoke(new EngineUsageRecorded(provider.Id, model, response.Usage));
                 }
 
