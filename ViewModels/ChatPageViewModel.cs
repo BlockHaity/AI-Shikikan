@@ -519,6 +519,123 @@ public partial class ChatPageViewModel : ViewModelBase
         }
     }
 
+    // ---- 输入历史浏览(↑/↓, Bash 风格) ----
+
+    [ObservableProperty]
+    private bool _isBrowsingHistory;
+
+    [ObservableProperty]
+    private string _historyHint = string.Empty;
+
+    private int _historyIndex = -1; // 浏览位置(-1 = 未在浏览)
+    private string _historyDraft = string.Empty; // 浏览期间暂存的当前输入
+    private bool _applyingHistory; // 程序写入 InputText 时抑制"用户编辑"判定
+
+    /// <summary>输入框文本变化: 非程序化回填(即用户手动编辑)时结束浏览提示。</summary>
+    partial void OnInputTextChanged(string value)
+    {
+        if (!_applyingHistory)
+        {
+            HistoryUserEdited();
+        }
+    }
+
+    /// <summary>输入历史: 当前会话的用户消息(按时间顺序), 按需派生以与删除/编辑保持同步。</summary>
+    private List<string> CurrentInputHistory()
+    {
+        return CurrentSession?.Messages
+                   .Where(m => m.Role == MessageRole.User)
+                   .Select(m => m.Segments.FirstOrDefault(s => s.Kind == MessageSegmentKind.Text)?.Content ?? string.Empty)
+                   .Where(t => !string.IsNullOrWhiteSpace(t))
+                   .ToList()
+               ?? [];
+    }
+
+    /// <summary>↑ 调出上一条历史; 已是最早一条时给出边界反馈。</summary>
+    public bool HistoryPrevious()
+    {
+        var hist = CurrentInputHistory();
+        if (hist.Count == 0) return false;
+
+        if (_historyIndex < 0)
+        {
+            _historyDraft = InputText; // 进入浏览前暂存当前输入
+            _historyIndex = hist.Count - 1;
+        }
+        else if (_historyIndex > 0)
+        {
+            _historyIndex--;
+        }
+        else
+        {
+            HistoryHint = Strings.Chat_HistoryTop;
+            return true;
+        }
+
+        ApplyHistoryEntry(hist);
+        return true;
+    }
+
+    /// <summary>↓ 调出下一条历史; 越过最新一条时恢复暂存草稿并结束浏览。</summary>
+    public bool HistoryNext()
+    {
+        if (_historyIndex < 0) return false;
+
+        var hist = CurrentInputHistory();
+        if (_historyIndex >= hist.Count - 1)
+        {
+            return HistoryCancel();
+        }
+
+        _historyIndex++;
+        ApplyHistoryEntry(hist);
+        return true;
+    }
+
+    private void ApplyHistoryEntry(List<string> hist)
+    {
+        if (hist.Count == 0)
+        {
+            HistoryReset();
+            return;
+        }
+
+        if (_historyIndex >= hist.Count) _historyIndex = hist.Count - 1; // 消息被删除后钳制
+        _applyingHistory = true;
+        InputText = hist[_historyIndex];
+        _applyingHistory = false;
+        IsBrowsingHistory = true;
+        HistoryHint = string.Format(Strings.Chat_HistoryPosition, _historyIndex + 1, hist.Count);
+    }
+
+    /// <summary>ESC 取消浏览, 恢复浏览前暂存的输入。</summary>
+    public bool HistoryCancel()
+    {
+        if (_historyIndex < 0) return false;
+        _applyingHistory = true;
+        InputText = _historyDraft;
+        _applyingHistory = false;
+        HistoryReset();
+        return true;
+    }
+
+    /// <summary>用户手动编辑输入: 结束浏览提示但保留历史位置(与 Bash 一致, 可继续 ↑/↓ 浏览)。</summary>
+    public void HistoryUserEdited()
+    {
+        if (!IsBrowsingHistory) return;
+        IsBrowsingHistory = false;
+        HistoryHint = string.Empty;
+    }
+
+    /// <summary>结束浏览态并清理暂存(发送/取消后调用)。</summary>
+    private void HistoryReset()
+    {
+        _historyIndex = -1;
+        _historyDraft = string.Empty;
+        IsBrowsingHistory = false;
+        HistoryHint = string.Empty;
+    }
+
     [RelayCommand]
     private void SendMessage()
     {
@@ -530,6 +647,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         var content = InputText;
         InputText = string.Empty;
+        HistoryReset(); // 发送后该条已进入会话历史, 退出浏览态
 
         var isFirstMessage = CurrentSession!.MessageCount == 0;
         // AddMessage 同步触发 MessageAdded 处理器完成列表重建, 无需在此重复 RefreshMessages

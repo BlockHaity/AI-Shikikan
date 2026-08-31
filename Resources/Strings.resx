@@ -62,6 +62,9 @@
   <data name="Chat_SelectProvider" xml:space="preserve"><value>选择提供商</value></data>
   <data name="Chat_SelectModel" xml:space="preserve"><value>选择模型</value></data>
   <data name="Chat_InputPlaceholder" xml:space="preserve"><value>输入消息...</value></data>
+  <data name="Chat_HistoryPosition" xml:space="preserve"><value>历史 {0}/{1} (↑↓ 浏览, ESC 取消)</value></data>
+  <data name="Chat_HistoryTop" xml:space="preserve"><value>已是最早一条历史</value></data>
+  <data name="Chat_HistoryBottom" xml:space="preserve"><value>已是最新一条历史</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
   <data name="Chat_Stop" xml:space="preserve"><value>停止</value></data>
   <data name="Chat_StopTip" xml:space="preserve"><value>终止生成(双击 ESC 同效)</value></data>
