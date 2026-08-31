@@ -17,6 +17,9 @@ public record CliAgentDefinition
     /// 主对话处于 Plan 模式且该子代理被允许时追加; 为空表示该 Agent 不支持 Plan 模式。</summary>
     public List<string> PlanArgs { get; set; } = [];
 
+    /// <summary>额外 CLI 参数: 始终附加到子 Agent 命令末尾(在 args / plan_args 之后), 支持 {prompt} 占位符。</summary>
+    public List<string> ExtraArgs { get; set; } = [];
+
     /// <summary>"sync" 常规阻塞 | "async" 异步后台。</summary>
     public string DefaultMode { get; set; } = "sync";
 
@@ -92,6 +95,12 @@ public static class CliAgentRunner
             {
                 psi.ArgumentList.Add(arg.Replace("{prompt}", prompt, StringComparison.Ordinal));
             }
+        }
+
+        // 额外参数: 始终附加到命令末尾
+        foreach (var arg in definition.ExtraArgs)
+        {
+            psi.ArgumentList.Add(arg.Replace("{prompt}", prompt, StringComparison.Ordinal));
         }
 
         try
