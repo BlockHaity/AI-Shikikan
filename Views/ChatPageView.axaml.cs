@@ -240,6 +240,34 @@ public partial class ChatPageView : UserControl
             }
 
             e.Handled = true;
+            return;
+        }
+
+        // Bash 风格输入历史: ↑ 上一条 / ↓ 下一条 / ESC 取消恢复草稿
+        if (sender is not TextBox box || DataContext is not ChatPageViewModel v) return;
+
+        switch (e.Key)
+        {
+            case Key.Up when !e.KeyModifiers.HasFlag(KeyModifiers.Shift):
+                if (v.HistoryPrevious())
+                {
+                    box.CaretIndex = box.Text?.Length ?? 0;
+                }
+
+                e.Handled = true;
+                break;
+            case Key.Down when !e.KeyModifiers.HasFlag(KeyModifiers.Shift):
+                if (v.HistoryNext())
+                {
+                    box.CaretIndex = box.Text?.Length ?? 0;
+                }
+
+                e.Handled = true;
+                break;
+            case Key.Escape when v.IsBrowsingHistory:
+                v.HistoryCancel();
+                e.Handled = true;
+                break;
         }
     }
 

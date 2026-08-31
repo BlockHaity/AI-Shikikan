@@ -555,28 +555,35 @@
 
             <Border Grid.Row="3" Padding="16,8"
                     BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0">
-                <Grid ColumnDefinitions="*,Auto">
-                    <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
-                             Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
-                             KeyDown="OnInputKeyDown"/>
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
-                                VerticalAlignment="Center">
-                        <!-- 继续输出: 中断后出现 -->
-                        <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_Continue}"
-                                Command="{Binding ContinueOutputCommand}" IsVisible="{Binding CanContinue}"
-                                ToolTip.Tip="{x:Static res:Strings.Chat_ContinueTip}"/>
-                        <!-- 发送中: 显示终止按钮 -->
-                        <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Stop}"
-                                Command="{Binding StopGenerationCommand}" IsVisible="{Binding IsSending}"
-                                Background="{DynamicResource ErrorContainer}"
-                                Foreground="{DynamicResource OnErrorContainer}"
-                                MinWidth="80" ToolTip.Tip="{x:Static res:Strings.Chat_StopTip}"/>
-                        <!-- 空闲: 发送按钮 -->
-                        <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Send}"
-                                Command="{Binding SendMessageCommand}" IsVisible="{Binding !IsSending}"
-                                MinWidth="80"/>
-                    </StackPanel>
-                </Grid>
+                <StackPanel Spacing="4">
+                    <!-- 输入历史浏览提示(↑/↓ 时显示位置与操作说明, 到达边界时显示边界反馈) -->
+                    <TextBlock Classes="LabelSmall"
+                               IsVisible="{Binding IsBrowsingHistory}"
+                               Foreground="{DynamicResource OnSurfaceVariant}"
+                               Text="{Binding HistoryHint}"/>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBox x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
+                                 Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
+                                 KeyDown="OnInputKeyDown"/>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="8,0,0,0"
+                                    VerticalAlignment="Center">
+                            <!-- 继续输出: 中断后出现 -->
+                            <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_Continue}"
+                                    Command="{Binding ContinueOutputCommand}" IsVisible="{Binding CanContinue}"
+                                    ToolTip.Tip="{x:Static res:Strings.Chat_ContinueTip}"/>
+                            <!-- 发送中: 显示终止按钮 -->
+                            <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Stop}"
+                                    Command="{Binding StopGenerationCommand}" IsVisible="{Binding IsSending}"
+                                    Background="{DynamicResource ErrorContainer}"
+                                    Foreground="{DynamicResource OnErrorContainer}"
+                                    MinWidth="80" ToolTip.Tip="{x:Static res:Strings.Chat_StopTip}"/>
+                            <!-- 空闲: 发送按钮 -->
+                            <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Send}"
+                                    Command="{Binding SendMessageCommand}" IsVisible="{Binding !IsSending}"
+                                    MinWidth="80"/>
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
             </Border>
 
         </Grid>

@@ -59,6 +59,9 @@ public static class Strings
     public static string Chat_SelectProvider => Get(nameof(Chat_SelectProvider));
     public static string Chat_SelectModel => Get(nameof(Chat_SelectModel));
     public static string Chat_InputPlaceholder => Get(nameof(Chat_InputPlaceholder));
+    public static string Chat_HistoryPosition => Get(nameof(Chat_HistoryPosition));
+    public static string Chat_HistoryTop => Get(nameof(Chat_HistoryTop));
+    public static string Chat_HistoryBottom => Get(nameof(Chat_HistoryBottom));
     public static string Chat_Send => Get(nameof(Chat_Send));
     public static string Chat_Stop => Get(nameof(Chat_Stop));
     public static string Chat_StopTip => Get(nameof(Chat_StopTip));
