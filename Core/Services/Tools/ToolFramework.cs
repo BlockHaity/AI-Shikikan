@@ -28,6 +28,9 @@ public class ToolContext
 
     /// <summary>子代理实时输出回调(UI 订阅)。</summary>
     public Action<string>? OnToolOutput { get; init; }
+
+    /// <summary>向用户反问并等待回答的回调(由引擎注入, 返回 null 表示用户未作答/取消)。</summary>
+    public Func<string, CancellationToken, Task<string?>>? AskUser { get; init; }
 }
 
 public interface ITool
