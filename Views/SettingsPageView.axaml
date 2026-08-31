@@ -252,6 +252,9 @@
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentPlanArgs}" />
                             <TextBox Text="{Binding AgentExtraArgsEdit}"
                                      PlaceholderText="{x:Static res:Strings.Settings_AgentExtraArgs}" />
+                            <ToggleSwitch IsChecked="{Binding AgentAllowPlanNoArgsEdit}"
+                                          Content="{x:Static res:Strings.Settings_AgentAllowPlanNoArgs}"
+                                          ToolTip.Tip="{x:Static res:Strings.Settings_AgentAllowPlanNoArgsTip}" />
                             <TextBlock Classes="BodySmall" Text="{x:Static res:Strings.Settings_AgentEditHint}"
                                        Foreground="{DynamicResource OnSurfaceVariant}" />
                         </StackPanel>
@@ -267,6 +270,9 @@
                                      Text="{Binding NewAgentPlanArgs}" />
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_AgentExtraArgs}"
                                      Text="{Binding NewAgentExtraArgs}" />
+                            <ToggleSwitch IsChecked="{Binding NewAgentAllowPlanNoArgs}"
+                                          Content="{x:Static res:Strings.Settings_AgentAllowPlanNoArgs}"
+                                          ToolTip.Tip="{x:Static res:Strings.Settings_AgentAllowPlanNoArgsTip}" />
                             <Button Classes="Filled" Content="{x:Static res:Strings.Settings_Add}"
                                     Command="{Binding AddAgentCommand}"/>
                         </StackPanel>
