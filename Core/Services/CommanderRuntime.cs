@@ -31,6 +31,17 @@ public sealed class CommanderRuntime
 
     public string? CurrentPersonaText { get; private set; }
 
+    /// <summary>当前指挥官人格(按 Plan/Build 模式解析出生效提示词)。</summary>
+    private Persona? _commanderPersona;
+
+    /// <summary>按当前模式重新解析指挥官人格提示词并同步到引擎。</summary>
+    private void RefreshCommanderPersonaText()
+    {
+        var text = _commanderPersona?.ResolveForMode(_isPlanMode);
+        CurrentPersonaText = string.IsNullOrWhiteSpace(text) ? null : text;
+        Engine.SetPersonaText(CurrentPersonaText);
+    }
+
     public IReadOnlyList<AgentRosterEntry> CurrentRosterEntries { get; private set; } = [];
 
     public static CommanderRuntime Boot(string? workspaceRoot = null, string? personaId = null)
@@ -83,11 +94,12 @@ public sealed class CommanderRuntime
 
         var persona = personasList.FirstOrDefault(p =>
             string.Equals(p.Id, personaId, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(p.Name, personaId, StringComparison.OrdinalIgnoreCase));
-        var personaText = persona is null
-            ? personasList.FirstOrDefault()?.SystemPrompt
-            : persona.SystemPrompt;
-
+            string.Equals(p.Name, personaId, StringComparison.OrdinalIgnoreCase))
+            ?? personasList.FirstOrDefault();
+        // 指挥官人格提示词按当前模式(默认 Build)解析: 通用正文 + 模式专属段
+        var personaText = string.IsNullOrWhiteSpace(persona?.ResolveForMode(false))
+            ? null
+            : persona!.ResolveForMode(false);
         var engine = new AgentEngine(
             llm: llm,
             registry: registry,
@@ -114,6 +126,7 @@ public sealed class CommanderRuntime
             CurrentPersonaText = personaText,
             CurrentRosterEntries = []
         };
+        Instance._commanderPersona = persona;
 
         // 后台连接 MCP 服务器并注册桥接工具(不阻塞启动)
         var runtime = Instance;
@@ -156,10 +169,19 @@ public sealed class CommanderRuntime
         return messages;
     }
 
+    /// <summary>直接指定指挥官人格提示词(覆盖按模式解析的结果); 传 null 清除。</summary>
     public void SetPersonaText(string? text)
     {
+        _commanderPersona = null; // 避免后续模式切换时用 persona 解析结果覆盖显式设定
         CurrentPersonaText = text;
         Engine.SetPersonaText(text);
+    }
+
+    /// <summary>指定指挥官人格并按当前模式解析生效提示词(通用正文 + Plan/Build 专属段)。</summary>
+    public void SetCommanderPersona(Persona? persona)
+    {
+        _commanderPersona = persona;
+        RefreshCommanderPersonaText();
     }
 
     private bool _subagentToolsVisible = true;
@@ -176,6 +198,8 @@ public sealed class CommanderRuntime
         if (_isPlanMode == planMode) return;
         _isPlanMode = planMode;
         Engine.Options.IsPlanMode = planMode;
+        // 指挥官人格按新模式重新解析提示词(通用正文 + 对应模式专属段)
+        RefreshCommanderPersonaText();
         RebuildSubagentTools();
         Log.Info("Engine", $"Plan 模式切换为 {planMode}, 当前工具数={Registry.All.Count}");
     }

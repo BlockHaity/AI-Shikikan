@@ -64,14 +64,15 @@ public static class AgentExecutor
         string? personaId,
         string? templateId,
         string? commanderPersonaText = null,
-        bool useCommanderPersona = false)
+        bool useCommanderPersona = false,
+        bool planMode = false)
     {
         if (!string.IsNullOrWhiteSpace(personaId))
         {
             var persona = PersonaService.Find(personaId, personas);
             if (persona is not null)
             {
-                return $"{persona.Display}\n{persona.SystemPrompt}";
+                return $"{persona.Display}\n{persona.ResolveForMode(planMode)}";
             }
         }
 
@@ -90,7 +91,7 @@ public static class AgentExecutor
                     var persona = PersonaService.Find(template.PersonaId, personas);
                     if (persona is not null)
                     {
-                        return $"{persona.Display}\n{persona.SystemPrompt}";
+                        return $"{persona.Display}\n{persona.ResolveForMode(planMode)}";
                     }
                 }
 
@@ -103,7 +104,7 @@ public static class AgentExecutor
             var persona = PersonaService.Find(def.RecommendedPersonaId, personas);
             if (persona is not null)
             {
-                return $"{persona.Display}\n{persona.SystemPrompt}";
+                return $"{persona.Display}\n{persona.ResolveForMode(planMode)}";
             }
         }
 
@@ -301,7 +302,8 @@ public class AgentExecutionTool : ITool
         var personaText = AgentExecutor.ResolvePersonaText(
             _agent, _personas, _templates, null, null,
             CommanderRuntime.Instance?.CurrentPersonaText,
-            false);
+            false,
+            planMode: ctx.IsPlanMode);
         return AgentExecutor.ExecuteAsync(
             _agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
@@ -371,7 +373,8 @@ public class AssignTaskTool : ITool
         var personaText = AgentExecutor.ResolvePersonaText(
             agent, _personas, _templates, null, null,
             CommanderRuntime.Instance?.CurrentPersonaText,
-            false);
+            false,
+            planMode: ctx.IsPlanMode);
         return AgentExecutor.ExecuteAsync(
             agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
@@ -496,7 +499,8 @@ public class SubagentGroupTool : ITool
             // 专家由用户配置决定, AI 不可指定人格/模板
             var personaText = AgentExecutor.ResolvePersonaText(
                 agent, _personas, _templates, null, null,
-                CommanderRuntime.Instance?.CurrentPersonaText, false);
+                CommanderRuntime.Instance?.CurrentPersonaText, false,
+                planMode: ctx.IsPlanMode);
 
             var args = JsonSerializer.SerializeToElement(new JsonObject());
 

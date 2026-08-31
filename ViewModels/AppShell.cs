@@ -53,7 +53,8 @@ public sealed class AppShell
             agent, task, templateId, personaId, workingDirectory);
         var personaText = AgentExecutor.ResolvePersonaText(
             agent, Runtime.Personas, Runtime.Templates, personaId, templateId,
-            Runtime.CurrentPersonaText, useCommanderPersona);
+            Runtime.CurrentPersonaText, useCommanderPersona,
+            planMode: Runtime.IsPlanMode);
         var finalPrompt = AgentExecutor.BuildFinalPrompt(assignment.Task, personaText);
 
         _ = Task.Run(async () =>

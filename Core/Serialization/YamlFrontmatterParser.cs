@@ -80,7 +80,8 @@ public static class YamlFrontmatterParser
         return sb.ToString();
     }
 
-    /// <summary>把 Persona 构建为带 YAML frontmatter 的 Markdown 文本, 系统提示词作为正文。</summary>
+    /// <summary>把 Persona 构建为带 YAML frontmatter 的 Markdown 文本, 系统提示词作为正文;
+    /// Plan/Build 模式专属提示词以 HTML 注释段追加在正文末尾(不渲染、不影响通用部分)。</summary>
     public static string Build(Persona persona, string? body = null)
     {
         var frontmatter = new Dictionary<string, string>
@@ -92,6 +93,68 @@ public static class YamlFrontmatterParser
         };
 
         var content = body ?? persona.SystemPrompt;
+        if (!string.IsNullOrWhiteSpace(persona.PlanPrompt))
+        {
+            content += $"\n\n{PlanMarker}\n{persona.PlanPrompt.Trim()}\n{SectionEnd}";
+        }
+
+        if (!string.IsNullOrWhiteSpace(persona.BuildPrompt))
+        {
+            content += $"\n\n{BuildMarker}\n{persona.BuildPrompt.Trim()}\n{SectionEnd}";
+        }
+
         return BuildFrontmatter(frontmatter) + content;
+    }
+
+    // ---- 模式专属提示词段(HTML 注释标记, Markdown 渲染时不可见) ----
+
+    private const string PlanMarker = "<!-- persona:plan -->";
+    private const string BuildMarker = "<!-- persona:build -->";
+    private const string SectionEnd = "<!-- /persona -->";
+
+    /// <summary>从正文中抽取 Plan/Build 模式专属段, 返回去除段后的通用正文与两段内容。</summary>
+    public static (string GeneralBody, string PlanPrompt, string BuildPrompt) ExtractModeSections(string body)
+    {
+        var plan = ExtractSection(body, PlanMarker);
+        var build = ExtractSection(body, BuildMarker);
+        var general = RemoveSection(body, PlanMarker);
+        general = RemoveSection(general, BuildMarker);
+        return (general.Trim(), plan, build);
+    }
+
+    private static string ExtractSection(string body, string marker)
+    {
+        var start = body.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0) return string.Empty;
+
+        // 结束边界: 结束标记与另一段起始标记取最先出现者, 防止缺失结束标记时吞并后段
+        var contentStart = start + marker.Length;
+        var end = NearestIndex(body, contentStart, SectionEnd, PlanMarker, BuildMarker);
+        return end < 0
+            ? body[contentStart..].Trim()
+            : body[contentStart..end].Trim();
+    }
+
+    private static int NearestIndex(string body, int from, params string[] markers)
+    {
+        var nearest = -1;
+        foreach (var m in markers)
+        {
+            var i = body.IndexOf(m, from, StringComparison.Ordinal);
+            if (i >= 0 && (nearest < 0 || i < nearest)) nearest = i;
+        }
+
+        return nearest;
+    }
+
+    private static string RemoveSection(string body, string marker)
+    {
+        var start = body.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0) return body;
+
+        var end = body.IndexOf(SectionEnd, start + marker.Length, StringComparison.Ordinal);
+        return end < 0
+            ? body[..start].TrimEnd()
+            : (body[..start] + body[(end + SectionEnd.Length)..]).Trim();
     }
 }
