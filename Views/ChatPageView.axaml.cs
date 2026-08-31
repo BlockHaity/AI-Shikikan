@@ -68,8 +68,14 @@ public partial class ChatPageView : UserControl
         base.OnDataContextChanged(e);
         if (DataContext is ChatPageViewModel vm)
         {
-            void Scroll() => Dispatcher.UIThread.Post(() => MessageScroller?.ScrollToEnd(),
-                DispatcherPriority.Background);
+            // 虚拟化列表用 ScrollIntoView 定位到最后一项(ScrollToEnd 会强制全量测量)
+            void Scroll() => Dispatcher.UIThread.Post(() =>
+            {
+                if (MessageList is not null && vm.Messages.Count > 0)
+                {
+                    MessageList.ScrollIntoView(vm.Messages[^1]);
+                }
+            }, DispatcherPriority.Background);
 
             void AttachMessages()
             {

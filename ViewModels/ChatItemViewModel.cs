@@ -29,6 +29,10 @@ public partial class ChatItemViewModel : ViewModelBase
 
     public ObservableRange<SegmentItemViewModel> Segments { get; } = [];
 
+    // 懒加载: 历史消息的分段 VM 延迟到首次访问(即容器被 realized)时才构建;
+    // 配合外层虚拟化, 屏幕外的消息完全不构建分段。
+    private ChatMessage? _pendingSource;
+
     public bool IsUser => Role == MessageRole.User;
 
     /// <summary>用户消息正文(用户消息仅含单个文本分段)。</summary>
@@ -36,6 +40,7 @@ public partial class ChatItemViewModel : ViewModelBase
     {
         get
         {
+            MaterializeSegments();
             var seg = Segments.FirstOrDefault(s => s.Kind == MessageSegmentKind.Text);
             return seg?.BodyContent ?? string.Empty;
         }
@@ -43,13 +48,31 @@ public partial class ChatItemViewModel : ViewModelBase
 
     public static ChatItemViewModel From(ChatMessage m)
     {
-        var item = new ChatItemViewModel(m.Role) { MessageId = m.Id };
-        foreach (var seg in m.Segments)
-        {
-            item.Segments.Add(SegmentItemViewModel.From(seg));
-        }
+        // 不在此处构建分段 VM, 仅记录源消息; 视图绑定 Segments/UserBody 时再物化
+        return new ChatItemViewModel(m.Role) { MessageId = m.Id, _pendingSource = m };
+    }
 
-        return item;
+    /// <summary>首次访问分段集合时物化延迟的历史分段。</summary>
+    public void MaterializeSegments()
+    {
+        var src = _pendingSource;
+        if (src is null) return;
+        _pendingSource = null;
+
+        foreach (var seg in src.Segments)
+        {
+            Segments.Add(SegmentItemViewModel.From(seg));
+        }
+    }
+
+    /// <summary>视图绑定入口: 访问即物化(容器 realized 时才会绑定到这里)。</summary>
+    public ObservableRange<SegmentItemViewModel> VisibleSegments
+    {
+        get
+        {
+            MaterializeSegments();
+            return Segments;
+        }
     }
 
     // ---- 用户消息: fork 编辑 / 删除(两段式确认) ----
