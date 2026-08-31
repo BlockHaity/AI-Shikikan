@@ -28,6 +28,11 @@ public sealed record EngineApprovalRequested(
     string ToolCallId, string ToolName, string Arguments,
     TaskCompletionSource<bool> UserDecision) : AgentEngineEvent;
 
+/// <summary>AI 通过 ask_user 工具向用户提问, 等待 GUI 回填回答(null 表示跳过/取消)。</summary>
+public sealed record EngineQuestionRequested(
+    string ToolCallId, string Question,
+    TaskCompletionSource<string?> UserAnswer) : AgentEngineEvent;
+
 public sealed record EngineDone(string? Content, string? Error) : AgentEngineEvent;
 
 public sealed record EngineAssignmentChanged(Assignment Assignment) : AgentEngineEvent;
@@ -520,7 +525,14 @@ public sealed class AgentEngine
             {
                 WorkspaceRoot = _workspaceRoot,
                 IsPlanMode = _options.IsPlanMode,
-                OnToolOutput = line => OnEvent?.Invoke(new EngineToolOutput(call.Id, call.Name, line))
+                OnToolOutput = line => OnEvent?.Invoke(new EngineToolOutput(call.Id, call.Name, line)),
+                // ask_user 工具经此回调触达 GUI: 发事件 → 弹输入框 → 等待用户回答(取消随回合中断)
+                AskUser = async (question, askCt) =>
+                {
+                    var answerTcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
+                    OnEvent?.Invoke(new EngineQuestionRequested(call.Id, question, answerTcs));
+                    return await answerTcs.Task.WaitAsync(askCt);
+                }
             };
 
             result = await tool.ExecuteAsync(args, context, ct);

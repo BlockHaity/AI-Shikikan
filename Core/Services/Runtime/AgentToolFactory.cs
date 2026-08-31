@@ -30,7 +30,8 @@ public static class AgentToolFactory
             new GitCheckpointTool(git),
             new GitMergeStepTool(git),
             new GitDropStepTool(git),
-            new GitRevertStepTool(git)
+            new GitRevertStepTool(git),
+            new AskUserTool()
         };
     }
 
