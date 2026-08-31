@@ -69,6 +69,7 @@
   <data name="Chat_CtxCompactCancel" xml:space="preserve"><value>Cancel</value></data>
   <data name="Chat_CtxCompacted" xml:space="preserve"><value>🗜 Context compacted: older history replaced with a summary.</value></data>
   <data name="Chat_CtxCompactShort" xml:space="preserve"><value>Context is short; nothing to compact.</value></data>
+  <data name="Chat_CtxAutoCompacted" xml:space="preserve"><value>🗜 Context reached 85%; auto-compacted: older history replaced with a summary.</value></data>
   <data name="Chat_HistoryTop" xml:space="preserve"><value>Oldest entry reached</value></data>
   <data name="Chat_HistoryBottom" xml:space="preserve"><value>Latest entry reached</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>Send</value></data>

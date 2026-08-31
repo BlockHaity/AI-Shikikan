@@ -69,6 +69,7 @@
   <data name="Chat_CtxCompactCancel" xml:space="preserve"><value>取消</value></data>
   <data name="Chat_CtxCompacted" xml:space="preserve"><value>🗜 上下文已压缩: 较早历史已替换为摘要。</value></data>
   <data name="Chat_CtxCompactShort" xml:space="preserve"><value>当前上下文较短, 无需压缩。</value></data>
+  <data name="Chat_CtxAutoCompacted" xml:space="preserve"><value>🗜 上下文占用达到 85%, 已自动压缩: 较早历史已替换为摘要。</value></data>
   <data name="Chat_HistoryTop" xml:space="preserve"><value>已是最早一条历史</value></data>
   <data name="Chat_HistoryBottom" xml:space="preserve"><value>已是最新一条历史</value></data>
   <data name="Chat_Send" xml:space="preserve"><value>发送</value></data>
