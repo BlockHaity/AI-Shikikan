@@ -34,6 +34,7 @@ public class ChatService
         LoadAllSessions();
         if (_sessions.Count > 0)
         {
+            EnsureLoaded(_sessions[0]);
             CurrentSession = _sessions[0];
         }
     }
@@ -62,6 +63,11 @@ public class ChatService
 
         if (CurrentSession?.Id == sessionId)
         {
+            if (_sessions.Count > 0)
+            {
+                EnsureLoaded(_sessions[0]);
+            }
+
             CurrentSession = _sessions.Count > 0 ? _sessions[0] : null;
         }
 
@@ -73,6 +79,7 @@ public class ChatService
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is not null)
         {
+            EnsureLoaded(session);
             CurrentSession = session;
         }
     }
@@ -85,6 +92,7 @@ public class ChatService
         var title = newTitle?.Trim();
         if (string.IsNullOrEmpty(title)) return false;
 
+        EnsureLoaded(session); // 整文件写回, 未加载会覆盖丢消息
         session.Title = title;
         session.UpdatedAt = DateTime.Now;
         SaveSession(session);
@@ -107,6 +115,8 @@ public class ChatService
     {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) throw new ArgumentException($"Session {sessionId} not found");
+
+        EnsureLoaded(session); // 写回前先加载, 否则会用空消息覆盖已有会话文件
 
         var message = new ChatMessage
         {
@@ -132,6 +142,7 @@ public class ChatService
     {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) return;
+        EnsureLoaded(session);
         session.Messages.Clear();
         session.UpdatedAt = DateTime.Now;
         SaveSession(session);
@@ -142,6 +153,7 @@ public class ChatService
     {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) return false;
+        EnsureLoaded(session);
 
         var idx = session.Messages.FindIndex(m => m.Id == messageId);
         if (idx < 0) return false;
@@ -165,6 +177,7 @@ public class ChatService
     {
         var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
         if (session is null) return false;
+        EnsureLoaded(session);
 
         var idx = session.Messages.FindIndex(m => m.Id == messageId);
         if (idx < 0 || session.Messages[idx].Role != MessageRole.User) return false;
@@ -182,6 +195,8 @@ public class ChatService
         return true;
     }
 
+    /// <summary>懒加载: 启动仅解析每个会话的轻量元数据(id/title/时间/消息条数),
+    /// 消息正文延迟到打开会话或写回时再反序列化, 避免启动卡顿。</summary>
     private void LoadAllSessions()
     {
         try
@@ -191,26 +206,89 @@ public class ChatService
             {
                 try
                 {
-                    var json = File.ReadAllText(file);
-                    var session = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatSession);
-                    if (session is not null && !string.IsNullOrEmpty(session.Id))
+                    var session = ReadMetadata(file);
+                    if (session is not null)
                     {
                         _sessions.Add(session);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Warn("Session", ex, $"会话文件解析失败(已跳过): {file}");
+                    Log.Warn("Session", ex, $"会话文件元数据解析失败(已跳过): {file}");
                 }
             }
 
-            Log.Info("Session", $"加载 {_sessions.Count} 个会话");
+            Log.Info("Session", $"加载 {_sessions.Count} 个会话(元数据)");
             _sessions.Sort((a, b) => b.UpdatedAt.CompareTo(a.UpdatedAt));
         }
         catch (Exception ex)
         {
             Log.Error("Session", ex, "会话目录读取失败");
             _sessions.Clear();
+        }
+    }
+
+    /// <summary>只读根级字段与消息条数, 不反序列化消息内容。</summary>
+    private static ChatSession? ReadMetadata(string file)
+    {
+        using var doc = JsonDocument.Parse(File.ReadAllText(file));
+        if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
+        var root = doc.RootElement;
+
+        if (!root.TryGetProperty("id", out var idEl) || idEl.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var id = idEl.GetString();
+        if (string.IsNullOrEmpty(id)) return null;
+
+        var session = new ChatSession
+        {
+            Id = id,
+            Title = root.TryGetProperty("title", out var t) && t.ValueKind == JsonValueKind.String
+                ? t.GetString() ?? "New Session"
+                : "New Session",
+            UpdatedAt = root.TryGetProperty("updatedAt", out var u) && u.TryGetDateTime(out var ut)
+                ? ut
+                : DateTime.Now
+        };
+
+        if (root.TryGetProperty("messages", out var msgs) && msgs.ValueKind == JsonValueKind.Array)
+        {
+            session.MetadataMessageCount = msgs.GetArrayLength();
+        }
+
+        session.IsLoaded = false;
+        return session;
+    }
+
+    /// <summary>确保会话消息已从文件加载(幂等)。加载后置 IsLoaded, 后续写回安全。</summary>
+    private void EnsureLoaded(ChatSession session)
+    {
+        if (session.IsLoaded) return;
+        session.IsLoaded = true;
+
+        try
+        {
+            var path = Path.Combine(SessionsDir, $"{session.Id}.json");
+            if (!File.Exists(path))
+            {
+                session.Messages = [];
+                return;
+            }
+
+            var full = JsonSerializer.Deserialize(
+                File.ReadAllText(path), AppJsonContext.Default.ChatSession);
+            if (full is not null)
+            {
+                session.Messages = full.Messages;
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Session", ex, $"会话消息加载失败: {session.Id}");
+            session.Messages = [];
         }
     }
 

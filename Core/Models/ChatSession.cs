@@ -12,4 +12,16 @@ public class ChatSession
 
     [JsonIgnore]
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? "New Session" : Title;
+
+    /// <summary>消息是否已从会话文件加载(懒加载: 启动时仅解析元数据, 打开会话时才加载消息)。</summary>
+    [JsonIgnore]
+    public bool IsLoaded { get; set; } = true;
+
+    /// <summary>未加载消息时由元数据扫描得到的消息条数。</summary>
+    [JsonIgnore]
+    public int MetadataMessageCount { get; set; }
+
+    /// <summary>消息条数(优先内存, 未加载时用元数据)。</summary>
+    [JsonIgnore]
+    public int MessageCount => IsLoaded ? Messages.Count : MetadataMessageCount;
 }
