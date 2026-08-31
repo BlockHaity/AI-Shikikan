@@ -389,7 +389,19 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
                     break;
 
                 case ChatMsgRole.User:
-                    AddMsg("user", m.Content);
+                    if (m.Images is { Count: > 0 })
+                    {
+                        arr.Add(new JsonObject
+                        {
+                            ["role"] = "user",
+                            ["content"] = BuildUserContentArray(m)
+                        });
+                    }
+                    else
+                    {
+                        AddMsg("user", m.Content);
+                    }
+
                     break;
 
                 case ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 }:
@@ -432,6 +444,30 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         }
 
         return arr;
+    }
+
+    /// <summary>带图片的用户消息 content: 数组形式 [{image_url: dataURL...}, {text}] (图片在前, 与官方多模态示例一致)。</summary>
+    private static JsonArray BuildUserContentArray(ChatTurnMessage m)
+    {
+        var parts = new JsonArray();
+        foreach (var img in m.Images!)
+        {
+            parts.Add(new JsonObject
+            {
+                ["type"] = "image_url",
+                ["image_url"] = new JsonObject
+                {
+                    ["url"] = $"data:{img.MimeType};base64,{img.Base64Data}"
+                }
+            });
+        }
+
+        if (!string.IsNullOrEmpty(m.Content))
+        {
+            parts.Add(new JsonObject { ["type"] = "text", ["text"] = m.Content });
+        }
+
+        return parts;
     }
 
     private static bool TryGetString(JsonElement el, string name, out string value)
@@ -488,7 +524,27 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
                     break;
 
                 case ChatMsgRole.User:
-                    list.Add(ChatMessage.CreateUserMessage(m.Content));
+                    if (m.Images is { Count: > 0 })
+                    {
+                        var parts = new List<ChatMessageContentPart>();
+                        foreach (var img in m.Images)
+                        {
+                            parts.Add(ChatMessageContentPart.CreateImagePart(
+                                BinaryData.FromBytes(Convert.FromBase64String(img.Base64Data)), img.MimeType));
+                        }
+
+                        if (!string.IsNullOrEmpty(m.Content))
+                        {
+                            parts.Add(ChatMessageContentPart.CreateTextPart(m.Content));
+                        }
+
+                        list.Add(ChatMessage.CreateUserMessage(parts));
+                    }
+                    else
+                    {
+                        list.Add(ChatMessage.CreateUserMessage(m.Content));
+                    }
+
                     break;
 
                 case ChatMsgRole.Assistant when m.ToolCalls is { Count: > 0 }:

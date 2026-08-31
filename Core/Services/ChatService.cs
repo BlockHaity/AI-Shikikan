@@ -203,9 +203,12 @@ public class ChatService
         // 截断其后所有回复
         session.Messages.RemoveRange(idx + 1, session.Messages.Count - idx - 1);
 
-        // 更新用户消息文本(用户消息为单 Text 分段)
-        session.Messages[idx].Segments =
+        // 更新用户消息文本: 保留原有图片分段, 替换/追加文本分段
+        var msg = session.Messages[idx];
+        var images = msg.Segments.Where(s => s.Kind == MessageSegmentKind.Image).ToList();
+        msg.Segments =
         [
+            .. images,
             new MessageSegment { Kind = MessageSegmentKind.Text, Content = newText }
         ];
         session.UpdatedAt = DateTime.Now;

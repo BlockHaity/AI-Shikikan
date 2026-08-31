@@ -217,10 +217,35 @@ public class AnthropicChatCompletionsClient : ChatCompletionsClientBase
                     break;
 
                 default:
+                    var content = new List<ContentBase>();
+                    // 图片在前、文本在后(与 Anthropic vision 示例一致)
+                    var hasImages = m.Role == ChatMsgRole.User && m.Images is { Count: > 0 };
+                    if (hasImages)
+                    {
+                        foreach (var img in m.Images!)
+                        {
+                            content.Add(new ImageContent
+                            {
+                                // SDK 预置 source.type=base64, 只需 media_type + data
+                                Source = new ImageSource
+                                {
+                                    MediaType = img.MimeType,
+                                    Data = img.Base64Data
+                                }
+                            });
+                        }
+                    }
+
+                    // Anthropic 拒绝空 text block: 有图片时文本为空则省略
+                    if (!string.IsNullOrEmpty(m.Content) || !hasImages)
+                    {
+                        content.Add(new TextContent { Text = m.Content });
+                    }
+
                     list.Add(new Message
                     {
                         Role = m.Role == ChatMsgRole.Assistant ? RoleType.Assistant : RoleType.User,
-                        Content = [new TextContent { Text = m.Content }]
+                        Content = content
                     });
                     break;
             }
