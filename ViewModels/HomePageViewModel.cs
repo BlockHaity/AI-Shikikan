@@ -14,8 +14,8 @@ namespace AIShikikan.Gui.ViewModels;
 
 public partial class HomePageViewModel : ViewModelBase
 {
-    /// <summary>热力图展示窗口(周数, 周一对齐, 结束于本周)。</summary>
-    private const int HeatmapWeeksCount = 26;
+    /// <summary>「全部」范围且无任何数据时热力图的默认展示周数。</summary>
+    private const int DefaultHeatmapWeeks = 26;
 
     public string WelcomeText { get; } = "欢迎使用 AI-Shikikan";
     public string DescriptionText { get; } = "一个强大的 Agent 管理与指挥工具";
@@ -23,7 +23,7 @@ public partial class HomePageViewModel : ViewModelBase
 
     public ThemeService ThemeService { get; }
 
-    /// <summary>折线图时间范围选项(索引对应 7/14/30/全部 天)。</summary>
+    /// <summary>主页全局时间范围选项(索引对应 7/14/30/全部 天), 趋势图与热力图共用。</summary>
     public string[] RangeOptions { get; } =
         [Strings.Home_Range7, Strings.Home_Range14, Strings.Home_Range30, Strings.Home_RangeAll];
 
@@ -53,8 +53,16 @@ public partial class HomePageViewModel : ViewModelBase
 
     public bool HasChartData => ChartDates.Length > 0;
 
-    /// <summary>热力图周列(每列为周一→周日 7 个格子)。</summary>
-    public IReadOnlyList<HeatmapWeekVm> HeatmapWeeks { get; private set; } = [];
+    /// <summary>热力图全部格子(行优先展开: 第 r 行 = 各周的第 r 天, 周一→周日), 由 HeatmapPanel 均分拉伸填满宽度。</summary>
+    public IReadOnlyList<HeatmapCellVm> HeatCells { get; private set; } = [];
+
+    /// <summary>热力图网格列数(周数), 随全局时间范围变化。</summary>
+    [ObservableProperty]
+    private int _heatmapColumns = 1;
+
+    /// <summary>热力图网格最小总宽(星期栏 + 各列按最小格宽): 窄视口时由 ScrollViewer 横向滚动。</summary>
+    [ObservableProperty]
+    private double _heatmapMinWidth;
 
     /// <summary>图例示例格(等级 0..4)。</summary>
     public IReadOnlyList<HeatmapLegendVm> HeatLegend { get; private set; } = [];
@@ -112,6 +120,7 @@ public partial class HomePageViewModel : ViewModelBase
     partial void OnSelectedRangeIndexChanged(int value)
     {
         RebuildChart();
+        RebuildHeatmap();
     }
 
     private void RefreshUsage()
@@ -127,17 +136,36 @@ public partial class HomePageViewModel : ViewModelBase
         RebuildHeatmap();
     }
 
+    /// <summary>主页全局时间范围起点(近7/14/30天; 「全部」取首个使用日, 无数据回退近 26 周)。</summary>
+    private DateTime RangeFrom(DateTime today)
+    {
+        return SelectedRangeIndex switch
+        {
+            0 => today.AddDays(-6),
+            1 => today.AddDays(-13),
+            2 => today.AddDays(-29),
+            _ => UsageSnapshot.DailyStats.Count > 0
+                ? UsageSnapshot.DailyStats.Min(d => d.Date)
+                : today.AddDays(-(DefaultHeatmapWeeks - 1) * 7)
+        };
+    }
+
     /// <summary>
-    /// 构建近 26 周活跃热力图: 以本周一收尾向前对齐, 无记录的天补零;
+    /// 按主页全局时间范围构建活跃热力图: 起始日向前对齐到周一, 结束于本周日;
+    /// 无记录/未来的天补零(未来为透明占位)。格子平铺, 由视图层网格均分拉伸填满卡片宽度。
     /// 活跃度按全天 token 总量以非零值的 33/66/85 分位数分为 0..4 五档。
     /// </summary>
     private void RebuildHeatmap()
     {
         var today = DateTime.Today;
 
-        // 本周一(周一为一周之首)
+        // 全局时间范围起点
+        var from = RangeFrom(today);
+
+        // 对齐到周一为一周之首; 结束于本周日(末周含未来日期透明占位)
+        var start = from.AddDays(-(((int)from.DayOfWeek + 6) % 7));
         var thisMonday = today.AddDays(-(((int)today.DayOfWeek + 6) % 7));
-        var start = thisMonday.AddDays(-(HeatmapWeeksCount - 1) * 7);
+        var cols = Math.Max(1, (int)Math.Ceiling(((thisMonday.AddDays(6)) - start).TotalDays / 7));
 
         // 窗口内每日聚合(全量历史分档, 窗口内取值)
         var statMap = new Dictionary<DateTime, DailyUsageStat>();
@@ -152,11 +180,11 @@ public partial class HomePageViewModel : ViewModelBase
             .OrderBy(v => v)
             .ToList();
 
-        var weeks = new List<HeatmapWeekVm>(HeatmapWeeksCount);
-        for (var w = 0; w < HeatmapWeeksCount; w++)
+        // 行优先展开(网格按行填充): 第 r 行 = 各周的第 r 天(周一→周日)
+        var cells = new List<HeatmapCellVm>(cols * 7);
+        for (var row = 0; row < 7; row++)
         {
-            var days = new List<HeatmapCellVm>(7);
-            for (var row = 0; row < 7; row++)
+            for (var w = 0; w < cols; w++)
             {
                 var date = start.AddDays(w * 7 + row);
                 var future = date > today;
@@ -168,18 +196,20 @@ public partial class HomePageViewModel : ViewModelBase
                 }
 
                 var level = LevelOf(total, allNonZero);
-                days.Add(new HeatmapCellVm(
+                cells.Add(new HeatmapCellVm(
                     date,
                     future,
                     level,
                     BuildCellTip(date, future, stat)));
             }
-
-            weeks.Add(new HeatmapWeekVm(days));
         }
 
-        HeatmapWeeks = weeks;
-        OnPropertyChanged(nameof(HeatmapWeeks));
+        HeatCells = cells;
+        OnPropertyChanged(nameof(HeatCells));
+
+        HeatmapColumns = cols;
+        // 最小总宽与 HeatmapGridPanel 布局参数一致: 栏宽 18 + 间距 3 + 每列(最小格 8 + 间距 3)
+        HeatmapMinWidth = 18 + 3 + cols * (8 + 3) - 3;
 
         HeatLegend = Enumerable.Range(0, 5).Select(i => new HeatmapLegendVm(HeatmapBrush.ForLevel(i))).ToList();
         OnPropertyChanged(nameof(HeatLegend));
@@ -286,14 +316,6 @@ public sealed class HeatmapCellVm
         Tip = tip;
         Brush = isFuture ? Brushes.Transparent : HeatmapBrush.ForLevel(level);
     }
-}
-
-/// <summary>热力图一列(一周, 周一→周日)。</summary>
-public sealed class HeatmapWeekVm
-{
-    public IReadOnlyList<HeatmapCellVm> Days { get; }
-
-    public HeatmapWeekVm(IReadOnlyList<HeatmapCellVm> days) => Days = days;
 }
 
 /// <summary>图例示例格。</summary>

@@ -48,6 +48,7 @@ public partial class HomePageView : UserControl
             _vm.PropertyChanged += OnViewModelPropertyChanged;
             _vm.ThemeService.ThemeChanged += OnThemeChanged;
             RenderChart();
+            RebuildHeatmapChildren();
         }
     }
 
@@ -60,6 +61,58 @@ public partial class HomePageView : UserControl
         {
             RenderChart();
         }
+        else if (e.PropertyName is nameof(HomePageViewModel.HeatCells))
+        {
+            RebuildHeatmapChildren();
+        }
+    }
+
+    /// <summary>
+    /// 重建热力图面板子元素: 前 7 个为星期纵栏标签(与 7 行对齐), 其后为按行优先排列的格子。
+    /// 格子尺寸与位置由 HeatmapGridPanel 按可用宽度均分拉伸。
+    /// </summary>
+    private void RebuildHeatmapChildren()
+    {
+        if (_vm is null) return;
+
+        HeatGrid.Children.Clear();
+
+        foreach (var label in _vm.HeatGutter)
+        {
+            HeatGrid.Children.Add(new TextBlock
+            {
+                Text = label,
+                FontSize = 10,
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                Foreground = ThemeServiceBrush("OnSurfaceVariant") ?? Brushes.Gray,
+                Opacity = 0.7
+            });
+        }
+
+        foreach (var cell in _vm.HeatCells)
+        {
+            var border = new Border
+            {
+                CornerRadius = new CornerRadius(3),
+                Background = cell.Brush
+            };
+            ToolTip.SetTip(border, cell.Tip);
+            HeatGrid.Children.Add(border);
+        }
+    }
+
+    private static IBrush? ThemeServiceBrush(string key)
+    {
+        var app = Application.Current;
+        if (app is not null &&
+            app.TryGetResource(key, app.RequestedThemeVariant, out var value) &&
+            value is IBrush brush)
+        {
+            return brush;
+        }
+
+        return null;
     }
 
     /// <summary>从应用主题资源解析颜色, 回退 Material 默认值。</summary>
