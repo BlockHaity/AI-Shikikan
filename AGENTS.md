@@ -59,7 +59,7 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 ## 关键机制
 
 - **引擎循环**：`AgentEngine` 将人格 + Roster 提示词发给 LLM，执行工具调用直至回合结束，事件流 `AgentEngineEvent` 驱动 UI。
-- **子 Agent 工具**：均同步执行。`run_<agent>`（单个）、`assign_task`（分派返回 assignmentId）、`run_subagents`（并发多任务，`Task.WhenAll` 后汇总）。无 `mode` 参数。Agent 可配置 `plan_args`（Plan 模式附加 CLI 参数）；主对话处于 Plan 模式且该子代理的会话条目开启 `UseInPlanMode` 时，启动进程会追加 plan_args。
+- **子 Agent 工具**：均同步执行。`run_<agent>`（单个）、`assign_task`（分派返回 assignmentId）、`run_subagents`（并发多任务，`Task.WhenAll` 后汇总）。无 `mode` 参数。Agent 可配置 `plan_args`（Plan 模式附加 CLI 参数）；主对话处于 Plan 模式且该子代理的会话条目开启 `UseInPlanMode` 时，启动进程会追加 plan_args。Plan 模式下 `CommanderRuntime.SetPlanMode` 三层过滤未授权子代理：仅注册授权 Agent 的 `run_<agent>`（无授权者连 `assign_task`/`run_subagents` 一并移除）、Roster 注入仅列出授权条目、`AgentExecutor` 执行兜底拒绝。
 - **Compact Subagent**：会话级子代理配置（AgentPanel 每条目独立开关，存于 roster.json `CompactEnabled`），开启后该子代理超 2000 字符的输出先经 LLM 压缩为纪要再返回；无全局开关。
 - **右侧栏与工具可见性**：聊天页右侧栏关闭时，`CommanderRuntime.SetSubagentToolsVisible(false)` 从 ToolRegistry 移除 `run_<agent>` / `assign_task` / `run_subagents` 并清空 Roster 注入（下一回合生效），重新打开时重建并恢复 Roster。
 - **MCP 服务器**：配置于 `mcp-servers.toml`，支持 stdio（command/args/env）、`http`（Streamable HTTP）与 `sse`（HTTP+Server-Sent Events）三种传输（http/sse 用 url，`McpHttpClient`/`McpStdioClient` 共享 `McpClientBase` JSON-RPC 内核）。`CommanderRuntime.Boot` 后台连接启用的服务器并把其工具桥接为 `mcp_<serverId>_<toolName>` 注册进 ToolRegistry（MCP 工具默认需批准）。设置页可增删/开关/重连，调用 `Runtime.RefreshMcpToolsAsync()`。协议版本 "2025-06-18"。
