@@ -11,8 +11,28 @@ public class Persona
     public string Description { get; set; } = string.Empty;
     public string SystemPrompt { get; set; } = string.Empty;
 
+    /// <summary>Plan 模式专属提示词(追加在通用 SystemPrompt 之后, 不影响通用部分)。</summary>
+    public string PlanPrompt { get; set; } = string.Empty;
+
+    /// <summary>Build 模式专属提示词(追加在通用 SystemPrompt 之后, 不影响通用部分)。</summary>
+    public string BuildPrompt { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string Display => string.IsNullOrEmpty(Name) ? Id : Name;
+
+    /// <summary>按当前模式解析生效提示词: 通用正文 + 模式专属段(缺省回退 frontmatter 的 planPrompt/buildPrompt 键)。</summary>
+    public string ResolveForMode(bool planMode)
+    {
+        var mode = planMode ? PlanPrompt : BuildPrompt;
+        if (string.IsNullOrWhiteSpace(mode))
+        {
+            return SystemPrompt;
+        }
+
+        return string.IsNullOrWhiteSpace(SystemPrompt)
+            ? mode.Trim()
+            : $"{SystemPrompt.Trim()}\n\n{(planMode ? "# Plan 模式专属指令" : "# Build 模式专属指令")}\n{mode.Trim()}";
+    }
 }
 
 public enum PersonaKind
@@ -84,6 +104,16 @@ public static class PersonaService
             return null;
         }
 
+        return FromFrontmatter(id, frontmatter, body);
+    }
+
+    /// <summary>由 frontmatter 与原始正文构建 Persona(加载 .md / 导入 .md 共用);
+    /// 正文中的 persona:plan/build 注释段解析为模式专属提示词, 不污染通用正文。</summary>
+    private static Persona? FromFrontmatter(
+        string id, Dictionary<string, string> frontmatter, string rawBody)
+    {
+        var (general, planBody, buildBody) = YamlFrontmatterParser.ExtractModeSections(rawBody);
+
         var persona = new Persona
         {
             Id = id,
@@ -91,9 +121,16 @@ public static class PersonaService
             Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
                 ? kind : PersonaKind.Expert,
             Description = frontmatter.GetValueOrDefault("description", string.Empty),
-            SystemPrompt = string.IsNullOrWhiteSpace(body)
+            SystemPrompt = string.IsNullOrWhiteSpace(general)
                 ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
-                : body.Trim()
+                : general,
+            // 模式段优先取正文注释段, 无段时回退 frontmatter 键(两种写法都支持)
+            PlanPrompt = !string.IsNullOrWhiteSpace(planBody)
+                ? planBody
+                : frontmatter.GetValueOrDefault("planPrompt", string.Empty),
+            BuildPrompt = !string.IsNullOrWhiteSpace(buildBody)
+                ? buildBody
+                : frontmatter.GetValueOrDefault("buildPrompt", string.Empty)
         };
 
         return string.IsNullOrWhiteSpace(persona.Name) ? null : persona;
@@ -134,17 +171,8 @@ public static class PersonaService
                     return (null, "缺少 id 字段, 无法导入。");
                 }
 
-                persona = new Persona
-                {
-                    Id = id,
-                    Name = frontmatter.GetValueOrDefault("name", id),
-                    Kind = Enum.TryParse(frontmatter.GetValueOrDefault("kind"), true, out PersonaKind kind)
-                        ? kind : PersonaKind.Expert,
-                    Description = frontmatter.GetValueOrDefault("description", string.Empty),
-                    SystemPrompt = string.IsNullOrWhiteSpace(body)
-                        ? frontmatter.GetValueOrDefault("systemPrompt", string.Empty)
-                        : body.Trim()
-                };
+                persona = FromFrontmatter(id, frontmatter, body)
+                          ?? new Persona(); // name 为空时由下方校验给出提示
             }
             else if (ext == ".json")
             {
