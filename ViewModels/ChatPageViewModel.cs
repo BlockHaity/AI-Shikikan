@@ -512,6 +512,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private void DeleteSession(string sessionId)
     {
         _chatService.DeleteSession(sessionId);
+        AppShell.Instance.NotifyDataChanged(); // 主页会话分布移除该会话
         Sessions = _chatService.Sessions;
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;

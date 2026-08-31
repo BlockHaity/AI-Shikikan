@@ -322,6 +322,7 @@ public partial class SessionPanelViewModel : ViewModelBase
     private void DeleteSession(SessionItemViewModel item)
     {
         _chatService.DeleteSession(item.Session.Id);
+        AppShell.Instance.NotifyDataChanged(); // 主页会话分布移除该会话
     }
 
     [RelayCommand]
