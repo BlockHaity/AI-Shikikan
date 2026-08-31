@@ -495,10 +495,9 @@ public partial class ChatPageViewModel : ViewModelBase
         var content = InputText;
         InputText = string.Empty;
 
-        var isFirstMessage = CurrentSession!.Messages.Count == 0;
+        var isFirstMessage = CurrentSession!.MessageCount == 0;
+        // AddMessage 同步触发 MessageAdded 处理器完成列表重建, 无需在此重复 RefreshMessages
         _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, content);
-        RefreshMessages();
-        Sessions = _chatService.Sessions;
 
         if (isFirstMessage)
         {

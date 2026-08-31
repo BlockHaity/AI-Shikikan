@@ -42,7 +42,7 @@ public partial class SessionItemViewModel : ViewModelBase
     {
         Session = session;
         _title = session.DisplayTitle;
-        _messageCount = session.Messages.Count;
+        _messageCount = session.MessageCount;
         _timeLabel = FormatRelativeTime(session.UpdatedAt);
         _editTitle = _title;
     }
@@ -51,7 +51,7 @@ public partial class SessionItemViewModel : ViewModelBase
     public void Update(ChatSession session)
     {
         Title = session.DisplayTitle;
-        MessageCount = session.Messages.Count;
+        MessageCount = session.MessageCount;
         TimeLabel = FormatRelativeTime(session.UpdatedAt);
         if (!IsEditing)
         {

@@ -81,9 +81,35 @@
                 </StackPanel>
             </Border>
 
-            <ScrollViewer x:Name="MessageScroller" Grid.Row="1">
-                <ItemsControl ItemsSource="{Binding Messages}" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="16,8">
-                    <ItemsControl.ItemTemplate>
+            <!-- 消息列表: ListBox(自带受限 ScrollViewer) + VirtualizingStackPanel 真虚拟化(懒加载),
+                 仅可见消息实例化重控件; ListBox 是 ItemsControl 子类, 模板内 $parent[ItemsControl] 绑定仍生效 -->
+            <ListBox x:Name="MessageList" Grid.Row="1"
+                     ItemsSource="{Binding Messages}"
+                     Background="Transparent"
+                     BorderThickness="0"
+                     Padding="16,8"
+                     HorizontalAlignment="Stretch"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <VirtualizingStackPanel Orientation="Vertical"/>
+                    </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                    <!-- 去掉容器默认内边距与选中/悬停高亮, 保持与原 ItemsControl 一致的布局 -->
+                    <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="0"/>
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                        <Setter Property="Background" Value="Transparent"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+                        <Setter Property="Background" Value="Transparent"/>
+                    </Style>
+                    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                        <Setter Property="Background" Value="Transparent"/>
+                    </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
                         <DataTemplate x:DataType="vm:ChatItemViewModel">
                             <Panel>
                                 <!-- 用户消息: 满宽 + 浅色背景, 右对齐正文; 附带 fork 编辑/删除操作 -->
@@ -134,9 +160,9 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- AI 消息: 无气泡, 分段堆叠 (思考/工具卡片 + 正文 markdown) -->
+                                <!-- AI 消息: 无气泡, 分段堆叠 (思考/工具卡片 + 正文 markdown); VisibleSegments 访问即物化 -->
                                 <StackPanel IsVisible="{Binding !IsUser}" Spacing="6" Margin="0,4">
-                                    <ItemsControl ItemsSource="{Binding Segments}">
+                                    <ItemsControl ItemsSource="{Binding VisibleSegments}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate x:DataType="vm:SegmentItemViewModel">
                                                 <Panel>
@@ -458,9 +484,8 @@
                                 </StackPanel>
                             </Panel>
                         </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
+                </ListBox.ItemTemplate>
+            </ListBox>
 
             <!-- 工具栏: 思考深度 / 工作目录 / Plan-Build 模式 -->
             <Border Grid.Row="2" Padding="12,4" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1"
