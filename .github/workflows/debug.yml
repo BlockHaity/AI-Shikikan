@@ -1,3 +1,4 @@
+# Debug 构建工作流 (仅手动触发: Actions 页面 Run workflow)
 name: Debug Build
 
 on:
