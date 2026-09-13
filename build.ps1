@@ -1,17 +1,17 @@
 param(
     [Parameter(Position=0)]
-    [ValidateSet("linux", "macos", "windows", "all", "clean")]
+    [ValidateSet("all", "aot", "selfcontained", "dotnet", "clean", "help")]
     [string]$Command = "all",
 
     [string]$Configuration = "Release",
-    [string]$Version = "",
-
-    [ValidateSet("x64", "arm64", "both")]
-    [string]$Arch = "both",
-
-    [ValidateSet("auto", "always", "off")]
-    [string]$AotMode = "auto"
+    [string]$Version = ""
 )
+
+# 仅构建「当前平台」的三种变体 (与 build.sh 对齐):
+#   aot           - Native AOT 编译, 无需 .NET 运行时, 启动最快
+#   selfcontained - 自带 .NET 运行时的单文件裁剪发布, 开箱即用
+#   dotnet        - 框架依赖发布, 需要目标机已安装 .NET 运行时
+# 不再做跨平台/跨架构构建 (交叉编译由 CI 各 runner 分别完成)。
 
 $ErrorActionPreference = "Stop"
 
@@ -34,120 +34,82 @@ $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitect
     [System.Runtime.InteropServices.Architecture]::Arm64) { "arm64" } else { "x64" }
 $HostRid = "$hostOs-$hostArch"
 
-function Get-PlatformBase([string]$platform) {
-    switch ($platform) {
-        "linux" { return "linux" }
-        "macos" { return "osx" }
-        "windows" { return "win" }
-        default { return "" }
-    }
-}
-
-function Get-RidsFor([string]$platform) {
-    $base = Get-PlatformBase $platform
-    if (-not $base) { return @() }
-    if ($Arch -eq "x64") { return @("$base-x64") }
-    if ($Arch -eq "arm64") { return @("$base-arm64") }
-    return @("$base-x64", "$base-arm64")
-}
-
-function Test-WantAot([string]$rid) {
-    switch ($AotMode) {
-        "off" { return $false }
-        "always" { return $true }
-        default { return $rid -eq $HostRid }
-    }
-}
-
 function Write-Info($msg)  { Write-Host "[INFO] $msg" -ForegroundColor Cyan }
 function Write-Ok($msg)    { Write-Host "[OK] $msg" -ForegroundColor Green }
 function Write-Warn($msg)  { Write-Host "[WARN] $msg" -ForegroundColor Yellow }
 function Write-Err($msg)   { Write-Host "[ERROR] $msg" -ForegroundColor Red }
 
-function Build-Gui {
-    param([string]$Rid, [string]$OutDir)
+function Build-Variant {
+    param([string]$Variant)
 
-    if (Test-WantAot $Rid) {
-        Write-Info "Building GUI for $Rid with Native AOT..."
-        dotnet publish $GuiProject `
-            -c $Configuration `
-            -r $Rid `
-            -o $OutDir `
-            --self-contained true `
-            -p:PublishAot=true `
-            -p:StripSymbols=true `
-            -p:PublishSingleFile=true `
-            -p:Version=$Version
-    }
-    else {
-        Write-Warn "AOT_MODE=$AotMode: host=$HostRid, target=$Rid; cannot cross AOT, falling back to single-file/trimmed"
-        Write-Info "Building GUI for $Rid (single-file/trimmed)..."
-        dotnet publish $GuiProject `
-            -c $Configuration `
-            -r $Rid `
-            -o $OutDir `
-            --self-contained true `
-            -p:PublishAot=false `
-            -p:PublishSingleFile=true `
-            -p:PublishTrimmed=true `
-            -p:TrimMode=partial `
-            -p:Version=$Version `
-            -p:IncludeNativeLibrariesForSelfExtract=true
+    $OutDir = Join-Path $OutputDir $Variant
+    Write-Info "=== Building $Variant for $HostRid ==="
+
+    switch ($Variant) {
+        "aot" {
+            dotnet publish $GuiProject `
+                -c $Configuration -r $HostRid -o $OutDir `
+                --self-contained true `
+                -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true `
+                -p:Version=$Version
+        }
+        "selfcontained" {
+            dotnet publish $GuiProject `
+                -c $Configuration -r $HostRid -o $OutDir `
+                --self-contained true `
+                -p:PublishAot=false -p:PublishSingleFile=true `
+                -p:PublishTrimmed=true -p:TrimMode=partial `
+                -p:IncludeNativeLibrariesForSelfExtract=true `
+                -p:Version=$Version
+        }
+        "dotnet" {
+            dotnet publish $GuiProject `
+                -c $Configuration -r $HostRid -o $OutDir `
+                --self-contained false `
+                -p:PublishAot=false `
+                -p:Version=$Version
+        }
+        default {
+            Write-Err "Unknown variant: $Variant"
+            exit 1
+        }
     }
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Err "Failed to build GUI for $Rid"
+        Write-Err "Failed to build $Variant for $HostRid"
         exit 1
     }
-
-    Write-Ok "GUI built: $OutDir"
+    Write-Ok "$Variant built: $OutDir"
 }
 
-function Pack-Rid {
-    param([string]$Rid)
+function Pack-Variant {
+    param([string]$Variant)
 
-    $dir = Join-Path $OutputDir $Rid
+    $dir = Join-Path $OutputDir $Variant
     if (-not (Test-Path $dir)) { return }
 
-    # 仅非 Windows 主机需要修正可执行位（Windows 上没有 chmod）
-    if (-not $IsWindows) {
-        $bin = Join-Path $dir "AIShikikan.Gui"
-        if (Test-Path $bin) {
-            chmod +x $bin 2>$null | Out-Null
-        }
-    }
-
-    # 压缩格式由目标 RID 决定（与 build.sh 一致）：win-* 用 zip，其余用 tar.gz
-    if ($Rid -like "win-*") {
-        $archive = Join-Path $OutputDir "AIShikikan-$Version-$Rid.zip"
-        if (Get-Command Compress-Archive -ErrorAction SilentlyContinue) {
-            Compress-Archive -Path (Join-Path $dir '*') -DestinationPath $archive -Force
-        }
-        elseif (Get-Command zip -ErrorAction SilentlyContinue) {
-            Push-Location $OutputDir
-            try { zip -r "AIShikikan-$Version-$Rid.zip" "$Rid/" -x '*.pdb' -x '*.dbg' > $null }
-            finally { Pop-Location }
-        }
-        else {
-            Write-Warn "No zip tool found, skipping compression for $Rid"
-            return
-        }
+    if ($IsWindows) {
+        $archive = Join-Path $OutputDir "AIShikikan-$Version-$HostRid-$Variant.zip"
+        Compress-Archive -Path (Join-Path $dir '*') -DestinationPath $archive -Force
     }
     elseif (Get-Command tar -ErrorAction SilentlyContinue) {
+        $bin = Join-Path $dir "AIShikikan.Gui"
+        if (Test-Path $bin) { chmod +x $bin 2>$null | Out-Null }
         Push-Location $OutputDir
         try {
-            tar czf "AIShikikan-$Version-$Rid.tar.gz" -C "$Rid" --exclude='*.pdb' --exclude='*.dbg' .
+            tar czf "AIShikikan-$Version-$HostRid-$Variant.tar.gz" `
+                --exclude='*.pdb' --exclude='*.dbg' -C "$Variant" .
         }
         finally {
             Pop-Location
         }
     }
     else {
-        Write-Warn "No tar found, skipping compression for $Rid"
+        Write-Warn "No tar found, skipping compression for $Variant"
         return
     }
 
-    Write-Ok "Packed $Rid"
+    Write-Ok "Packed $Variant"
 }
 
 function Clean-Artifacts {
@@ -159,46 +121,68 @@ function Clean-Artifacts {
     Write-Ok "Cleaned"
 }
 
+function Show-Usage {
+    Write-Host @"
+Usage: .\build.ps1 [command]
+
+Builds the current platform ($HostRid) only, in three variants:
+  aot            Native AOT (no runtime needed, fastest startup)
+  selfcontained  Bundled .NET runtime, single-file (trimmed)
+  dotnet         Framework-dependent (requires .NET runtime installed)
+
+Commands:
+  (none)         Build all three variants and package them
+  aot            Build only the AOT variant
+  selfcontained  Build only the self-contained variant
+  dotnet         Build only the framework-dependent variant
+  clean          Clean build artifacts
+
+Options:
+  -Configuration Release   Build configuration (default: Release)
+  -Version 0.9.0           Version string (default: from VERSION file)
+
+Examples:
+  .\build.ps1
+  .\build.ps1 aot
+  .\build.ps1 selfcontained -Configuration Debug
+"@
+}
+
 Write-Host ""
-Write-Host "  ========================================" -ForegroundColor White
-Write-Host "  |     AI-Shikikan Build System      |" -ForegroundColor White
-Write-Host "  ========================================" -ForegroundColor White
+Write-Host "  AI-Shikikan Build System"
 Write-Host ""
 Write-Info "Configuration: $Configuration"
 Write-Info "Version:       $Version"
-Write-Info "ARCH:          $Arch"
-Write-Info "AOT_MODE:      $AotMode (host RID: $HostRid)"
+Write-Info "Host RID:      $HostRid"
 Write-Info "Output:        $OutputDir"
 Write-Host ""
 
-switch ($Command) {
-    { $_ -in @("linux", "macos", "windows") } {
-        foreach ($rid in (Get-RidsFor $_)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
-        foreach ($rid in (Get-RidsFor $_)) { Pack-Rid $rid }
-    }
-    "all" {
-        foreach ($platform in @("linux", "macos", "windows")) {
-            foreach ($rid in (Get-RidsFor $platform)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
-        }
-        foreach ($platform in @("linux", "macos", "windows")) {
-            foreach ($rid in (Get-RidsFor $platform)) { Pack-Rid $rid }
-        }
-    }
-    "clean" {
-        Clean-Artifacts
-    }
+$variants = switch ($Command) {
+    "all"           { @("aot", "selfcontained", "dotnet") }
+    "aot"           { @("aot") }
+    "selfcontained" { @("selfcontained") }
+    "dotnet"        { @("dotnet") }
+    "clean"         { Clean-Artifacts; exit 0 }
+    "help"          { Show-Usage; exit 0 }
+    default         { Write-Err "Unknown command: $Command"; Show-Usage; exit 1 }
 }
+
+foreach ($v in $variants) { Build-Variant $v }
+foreach ($v in $variants) { Pack-Variant $v }
 
 Write-Host ""
 Write-Ok "Build complete!"
 if (Test-Path $OutputDir) {
     $archives = @(Get-ChildItem -Path (Join-Path $OutputDir '*') -File |
-        Where-Object { $_.Name -like '*.zip' -or $_.Name -like '*.tar.gz' -or $_.Name -like '*.tar' })
+        Where-Object { $_.Name -like '*.zip' -or $_.Name -like '*.tar.gz' })
     if ($archives.Count -gt 0) {
         Write-Info "Artifacts:"
         foreach ($a in $archives) {
             $size = [math]::Round($a.Length / 1MB, 2)
             Write-Host "  $($a.Name) (${size} MB)"
         }
+    }
+    else {
+        Write-Warn "(no archives found)"
     }
 }

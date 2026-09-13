@@ -32,7 +32,7 @@ jobs:
       run_build: ${{ steps.decide.outputs.run_build }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read version from VERSION file
         id: read
@@ -90,15 +90,15 @@ jobs:
             ext: tar.gz
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -115,7 +115,7 @@ jobs:
         shell: bash
         run: |
           dotnet publish AIShikikan.Gui.csproj \
-            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained false \
             -p:PublishAot=false -o stage/dotnet
 
       - name: Publish self-contained (with .NET runtime)
@@ -159,9 +159,24 @@ jobs:
             Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.zip
           }
 
-      - name: Upload to build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload dotnet artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}
-          path: dist/*
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.*
+          if-no-files-found: error
+
+      - name: Upload selfcontained artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.*
+          if-no-files-found: error
+
+      - name: Upload AOT artifact
+        if: inputs.aot
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-AOT
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.*
           if-no-files-found: error
