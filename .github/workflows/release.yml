@@ -33,7 +33,7 @@ jobs:
       run_build: ${{ steps.decide.outputs.run_build }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read version from VERSION file
         id: read
@@ -98,15 +98,15 @@ jobs:
             ext: tar.gz
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
@@ -118,6 +118,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang zlib1g-dev
+
+      - name: Install Linux packaging tools
+        if: startsWith(matrix.rid, 'linux')
+        run: |
+          sudo apt-get install -y rpm zstd imagemagick
 
       - name: Publish AOT (Native AOT)
         shell: bash
@@ -131,7 +136,7 @@ jobs:
         shell: bash
         run: |
           dotnet publish AIShikikan.Gui.csproj \
-            -c Release -r ${{ matrix.rid }} \
+            -c Release -r ${{ matrix.rid }} --self-contained false \
             -p:PublishAot=false \
             -p:Version=${{ needs.check.outputs.version }} -o stage/dotnet
 
@@ -144,6 +149,138 @@ jobs:
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
+
+      - name: Build Linux packages (deb / rpm / pacman)
+        if: startsWith(matrix.rid, 'linux')
+        shell: bash
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+          RID: ${{ matrix.rid }}
+          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
+          MAINTAINER: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
+        run: |
+          set -euo pipefail
+          case "$RID" in
+            linux-x64)   DEB_ARCH=amd64;  PKG_ARCH=x86_64 ;;
+            linux-arm64) DEB_ARCH=arm64;  PKG_ARCH=aarch64 ;;
+            *) echo "unexpected rid $RID"; exit 1 ;;
+          esac
+          PKG=ai-shikikan
+          # deb/rpm 的 Version 字段不允许 '-'
+          PVER="${VERSION//-/_}"
+          DESC="AI-Shikikan is an Agent commander: it orchestrates terminal agents such as Claude Code, OpenCode, Codex CLI and Gemini CLI to complete complex tasks."
+          mkdir -p dist
+          chmod +x stage/selfcontained/AIShikikan.Gui
+          convert Assets/logo.jpg -resize 256x256 "$RUNNER_TEMP/ai-shikikan.png"
+
+          # ---------- 公共的 desktop / 安装布局 (基于 selfcontained 单文件) ----------
+          cat > "$RUNNER_TEMP/$PKG.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=AI-Shikikan
+          GenericName=AI Agent Commander
+          Comment=Commander for terminal AI agents
+          Exec=$PKG
+          Icon=$PKG
+          Terminal=false
+          Categories=Development;Utility;
+          StartupWMClass=AIShikikan.Gui
+          EOF
+
+          # ---------- Debian (.deb) ----------
+          ROOT="$PWD"
+          DEBROOT="$RUNNER_TEMP/debroot"
+          install -Dm755 stage/selfcontained/AIShikikan.Gui "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
+          mkdir -p "$DEBROOT/usr/bin"
+          ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
+          install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
+          install -Dm644 "$RUNNER_TEMP/ai-shikikan.png" "$DEBROOT/usr/share/icons/hicolor/256x256/apps/$PKG.png"
+          install -Dm644 LICENSE "$DEBROOT/usr/share/doc/$PKG/copyright"
+          SIZE=$(du -sk "$DEBROOT" | cut -f1)
+          mkdir -p "$DEBROOT/DEBIAN"
+          cat > "$DEBROOT/DEBIAN/control" <<EOF
+          Package: $PKG
+          Version: $PVER
+          Architecture: $DEB_ARCH
+          Maintainer: $MAINTAINER
+          Installed-Size: $SIZE
+          Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libicu74 | libicu72 | libicu67 | libicu66
+          Section: utils
+          Priority: optional
+          Homepage: $HOMEPAGE
+          Description: AI Agent commander desktop app
+           $DESC
+          EOF
+          dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${PVER}_${DEB_ARCH}.deb"
+
+          # ---------- Red Hat (.rpm) ----------
+          mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
+          cat > "$HOME/rpmbuild/SPECS/$PKG.spec" <<EOF
+          %global debug_package %{nil}
+          %undefine _missing_build_ids_terminate_build
+
+          Name:     $PKG
+          Version:  $PVER
+          Release:  1
+          Summary:  AI Agent commander desktop app
+          License:  MIT
+          URL:      $HOMEPAGE
+          AutoReqProv: no
+
+          %description
+          $DESC
+
+          %install
+          rm -rf %{buildroot}
+          install -Dm755 $ROOT/stage/selfcontained/AIShikikan.Gui %{buildroot}%{_prefix}/lib/$PKG/AIShikikan.Gui
+          mkdir -p %{buildroot}%{_bindir}
+          ln -sf %{_prefix}/lib/$PKG/AIShikikan.Gui %{buildroot}%{_bindir}/$PKG
+          install -Dm644 $RUNNER_TEMP/$PKG.desktop %{buildroot}%{_datadir}/applications/$PKG.desktop
+          install -Dm644 $RUNNER_TEMP/ai-shikikan.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/$PKG.png
+          install -Dm644 $ROOT/LICENSE %{buildroot}%{_docdir}/$PKG/LICENSE
+
+          %files
+          %{_prefix}/lib/$PKG
+          %{_bindir}/$PKG
+          %{_datadir}/applications/$PKG.desktop
+          %{_datadir}/icons/hicolor/256x256/apps/$PKG.png
+          %{_docdir}/$PKG
+          EOF
+          rpmbuild -bb --target "$PKG_ARCH" "$HOME/rpmbuild/SPECS/$PKG.spec"
+          find "$HOME/rpmbuild/RPMS" -name "*.rpm" -exec cp -f {} dist/ \;
+
+          # ---------- Arch Linux (.pkg.tar.zst) ----------
+          PKGROOT="$RUNNER_TEMP/pkgroot"
+          install -Dm755 stage/selfcontained/AIShikikan.Gui "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
+          mkdir -p "$PKGROOT/usr/bin"
+          ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
+          install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
+          install -Dm644 "$RUNNER_TEMP/ai-shikikan.png" "$PKGROOT/usr/share/icons/hicolor/256x256/apps/$PKG.png"
+          install -Dm644 LICENSE "$PKGROOT/usr/share/licenses/$PKG/LICENSE"
+          PKGSIZE=$(du -sb "$PKGROOT" | cut -f1)
+          cat > "$PKGROOT/.PKGINFO" <<EOF
+          # Generated by release.yml
+          pkgname = $PKG
+          pkgver = $PVER-1
+          pkgdesc = AI Agent commander desktop app
+          url = $HOMEPAGE
+          builddate = $(date +%s)
+          packager = GitHub Actions
+          size = $PKGSIZE
+          arch = $PKG_ARCH
+          license = MIT
+          depend = libx11
+          depend = libxcursor
+          depend = libxrandr
+          depend = libxrender
+          depend = mesa
+          depend = glib2
+          depend = icu
+          EOF
+          tar --zstd -cf "dist/${PKG}-${PVER}-1-${PKG_ARCH}.pkg.tar.zst" \
+            -C "$PKGROOT" .PKGINFO usr
+
+          ls -lh dist/
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
@@ -164,11 +301,36 @@ jobs:
           Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.zip
           Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.zip
 
-      - name: Upload to build artifacts
-        uses: actions/upload-artifact@v4
+      - name: Upload AOT artifact
+        uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}
-          path: dist/*
+          name: ${{ matrix.rid }}-AOT
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.*
+          if-no-files-found: error
+
+      - name: Upload dotnet artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-dotnet
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.*
+          if-no-files-found: error
+
+      - name: Upload selfcontained artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-selfcontained
+          path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.*
+          if-no-files-found: error
+
+      - name: Upload Linux packages (deb/rpm/pacman)
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-packages
+          path: |
+            dist/*.deb
+            dist/*.rpm
+            dist/*.pkg.tar.zst
           if-no-files-found: error
 
   release:
@@ -180,10 +342,10 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: artifacts
           merge-multiple: false
@@ -202,7 +364,7 @@ jobs:
           printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n' >> release_body.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           name: v${{ needs.check.outputs.version }}
