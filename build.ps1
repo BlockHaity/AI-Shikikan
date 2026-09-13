@@ -15,6 +15,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 没有 $IsWindows/$IsLinux/$IsMacOS 自动变量；5.1 仅存在于 Windows
+if ($null -eq (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue)) {
+    $IsWindows = $true; $IsLinux = $false; $IsMacOS = $false
+}
+
 $ProjectDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (Get-Content -Raw -ErrorAction SilentlyContinue "$ProjectDir/VERSION")
@@ -104,11 +109,29 @@ function Pack-Rid {
     $dir = Join-Path $OutputDir $Rid
     if (-not (Test-Path $dir)) { return }
 
-    chmod +x (Join-Path $dir "AIShikikan.Gui") 2>$null | Out-Null
+    # 仅非 Windows 主机需要修正可执行位（Windows 上没有 chmod）
+    if (-not $IsWindows) {
+        $bin = Join-Path $dir "AIShikikan.Gui"
+        if (Test-Path $bin) {
+            chmod +x $bin 2>$null | Out-Null
+        }
+    }
 
-    if ($IsWindows) {
+    # 压缩格式由目标 RID 决定（与 build.sh 一致）：win-* 用 zip，其余用 tar.gz
+    if ($Rid -like "win-*") {
         $archive = Join-Path $OutputDir "AIShikikan-$Version-$Rid.zip"
-        Compress-Archive -Path "$dir/*" -DestinationPath $archive -Force
+        if (Get-Command Compress-Archive -ErrorAction SilentlyContinue) {
+            Compress-Archive -Path (Join-Path $dir '*') -DestinationPath $archive -Force
+        }
+        elseif (Get-Command zip -ErrorAction SilentlyContinue) {
+            Push-Location $OutputDir
+            try { zip -r "AIShikikan-$Version-$Rid.zip" "$Rid/" -x '*.pdb' -x '*.dbg' > $null }
+            finally { Pop-Location }
+        }
+        else {
+            Write-Warn "No zip tool found, skipping compression for $Rid"
+            return
+        }
     }
     elseif (Get-Command tar -ErrorAction SilentlyContinue) {
         Push-Location $OutputDir
@@ -150,15 +173,15 @@ Write-Host ""
 
 switch ($Command) {
     { $_ -in @("linux", "macos", "windows") } {
-        foreach ($rid in (Get-Rids $_)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
-        foreach ($rid in (Get-Rids $_)) { Pack-Rid $rid }
+        foreach ($rid in (Get-RidsFor $_)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
+        foreach ($rid in (Get-RidsFor $_)) { Pack-Rid $rid }
     }
     "all" {
         foreach ($platform in @("linux", "macos", "windows")) {
-            foreach ($rid in (Get-Rids $platform)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
+            foreach ($rid in (Get-RidsFor $platform)) { Build-Gui $rid (Join-Path $OutputDir $rid) }
         }
         foreach ($platform in @("linux", "macos", "windows")) {
-            foreach ($rid in (Get-Rids $platform)) { Pack-Rid $rid }
+            foreach ($rid in (Get-RidsFor $platform)) { Pack-Rid $rid }
         }
     }
     "clean" {
@@ -169,8 +192,9 @@ switch ($Command) {
 Write-Host ""
 Write-Ok "Build complete!"
 if (Test-Path $OutputDir) {
-    $archives = Get-ChildItem -Path $OutputDir -MaxDepth 1 -Include "*.zip","*.tar.gz","*.tar" -File
-    if ($archives) {
+    $archives = @(Get-ChildItem -Path (Join-Path $OutputDir '*') -File |
+        Where-Object { $_.Name -like '*.zip' -or $_.Name -like '*.tar.gz' -or $_.Name -like '*.tar' })
+    if ($archives.Count -gt 0) {
         Write-Info "Artifacts:"
         foreach ($a in $archives) {
             $size = [math]::Round($a.Length / 1MB, 2)

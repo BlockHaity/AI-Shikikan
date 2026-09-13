@@ -15,6 +15,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 没有 $IsWindows/$IsLinux/$IsMacOS 自动变量；5.1 仅存在于 Windows
+if ($null -eq (Get-Variable -Name IsWindows -ErrorAction SilentlyContinue)) {
+    $IsWindows = $true; $IsLinux = $false; $IsMacOS = $false
+}
+
 $ProjectDir = $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (Get-Content -Raw -ErrorAction SilentlyContinue "$ProjectDir/VERSION")
@@ -103,7 +108,14 @@ switch ($App) {
     "gui" {
         Publish-Gui
         Write-Ok "GUI built, launching..."
-        & (Join-Path $OutputDir "AIShikikan.Gui") @AppArgs
+        # Windows 上产物带 .exe 后缀，其余平台无后缀
+        $exe = if ($IsWindows) { Join-Path $OutputDir "AIShikikan.Gui.exe" } else { Join-Path $OutputDir "AIShikikan.Gui" }
+        if (-not (Test-Path $exe)) {
+            Write-Err "Executable not found: $exe"
+            exit 1
+        }
+        if (-not $IsWindows) { chmod +x $exe 2>$null | Out-Null }
+        & $exe @AppArgs
         exit $LASTEXITCODE
     }
     default {
