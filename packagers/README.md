@@ -17,7 +17,7 @@
 
 | 占位符 | 含义 |
 |--------|------|
-| `@VERSION@` | 版本号 (deb/rpm 中 `-` 会被替换为 `_`) |
+| `@VERSION@` | 版本号 (rpm/pacman 中 `-` 替换为 `_`; deb 中替换为 `~`, 因 Debian 版本号不允许下划线) |
 | `@ARCH@` / 由 `--target` 指定 | 架构 (amd64/arm64 / x86_64/aarch64) |
 | `@MAINTAINER@` | 维护者 |
 | `@SIZE@` | deb 安装体积 (KiB) |
