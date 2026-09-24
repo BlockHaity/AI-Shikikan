@@ -84,7 +84,7 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 ./debug.sh --version      # 查看版本
 ./debug.sh doctor         # 环境诊断
 
-# 版本来源：根目录 VERSION 文件（当前 0.9.0）
+# 版本来源：根目录 VERSION 文件（当前 0.9.0-vibe）
 # 环境变量可覆盖：CONFIGURATION / VERSION / ARCH / AOT_MODE
 # Windows 使用 build.ps1 / debug.ps1，参数等价
 ```
