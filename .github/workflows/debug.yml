@@ -39,8 +39,8 @@ jobs:
         run: |
           FILE_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
           if [ -z "$FILE_VERSION" ]; then
-            FILE_VERSION="0.9.0"
-            echo "::warning::VERSION file missing or empty, falling back to 0.9.0"
+            FILE_VERSION="0.9.0-vibe"
+            echo "::warning::VERSION file missing or empty, falling back to 0.9.0-vibe"
           fi
           echo "version=${FILE_VERSION}" >> "$GITHUB_OUTPUT"
 

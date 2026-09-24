@@ -25,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (Get-Content -Raw -ErrorAction SilentlyContinue "$ProjectDir/VERSION")
     if ($Version) { $Version = $Version.Trim() }
 }
-if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "0.9.0" }
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "0.9.0-vibe" }
 $OutputDir = Join-Path $ProjectDir "artifacts"
 $GuiProject = Join-Path $ProjectDir "AIShikikan.Gui.csproj"
 
@@ -139,7 +139,7 @@ Commands:
 
 Options:
   -Configuration Release   Build configuration (default: Release)
-  -Version 0.9.0           Version string (default: from VERSION file)
+  -Version 0.9.0-vibe           Version string (default: from VERSION file)
 
 Examples:
   .\build.ps1

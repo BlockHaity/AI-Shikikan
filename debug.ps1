@@ -25,7 +25,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
     $Version = (Get-Content -Raw -ErrorAction SilentlyContinue "$ProjectDir/VERSION")
     if ($Version) { $Version = $Version.Trim() }
 }
-if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "0.9.0" }
+if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "0.9.0-vibe" }
 $OutputDir = Join-Path $ProjectDir "artifacts/debug"
 $GuiProject = Join-Path $ProjectDir "AIShikikan.Gui.csproj"
 
