@@ -296,7 +296,7 @@ jobs:
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-deb
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-deb
           path: dist/*.deb
           if-no-files-found: error
 
@@ -304,7 +304,7 @@ jobs:
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-rpm
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-rpm
           path: dist/*.rpm
           if-no-files-found: error
 
@@ -312,6 +312,6 @@ jobs:
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-pacman
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-pacman
           path: dist/*.pkg.tar.zst
           if-no-files-found: error
