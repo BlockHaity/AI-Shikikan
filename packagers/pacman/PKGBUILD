@@ -1,0 +1,44 @@
+# Maintainer: BlockHaity <blockhaity@users.noreply.github.com>
+# Contributor: GitHub Actions
+#
+# Arch Linux 打包 (makepkg)。
+# 构建来源: GitHub Release 的 selfcontained 二进制包。在仓库内直接打包:
+#   cd packagers/pacman && makepkg -f
+# 发布前请把 pkgver 更新为根目录 VERSION 的值, 并把 sha256sums 从 SKIP 换成真实校验值。
+pkgname=ai-shikikan
+pkgver=0.9.0
+pkgrel=1
+pkgdesc="AI Agent commander desktop app"
+arch=('x86_64' 'aarch64')
+url="https://github.com/BlockHaity/AI-Shikikan"
+license=('MIT')
+depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libglvnd' 'mesa' 'glib2' 'icu')
+makedepends=('tar' 'imagemagick')
+
+source=("../ai-shikikan.desktop" "../../Assets/logo.jpg" "../../LICENSE")
+source_x86_64=("https://github.com/BlockHaity/AI-Shikikan/releases/download/v${pkgver}/AIShikikan-${pkgver}-linux-x64-selfcontained.tar.gz")
+source_aarch64=("https://github.com/BlockHaity/AI-Shikikan/releases/download/v${pkgver}/AIShikikan-${pkgver}-linux-arm64-selfcontained.tar.gz")
+sha256sums=('SKIP' 'SKIP' 'SKIP')
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+prepare() {
+  convert "${srcdir}/logo.jpg" -resize 256x256 "${srcdir}/ai-shikikan.png"
+}
+
+package() {
+  case "$CARCH" in
+    x86_64)  tarball="AIShikikan-${pkgver}-linux-x64-selfcontained.tar.gz" ;;
+    aarch64) tarball="AIShikikan-${pkgver}-linux-arm64-selfcontained.tar.gz" ;;
+    *) echo "不支持的架构: $CARCH"; return 1 ;;
+  esac
+  tar -xzf "${srcdir}/${tarball}" -C "${srcdir}"
+
+  install -Dm755 "${srcdir}/AIShikikan.Gui" "${pkgdir}/usr/lib/${pkgname}/AIShikikan.Gui"
+  mkdir -p "${pkgdir}/usr/bin"
+  ln -s "/usr/lib/${pkgname}/AIShikikan.Gui" "${pkgdir}/usr/bin/${pkgname}"
+
+  install -Dm644 "${srcdir}/ai-shikikan.desktop" "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+  install -Dm644 "${srcdir}/ai-shikikan.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/${pkgname}.png"
+  install -Dm644 "${srcdir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
