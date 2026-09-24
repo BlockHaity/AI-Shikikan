@@ -135,12 +135,22 @@ jobs:
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true -o stage/selfcontained
 
+      - name: Publish Native AOT (test)
+        if: inputs.aot
+        shell: bash
+        run: |
+          dotnet publish AIShikikan.Gui.csproj \
+            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
+            -o stage/aot
+
       - name: Build Linux packages (deb / rpm / pacman)
         if: startsWith(matrix.rid, 'linux')
         shell: bash
         env:
           VERSION: ${{ needs.check.outputs.version }}
           RID: ${{ matrix.rid }}
+          AOT_ENABLED: ${{ inputs.aot }}
           HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
           MAINTAINER: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
         run: |
@@ -151,8 +161,6 @@ jobs:
             *) echo "unexpected rid $RID"; exit 1 ;;
           esac
           PKG=ai-shikikan
-          # 系统包由 selfcontained 变体产物打包, 文件名需标识该变体
-          VARIANT=selfcontained
           # deb: Debian Version 只允许 [0-9A-Za-z.+~-], 下划线非法;
           #      '-' -> '~' 是预发布惯例, 保证 0.9.0~vibe 排序在 0.9.0 之前
           # 注意: bash 会把替换串里的裸 '~' 做 tilde 展开成 $HOME, 需转义成 '\~'
@@ -164,14 +172,29 @@ jobs:
           [[ "$PVER" =~ ^[0-9A-Za-z._+]+$ ]] || { echo "非法 PVER='$PVER' (VERSION='$VERSION')"; exit 1; }
           DESC="AI-Shikikan is an Agent commander: it orchestrates terminal agents such as Claude Code, OpenCode, Codex CLI and Gemini CLI to complete complex tasks."
           mkdir -p dist
-          chmod +x stage/selfcontained/AIShikikan.Gui
           convert Assets/logo.jpg -resize 256x256 "$RUNNER_TEMP/ai-shikikan.png"
           cp packagers/ai-shikikan.desktop "$RUNNER_TEMP/$PKG.desktop"
+          ROOT="$PWD"
+
+          # 变体集合: dotnet/selfcontained 恒有, aot 仅在启用 AOT 构建时存在
+          VARIANTS="dotnet selfcontained"
+          [ "$AOT_ENABLED" = "true" ] && VARIANTS="$VARIANTS aot"
+
+          for VARIANT in $VARIANTS; do
+          echo "== 打包变体 $VARIANT =="
+          case "$VARIANT" in
+            dotnet)        BIN="$ROOT/stage/dotnet/AIShikikan.Gui" ;;
+            selfcontained) BIN="$ROOT/stage/selfcontained/AIShikikan.Gui" ;;
+            aot)           BIN="$ROOT/stage/aot/AIShikikan.Gui" ;;
+            *) echo "unexpected variant $VARIANT"; exit 1 ;;
+          esac
+          [ -f "$BIN" ] || { echo "缺少二进制 $BIN"; exit 1; }
+          # 注意: dotnet 变体为框架依赖发布, 此处仅做打包链路校验
+          chmod +x "$BIN"
 
           # ---------- Debian (.deb) ----------
-          ROOT="$PWD"
-          DEBROOT="$RUNNER_TEMP/debroot"
-          install -Dm755 stage/selfcontained/AIShikikan.Gui "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
+          DEBROOT="$RUNNER_TEMP/debroot_$VARIANT"
+          install -Dm755 "$BIN" "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
           mkdir -p "$DEBROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
@@ -192,21 +215,25 @@ jobs:
 
           # ---------- Red Hat (.rpm / dnf) ----------
           mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
+          rm -rf "$HOME/rpmbuild"/RPMS/*
           sed -e "s|@VERSION@|$PVER|g" \
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
-              -e "s|@BIN@|$ROOT/stage/selfcontained/AIShikikan.Gui|g" \
+              -e "s|@BIN@|$BIN|g" \
               -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
               packagers/rpm/ai-shikikan.spec > "$HOME/rpmbuild/SPECS/$PKG.spec"
           rpmbuild -bb --target "$PKG_ARCH" "$HOME/rpmbuild/SPECS/$PKG.spec"
-          find "$HOME/rpmbuild/RPMS" -name "*.rpm" -exec cp -f {} dist/ \;
-          for _r in dist/*.rpm; do mv -f "$_r" "${_r%.rpm}_${VARIANT}.rpm"; done
+          for _r in "$HOME"/rpmbuild/RPMS/*/*.rpm; do
+            [ -e "$_r" ] || continue
+            mv -f "$_r" "${_r%.rpm}_${VARIANT}.rpm"
+            cp -f "${_r%.rpm}_${VARIANT}.rpm" dist/
+          done
 
           # ---------- Arch Linux (.pkg.tar.zst) ----------
-          PKGROOT="$RUNNER_TEMP/pkgroot"
-          install -Dm755 stage/selfcontained/AIShikikan.Gui "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
+          PKGROOT="$RUNNER_TEMP/pkgroot_$VARIANT"
+          install -Dm755 "$BIN" "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
           mkdir -p "$PKGROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
@@ -234,18 +261,10 @@ jobs:
           depend = icu
           EOF
           tar --zstd -cf "dist/${PKG}-${PVER}-1-${PKG_ARCH}_${VARIANT}.pkg.tar.zst" \
-          -C "$PKGROOT" .PKGINFO usr
+            -C "$PKGROOT" .PKGINFO usr
+          done
 
           ls -lh dist/
-
-      - name: Publish Native AOT (test)
-        if: inputs.aot
-        shell: bash
-        run: |
-          dotnet publish AIShikikan.Gui.csproj \
-            -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
-            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
-            -o stage/aot
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
@@ -292,26 +311,74 @@ jobs:
           path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.*
           if-no-files-found: error
 
-      - name: Upload Linux deb
+      - name: Upload Linux dotnet deb
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-deb
+          path: dist/*_dotnet.deb
+          if-no-files-found: error
+
+      - name: Upload Linux dotnet rpm
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-rpm
+          path: dist/*_dotnet.rpm
+          if-no-files-found: error
+
+      - name: Upload Linux dotnet pacman
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-pacman
+          path: dist/*_dotnet.pkg.tar.zst
+          if-no-files-found: error
+
+      - name: Upload Linux selfcontained deb
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-deb
-          path: dist/*.deb
+          path: dist/*_selfcontained.deb
           if-no-files-found: error
 
-      - name: Upload Linux rpm
+      - name: Upload Linux selfcontained rpm
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-rpm
-          path: dist/*.rpm
+          path: dist/*_selfcontained.rpm
           if-no-files-found: error
 
-      - name: Upload Linux pacman
+      - name: Upload Linux selfcontained pacman
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-pacman
-          path: dist/*.pkg.tar.zst
+          path: dist/*_selfcontained.pkg.tar.zst
+          if-no-files-found: error
+
+      - name: Upload Linux aot deb
+        if: startsWith(matrix.rid, 'linux') && inputs.aot
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-deb
+          path: dist/*_aot.deb
+          if-no-files-found: error
+
+      - name: Upload Linux aot rpm
+        if: startsWith(matrix.rid, 'linux') && inputs.aot
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-rpm
+          path: dist/*_aot.rpm
+          if-no-files-found: error
+
+      - name: Upload Linux aot pacman
+        if: startsWith(matrix.rid, 'linux') && inputs.aot
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-pacman
+          path: dist/*_aot.pkg.tar.zst
           if-no-files-found: error
