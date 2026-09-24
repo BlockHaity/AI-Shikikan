@@ -220,9 +220,14 @@ jobs:
               packagers/deb/control > "$DEBROOT/DEBIAN/control"
           # dpkg 要求 Description 多行字段以换行终止, 缺尾换行会报 missing final newline
           [ -z "$(tail -c1 "$DEBROOT/DEBIAN/control")" ] || printf '\n' >> "$DEBROOT/DEBIAN/control"
-          # 框架依赖变体: .NET 运行时来自系统包 (最佳努力, 缺包不阻塞安装)
+          # 框架依赖变体: .NET 运行时来自系统包 (最佳努力, 缺包不阻塞安装);
+          # 合并进已有 Recommends, 避免 dpkg-deb "duplicate value" 报错
           if [ "$VARIANT" = "dotnet" ]; then
-            echo "Recommends: dotnet-runtime-10.0" >> "$DEBROOT/DEBIAN/control"
+            if grep -q '^Recommends:' "$DEBROOT/DEBIAN/control"; then
+              sed -i 's/^Recommends: \(.*\)$/Recommends: \1, dotnet-runtime-10.0/' "$DEBROOT/DEBIAN/control"
+            else
+              echo "Recommends: dotnet-runtime-10.0" >> "$DEBROOT/DEBIAN/control"
+            fi
           fi
           dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${DEB_VER}_${DEB_ARCH}_${VARIANT}.deb"
 
