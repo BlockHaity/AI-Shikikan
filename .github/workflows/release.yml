@@ -169,7 +169,10 @@ jobs:
             *) echo "unexpected rid $RID"; exit 1 ;;
           esac
           PKG=ai-shikikan
-          # deb/rpm 的 Version 字段不允许 '-'
+          # deb: Debian Version 只允许 [0-9A-Za-z.+~-], 下划线非法;
+          #      '-' -> '~' 是预发布惯例, 保证 0.9.0~vibe 排序在 0.9.0 之前
+          DEB_VER="${VERSION//-/~}"
+          # rpm/pacman: Version 允许下划线 ('-' 才是分隔符), 用 '_' 替换 '-'
           PVER="${VERSION//-/_}"
           DESC="AI-Shikikan is an Agent commander: it orchestrates terminal agents such as Claude Code, OpenCode, Codex CLI and Gemini CLI to complete complex tasks."
           mkdir -p dist
@@ -188,14 +191,14 @@ jobs:
           install -Dm644 LICENSE "$DEBROOT/usr/share/doc/$PKG/copyright"
           SIZE=$(du -sk "$DEBROOT" | cut -f1)
           mkdir -p "$DEBROOT/DEBIAN"
-          sed -e "s|@VERSION@|$PVER|g" \
+          sed -e "s|@VERSION@|$DEB_VER|g" \
               -e "s|@ARCH@|$DEB_ARCH|g" \
               -e "s|@MAINTAINER@|$MAINTAINER|g" \
               -e "s|@SIZE@|$SIZE|g" \
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
               packagers/deb/control > "$DEBROOT/DEBIAN/control"
-          dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${PVER}_${DEB_ARCH}.deb"
+          dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${DEB_VER}_${DEB_ARCH}.deb"
 
           # ---------- Red Hat (.rpm / dnf) ----------
           mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
