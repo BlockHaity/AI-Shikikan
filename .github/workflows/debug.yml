@@ -289,13 +289,26 @@ jobs:
           path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.*
           if-no-files-found: error
 
-      - name: Upload Linux packages
+      - name: Upload Linux deb
         if: startsWith(matrix.rid, 'linux')
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-linux-packages
-          path: |
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pkg.tar.zst
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-deb
+          path: dist/*.deb
+          if-no-files-found: error
+
+      - name: Upload Linux rpm
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-rpm
+          path: dist/*.rpm
+          if-no-files-found: error
+
+      - name: Upload Linux pacman
+        if: startsWith(matrix.rid, 'linux')
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-pacman
+          path: dist/*.pkg.tar.zst
           if-no-files-found: error
