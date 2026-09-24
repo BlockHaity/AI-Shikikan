@@ -82,6 +82,9 @@ jobs:
           - os: windows-latest
             rid: win-x64
             ext: zip
+          - os: windows-11-vs2026-arm
+            rid: win-arm64
+            ext: zip
           - os: macos-15-intel
             rid: osx-x64
             ext: tar.gz
