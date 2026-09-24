@@ -175,6 +175,9 @@ jobs:
           DEB_VER="${VERSION//-/\~}"
           # rpm/pacman: Version 允许下划线 ('-' 才是分隔符), 用 '_' 替换 '-'
           PVER="${VERSION//-/_}"
+          # 防御性校验: 任何异常的展开都会在此暴露实值, 而非 dpkg 的晦涩报错
+          [[ "$DEB_VER" =~ ^[0-9A-Za-z.+~:-]+$ ]] || { echo "非法 DEB_VER='$DEB_VER' (VERSION='$VERSION')"; exit 1; }
+          [[ "$PVER" =~ ^[0-9A-Za-z._+]+$ ]] || { echo "非法 PVER='$PVER' (VERSION='$VERSION')"; exit 1; }
           DESC="AI-Shikikan is an Agent commander: it orchestrates terminal agents such as Claude Code, OpenCode, Codex CLI and Gemini CLI to complete complex tasks."
           mkdir -p dist
           chmod +x stage/selfcontained/AIShikikan.Gui
