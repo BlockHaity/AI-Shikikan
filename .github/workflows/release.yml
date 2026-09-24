@@ -172,20 +172,7 @@ jobs:
           mkdir -p dist
           chmod +x stage/selfcontained/AIShikikan.Gui
           convert Assets/logo.jpg -resize 256x256 "$RUNNER_TEMP/ai-shikikan.png"
-
-          # ---------- 公共的 desktop / 安装布局 (基于 selfcontained 单文件) ----------
-          cat > "$RUNNER_TEMP/$PKG.desktop" <<EOF
-          [Desktop Entry]
-          Type=Application
-          Name=AI-Shikikan
-          GenericName=AI Agent Commander
-          Comment=Commander for terminal AI agents
-          Exec=$PKG
-          Icon=$PKG
-          Terminal=false
-          Categories=Development;Utility;
-          StartupWMClass=AIShikikan.Gui
-          EOF
+          cp packagers/ai-shikikan.desktop "$RUNNER_TEMP/$PKG.desktop"
 
           # ---------- Debian (.deb) ----------
           ROOT="$PWD"
@@ -198,54 +185,25 @@ jobs:
           install -Dm644 LICENSE "$DEBROOT/usr/share/doc/$PKG/copyright"
           SIZE=$(du -sk "$DEBROOT" | cut -f1)
           mkdir -p "$DEBROOT/DEBIAN"
-          cat > "$DEBROOT/DEBIAN/control" <<EOF
-          Package: $PKG
-          Version: $PVER
-          Architecture: $DEB_ARCH
-          Maintainer: $MAINTAINER
-          Installed-Size: $SIZE
-          Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libicu74 | libicu72 | libicu67 | libicu66
-          Section: utils
-          Priority: optional
-          Homepage: $HOMEPAGE
-          Description: AI Agent commander desktop app
-           $DESC
-          EOF
+          sed -e "s|@VERSION@|$PVER|g" \
+              -e "s|@ARCH@|$DEB_ARCH|g" \
+              -e "s|@MAINTAINER@|$MAINTAINER|g" \
+              -e "s|@SIZE@|$SIZE|g" \
+              -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
+              -e "s|@DESC@|$DESC|g" \
+              packagers/deb/control > "$DEBROOT/DEBIAN/control"
           dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${PVER}_${DEB_ARCH}.deb"
 
-          # ---------- Red Hat (.rpm) ----------
+          # ---------- Red Hat (.rpm / dnf) ----------
           mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
-          cat > "$HOME/rpmbuild/SPECS/$PKG.spec" <<EOF
-          %global debug_package %{nil}
-          %undefine _missing_build_ids_terminate_build
-
-          Name:     $PKG
-          Version:  $PVER
-          Release:  1
-          Summary:  AI Agent commander desktop app
-          License:  MIT
-          URL:      $HOMEPAGE
-          AutoReqProv: no
-
-          %description
-          $DESC
-
-          %install
-          rm -rf %{buildroot}
-          install -Dm755 $ROOT/stage/selfcontained/AIShikikan.Gui %{buildroot}%{_prefix}/lib/$PKG/AIShikikan.Gui
-          mkdir -p %{buildroot}%{_bindir}
-          ln -sf %{_prefix}/lib/$PKG/AIShikikan.Gui %{buildroot}%{_bindir}/$PKG
-          install -Dm644 $RUNNER_TEMP/$PKG.desktop %{buildroot}%{_datadir}/applications/$PKG.desktop
-          install -Dm644 $RUNNER_TEMP/ai-shikikan.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/$PKG.png
-          install -Dm644 $ROOT/LICENSE %{buildroot}%{_docdir}/$PKG/LICENSE
-
-          %files
-          %{_prefix}/lib/$PKG
-          %{_bindir}/$PKG
-          %{_datadir}/applications/$PKG.desktop
-          %{_datadir}/icons/hicolor/256x256/apps/$PKG.png
-          %{_docdir}/$PKG
-          EOF
+          sed -e "s|@VERSION@|$PVER|g" \
+              -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
+              -e "s|@DESC@|$DESC|g" \
+              -e "s|@BIN@|$ROOT/stage/selfcontained/AIShikikan.Gui|g" \
+              -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
+              -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
+              -e "s|@LICENSE@|$ROOT/LICENSE|g" \
+              packagers/rpm/ai-shikikan.spec > "$HOME/rpmbuild/SPECS/$PKG.spec"
           rpmbuild -bb --target "$PKG_ARCH" "$HOME/rpmbuild/SPECS/$PKG.spec"
           find "$HOME/rpmbuild/RPMS" -name "*.rpm" -exec cp -f {} dist/ \;
 
@@ -273,6 +231,7 @@ jobs:
           depend = libxcursor
           depend = libxrandr
           depend = libxrender
+          depend = libglvnd
           depend = mesa
           depend = glib2
           depend = icu
@@ -343,12 +302,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Prepare tag and clean orphan drafts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          TAG="v${{ needs.check.outputs.version }}"
+          # 清理历史失败运行残留的草稿 Release, 保证流程幂等 (草稿经 getReleaseByTag 不可见,
+          # 只会在兜底扫描中出现, 干扰重试更新)
+          gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name,.draft,.id] | @tsv' \
+            | awk -v tag="$TAG" '$1==tag && $2=="true" {print $3}' \
+            | while read -r id; do
+                echo "::warning::删除已存在的草稿 Release $id (tag=$TAG)"
+                gh api -X DELETE "repos/$GITHUB_REPOSITORY/releases/$id" >/dev/null || true
+              done || true
+          # 先把 tag 推送到远端, 避免 softprops 自动创建 tag 时的竞态 (曾触发 GitHub 500)
+          git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git tag -f "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG" --force
 
       - name: Download all artifacts
         uses: actions/download-artifact@v7
         with:
           path: artifacts
-          merge-multiple: false
+          merge-multiple: true
 
       - name: List downloaded files
         run: find artifacts -type f | sort
@@ -361,17 +341,19 @@ jobs:
             echo "AI-Shikikan v${{ needs.check.outputs.version }} 发布" > release_body.md
             echo "::warning::CHANGELOG 为空, 使用默认发布说明"
           fi
-          printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n' >> release_body.md
+          printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n\nLinux 系统包 (deb/rpm/pacman):\n- **.deb**: Debian / Ubuntu\n- **.rpm**: Fedora / RHEL / dnf 系\n- **.pkg.tar.zst**: Arch Linux / Manjaro\n' >> release_body.md
 
       - name: Create Release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@v3.0.3
         with:
           tag_name: v${{ needs.check.outputs.version }}
           name: v${{ needs.check.outputs.version }}
+          target_commitish: ${{ github.sha }}
           body_path: release_body.md
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
+          fail_on_unmatched_files: false
           files: |
-            artifacts/**/*
+            artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

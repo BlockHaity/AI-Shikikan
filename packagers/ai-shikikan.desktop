@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=AI-Shikikan
+GenericName=AI Agent Commander
+Comment=Commander for terminal AI agents
+Exec=ai-shikikan
+Icon=ai-shikikan
+Terminal=false
+Categories=Development;Utility;
+StartupWMClass=AIShikikan.Gui

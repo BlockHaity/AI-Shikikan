@@ -33,6 +33,7 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 | `debug.sh` / `debug.ps1` | Debug 构建并运行 GUI（本地开发最常用） |
 | `.github/workflows/release.yml` | 手动触发的 Release 发布流程 |
 | `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow |
+| `packagers/` | Linux 系统包打包源文件：deb(control) / rpm(spec) / pacman(PKGBUILD) 模板，release.yml 构建时引用 |
 
 ### Core/Services 内部结构
 
