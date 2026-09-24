@@ -202,6 +202,8 @@ jobs:
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
               packagers/deb/control > "$DEBROOT/DEBIAN/control"
+          # dpkg 要求 Description 多行字段以换行终止, 缺尾换行会报 missing final newline
+          [ -z "$(tail -c1 "$DEBROOT/DEBIAN/control")" ] || printf '\n' >> "$DEBROOT/DEBIAN/control"
           dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${DEB_VER}_${DEB_ARCH}.deb"
 
           # ---------- Red Hat (.rpm / dnf) ----------
