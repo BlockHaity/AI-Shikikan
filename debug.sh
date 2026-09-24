@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PROJECT_DIR/artifacts/debug"
 CONFIGURATION="${CONFIGURATION:-Debug}"
-VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 0.9.0)}"
+VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 0.9.0-vibe)}"
 AOT_MODE="${AOT_MODE:-off}"
 
 GUI_PROJECT="$PROJECT_DIR/AIShikikan.Gui.csproj"
@@ -88,7 +88,7 @@ Examples:
 Options (env):
   CONFIGURATION=Debug   Build configuration (default: Debug)
   AOT_MODE=off          Native AOT strategy: auto | always | off (default: off)
-  VERSION=0.9.0         Version string (default: 0.9.0)
+  VERSION=0.9.0-vibe         Version string (default: 0.9.0-vibe)
 EOF
 }
 

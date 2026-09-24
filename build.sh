@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
 OUTPUT_DIR="$PROJECT_DIR/artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
-VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 0.9.0)}"
+VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 0.9.0-vibe)}"
 
 GUI_PROJECT="$PROJECT_DIR/AIShikikan.Gui.csproj"
 
@@ -111,7 +111,7 @@ Commands:
 
 Options (env):
   CONFIGURATION=Release   Build configuration (default: Release)
-  VERSION=0.9.0           Version string (default: from VERSION file)
+  VERSION=0.9.0-vibe           Version string (default: from VERSION file)
 
 Examples:
   $(basename "$0")

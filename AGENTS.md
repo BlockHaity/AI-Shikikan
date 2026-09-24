@@ -34,6 +34,7 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 | `.github/workflows/release.yml` | 手动触发的 Release 发布流程 |
 | `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow |
 | `packagers/` | Linux 系统包打包源文件：deb(control) / rpm(spec) / pacman(PKGBUILD) 模板，release.yml 构建时引用 |
+| `set-version.sh` | 一键修改版本号（同步 VERSION / PKGBUILD / manifest / 文档与脚本回退值） |
 
 ### Core/Services 内部结构
 
@@ -84,7 +85,11 @@ AOT_MODE=off ./build.sh linux   # 关闭 AOT 回退单文件裁剪
 ./debug.sh --version      # 查看版本
 ./debug.sh doctor         # 环境诊断
 
-# 版本来源：根目录 VERSION 文件（当前 0.9.0-vibe）
+# 修改版本号（一键同步 VERSION / PKGBUILD / manifest / 文档与脚本/CI 回退值）
+./set-version.sh 0.9.1-vibe   # 改版本（GitHub tag 会自动补 v 前缀）
+./set-version.sh current      # 查看当前版本
+
+# 版本来源：根目录 VERSION 文件（当前 0.9.0-vibe，用 ./set-version.sh 更新）
 # 环境变量可覆盖：CONFIGURATION / VERSION / ARCH / AOT_MODE
 # Windows 使用 build.ps1 / debug.ps1，参数等价
 ```
