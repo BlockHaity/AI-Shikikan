@@ -195,10 +195,19 @@ jobs:
           esac
           [ -f "$BIN" ] || { echo "缺少二进制 $BIN"; exit 1; }
           chmod +x "$BIN"
+          BINDIR=$(dirname "$BIN")
+          # 原生共享库 (libSkiaSharp/libHarfBuzzSharp 等) 必须与可执行文件同目录:
+          # 运行时 dlopen 动态引用按 应用目录 -> 系统库路径 探测, AOT /
+          # framework-dependent 发布不会内嵌这些 .so; selfcontained 因
+          # IncludeNativeLibrariesForSelfExtract 已内嵌, glob 为空自动跳过
 
           # ---------- Debian (.deb) ----------
           DEBROOT="$RUNNER_TEMP/debroot_$VARIANT"
           install -Dm755 "$BIN" "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
+          for _so in "$BINDIR"/*.so; do
+            [ -e "$_so" ] || continue
+            install -Dm755 "$_so" "$DEBROOT/usr/lib/$PKG/"
+          done
           mkdir -p "$DEBROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
@@ -224,6 +233,7 @@ jobs:
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
               -e "s|@BIN@|$BIN|g" \
+              -e "s|@BINDIR@|$BINDIR|g" \
               -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
@@ -238,6 +248,10 @@ jobs:
           # ---------- Arch Linux (.pkg.tar.zst) ----------
           PKGROOT="$RUNNER_TEMP/pkgroot_$VARIANT"
           install -Dm755 "$BIN" "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
+          for _so in "$BINDIR"/*.so; do
+            [ -e "$_so" ] || continue
+            install -Dm755 "$_so" "$PKGROOT/usr/lib/$PKG/"
+          done
           mkdir -p "$PKGROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
@@ -261,6 +275,7 @@ jobs:
           depend = libxrender
           depend = libglvnd
           depend = mesa
+          depend = fontconfig
           depend = glib2
           depend = icu
           EOF
