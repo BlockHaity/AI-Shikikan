@@ -7,7 +7,7 @@ Release:  1
 Summary:  AI Agent commander desktop app
 License:  MIT
 URL:      @HOMEPAGE@
-Requires: fontconfig
+Requires: libX11, libXcursor, libXrandr, libXrender, mesa-libGL, glib2, fontconfig, freetype, libicu
 AutoReqProv: no
 
 %description
