@@ -169,8 +169,6 @@ jobs:
             *) echo "unexpected rid $RID"; exit 1 ;;
           esac
           PKG=ai-shikikan
-          # 系统包由 selfcontained 变体产物打包, 文件名需标识该变体
-          VARIANT=selfcontained
           # deb: Debian Version 只允许 [0-9A-Za-z.+~-], 下划线非法;
           #      '-' -> '~' 是预发布惯例, 保证 0.9.0~vibe 排序在 0.9.0 之前
           # 注意: bash 会把替换串里的裸 '~' 做 tilde 展开成 $HOME, 需转义成 '\~'
@@ -182,14 +180,25 @@ jobs:
           [[ "$PVER" =~ ^[0-9A-Za-z._+]+$ ]] || { echo "非法 PVER='$PVER' (VERSION='$VERSION')"; exit 1; }
           DESC="AI-Shikikan is an Agent commander: it orchestrates terminal agents such as Claude Code, OpenCode, Codex CLI and Gemini CLI to complete complex tasks."
           mkdir -p dist
-          chmod +x stage/selfcontained/AIShikikan.Gui
           convert Assets/logo.jpg -resize 256x256 "$RUNNER_TEMP/ai-shikikan.png"
           cp packagers/ai-shikikan.desktop "$RUNNER_TEMP/$PKG.desktop"
+          ROOT="$PWD"
+
+          # 变体集合: 发布流程恒构建全部三种变体
+          VARIANTS="dotnet selfcontained aot"
+          for VARIANT in $VARIANTS; do
+          echo "== 打包变体 $VARIANT =="
+          case "$VARIANT" in
+            dotnet)        BIN="$ROOT/stage/dotnet/AIShikikan.Gui" ;;
+            selfcontained) BIN="$ROOT/stage/selfcontained/AIShikikan.Gui" ;;
+            aot)           BIN="$ROOT/stage/aot/AIShikikan.Gui" ;;
+          esac
+          [ -f "$BIN" ] || { echo "缺少二进制 $BIN"; exit 1; }
+          chmod +x "$BIN"
 
           # ---------- Debian (.deb) ----------
-          ROOT="$PWD"
-          DEBROOT="$RUNNER_TEMP/debroot"
-          install -Dm755 stage/selfcontained/AIShikikan.Gui "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
+          DEBROOT="$RUNNER_TEMP/debroot_$VARIANT"
+          install -Dm755 "$BIN" "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
           mkdir -p "$DEBROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
@@ -210,21 +219,25 @@ jobs:
 
           # ---------- Red Hat (.rpm / dnf) ----------
           mkdir -p "$HOME/rpmbuild"/{BUILD,RPMS,SPECS,SOURCES,SRPMS}
+          rm -rf "$HOME/rpmbuild"/RPMS/*
           sed -e "s|@VERSION@|$PVER|g" \
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
-              -e "s|@BIN@|$ROOT/stage/selfcontained/AIShikikan.Gui|g" \
+              -e "s|@BIN@|$BIN|g" \
               -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
               packagers/rpm/ai-shikikan.spec > "$HOME/rpmbuild/SPECS/$PKG.spec"
           rpmbuild -bb --target "$PKG_ARCH" "$HOME/rpmbuild/SPECS/$PKG.spec"
-          find "$HOME/rpmbuild/RPMS" -name "*.rpm" -exec cp -f {} dist/ \;
-          for _r in dist/*.rpm; do mv -f "$_r" "${_r%.rpm}_${VARIANT}.rpm"; done
+          for _r in "$HOME"/rpmbuild/RPMS/*/*.rpm; do
+            [ -e "$_r" ] || continue
+            mv -f "$_r" "${_r%.rpm}_${VARIANT}.rpm"
+            cp -f "${_r%.rpm}_${VARIANT}.rpm" dist/
+          done
 
           # ---------- Arch Linux (.pkg.tar.zst) ----------
-          PKGROOT="$RUNNER_TEMP/pkgroot"
-          install -Dm755 stage/selfcontained/AIShikikan.Gui "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
+          PKGROOT="$RUNNER_TEMP/pkgroot_$VARIANT"
+          install -Dm755 "$BIN" "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
           mkdir -p "$PKGROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
@@ -252,7 +265,8 @@ jobs:
           depend = icu
           EOF
           tar --zstd -cf "dist/${PKG}-${PVER}-1-${PKG_ARCH}_${VARIANT}.pkg.tar.zst" \
-          -C "$PKGROOT" .PKGINFO usr
+            -C "$PKGROOT" .PKGINFO usr
+          done
 
           ls -lh dist/
 
