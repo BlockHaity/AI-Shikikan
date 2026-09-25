@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Git;
@@ -16,7 +17,7 @@ public sealed class LegacyGitMigrationService
 {
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
-        PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         WriteIndented = true,
         ReadCommentHandling = JsonCommentHandling.Skip
     };
@@ -314,7 +315,7 @@ public sealed class LegacyGitMigrationService
     /// 解析旧步骤的 Git 上下文: 优先 MergeCommit 可解析, 其次 StepBranch 存在则取 tip。
     /// 只对当前仓库可验证的记录迁移, 不猜 BaseBranch。
     /// </summary>
-    private (bool IsMergeCommitAvailable, string Detail, string? MergeCommit, string? TipCommit) ResolveContext(LegacyGitStepRecord record)
+    private (bool IsMergeCommitAvailable, string Detail, string? MergeCommit, string? TipCommit) ResolveContext(GitStepRecord record)
     {
         // 优先: MergeCommit 可解析
         if (!string.IsNullOrEmpty(record.MergeCommit))
@@ -344,7 +345,7 @@ public sealed class LegacyGitMigrationService
         return (false, "无法在当前仓库中验证上下文", null, null);
     }
 
-    private GitCheckpointRecord CreateCheckpoint(LegacyGitStepRecord record, (bool IsMergeCommitAvailable, string Detail, string? MergeCommit, string? TipCommit) context)
+    private GitCheckpointRecord CreateCheckpoint(GitStepRecord record, (bool IsMergeCommitAvailable, string Detail, string? MergeCommit, string? TipCommit) context)
     {
         return new GitCheckpointRecord
         {
@@ -355,7 +356,7 @@ public sealed class LegacyGitMigrationService
             MergeCommit = record.MergeCommit,
             CreatedAt = record.CreatedAt,
             CompletedAt = record.CompletedAt,
-            Merged = record.Status == "Merged" || !string.IsNullOrEmpty(record.MergeCommit)
+            Merged = record.Status == GitStepStatus.Merged || !string.IsNullOrEmpty(record.MergeCommit)
         };
     }
 
@@ -434,17 +435,22 @@ public sealed class LegacyGitMigrationService
     {
         if (node is JsonObject obj)
         {
-            foreach (var key in obj.Keys.ToList())
+            foreach (var kvp in obj)
             {
-                var value = obj[key];
-                if (value is JsonString stringValue && mapping.ContainsKey(stringValue))
+                var value = kvp.Value;
+                if (value is JsonValue jsonValue && jsonValue.GetValueKind() == JsonValueKind.String)
                 {
-                    obj[key] = mapping[stringValue];
-                    changed = true;
+                    var stringValue = jsonValue.ToString();
+                    if (mapping.ContainsKey(stringValue))
+                    {
+                        obj[kvp.Key] = mapping[stringValue];
+                        changed = true;
+                    }
                 }
                 else
                 {
-                    ReplaceStepIds(value, mapping, ref changed);
+                    if (value is not null)
+                        ReplaceStepIds(value, mapping, ref changed);
                 }
             }
         }
@@ -452,7 +458,8 @@ public sealed class LegacyGitMigrationService
         {
             foreach (var item in array)
             {
-                ReplaceStepIds(item, mapping, ref changed);
+                if (item is not null)
+                    ReplaceStepIds(item, mapping, ref changed);
             }
         }
     }
