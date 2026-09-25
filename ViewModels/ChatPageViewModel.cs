@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Engine;
+using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
 using AIShikikan.Gui.Resources;
@@ -726,6 +727,70 @@ public partial class ChatPageViewModel : ViewModelBase
     private void ForkUserCheckpoint(ChatItemViewModel item)
     {
         if (string.IsNullOrWhiteSpace(item.CheckpointId)) return;
+    }
+
+    /// <summary>检查点分叉入口(D 任务中接入目标分支与会话模式对话框)。</summary>
+    [RelayCommand]
+    private void ForkCheckpoint(SegmentItemViewModel segment)
+    {
+        if (segment.Checkpoint is null) return;
+    }
+
+    /// <summary>回滚检查点：先选择方式，再经过独立确认窗口才调用 Core。</summary>
+    [RelayCommand]
+    private async Task RollbackCheckpointAsync(SegmentItemViewModel segment)
+    {
+        if (IsSending || segment.Checkpoint is not { } detail ||
+            string.IsNullOrWhiteSpace(detail.CheckpointId) || GetMainWindow() is not { } owner)
+        {
+            return;
+        }
+
+        var choice = await Views.RollbackChoiceDialog.ShowAsync(
+            owner,
+            string.Format(Strings.Checkpoint_RollbackHeading, detail.ShortSha, detail.Label),
+            Strings.Checkpoint_RollbackChooseDescription,
+            Strings.Checkpoint_ContinueReset,
+            Strings.Checkpoint_ContinueRevert);
+        if (choice is null) return;
+
+        var isReset = choice == CheckpointRollbackMode.ResetHard;
+        var mode = isReset ? Strings.Checkpoint_ResetHard : Strings.Checkpoint_Revert;
+        var impact = isReset
+            ? Strings.Checkpoint_ResetHardConfirm
+            : Strings.Checkpoint_RevertConfirm;
+        var confirmed = await Views.ConfirmDialog.ShowAsync(
+            owner,
+            Strings.Checkpoint_RollbackConfirmTitle,
+            string.Format(Strings.Checkpoint_RollbackConfirmMessage, mode, detail.ShortSha, impact),
+            Strings.Checkpoint_ExecuteRollback,
+            Strings.Settings_Cancel);
+        if (!confirmed) return;
+
+        var context = _runtime.Git.ResolveContext(WorkDir);
+        var record = _runtime.Checkpoints.Get(context.RepositoryRoot, detail.CheckpointId);
+        if (record is null)
+        {
+            segment.SetCheckpointActionError(Strings.Checkpoint_RecordMissing);
+            return;
+        }
+
+        var result = isReset
+            ? _runtime.Git.ResetHardToCheckpoint(context, record)
+            : _runtime.Git.RevertToCheckpoint(context, record);
+        if (result.Succeeded)
+        {
+            segment.MarkCheckpointRolledBack(isReset
+                ? CheckpointRollbackMode.ResetHard
+                : CheckpointRollbackMode.Revert);
+            AppShell.Instance.NotifyDataChanged();
+            RefreshWorkspaceContext();
+        }
+        else
+        {
+            segment.SetCheckpointActionError(string.Format(
+                Strings.Checkpoint_RollbackFailed, result.Stderr.Trim()));
+        }
     }
 
     /// <summary>进入用户消息 fork 编辑态。</summary>

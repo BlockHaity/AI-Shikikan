@@ -1,0 +1,46 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="310"
+        x:Class="AIShikikan.Gui.Views.RollbackChoiceDialog"
+        Title="Rollback"
+        Width="500" Height="310" CanResize="False"
+        WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <StackPanel Margin="24" Spacing="16">
+        <StackPanel Spacing="4">
+            <TextBlock x:Name="HeadingText" Classes="TitleMedium"/>
+            <TextBlock x:Name="DescriptionText" Classes="BodyMedium" TextWrapping="Wrap"
+                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+            <Border x:Name="ResetCard" CornerRadius="10" Padding="16" BorderThickness="1"
+                    BorderBrush="{DynamicResource OutlineVariant}"
+                    Background="{DynamicResource SurfaceContainerLow}">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="ResetTitle" Classes="TitleSmall"/>
+                    <TextBlock x:Name="ResetDescription" Classes="BodySmall" TextWrapping="Wrap"
+                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                    <Button x:Name="ResetButton" Classes="FilledTonal" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" CornerRadius="10" Padding="16" BorderThickness="1"
+                    BorderBrush="{DynamicResource OutlineVariant}"
+                    Background="{DynamicResource SurfaceContainerLow}">
+                <StackPanel Spacing="8">
+                    <TextBlock x:Name="RevertTitle" Classes="TitleSmall"/>
+                    <TextBlock x:Name="RevertDescription" Classes="BodySmall" TextWrapping="Wrap"
+                               Foreground="{DynamicResource OnSurfaceVariant}"/>
+                    <Button x:Name="RevertButton" Classes="FilledTonal" HorizontalAlignment="Left"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <Button Classes="Text" Content="{x:Static res:Strings.Settings_Cancel}"
+                HorizontalAlignment="Right" Click="OnCancelClick"/>
+    </StackPanel>
+
+</Window>

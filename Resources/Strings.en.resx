@@ -257,6 +257,26 @@
   <data name="Checkpoint_SourceUnknown" xml:space="preserve"><value>Unknown</value></data>
   <data name="Checkpoint_AutoBadgeTip" xml:space="preserve"><value>Git checkpoint created automatically before this message</value></data>
   <data name="Checkpoint_Fork" xml:space="preserve"><value>Fork</value></data>
+  <data name="Checkpoint_Rollback" xml:space="preserve"><value>Roll back</value></data>
+  <data name="Checkpoint_RollbackChooseTitle" xml:space="preserve"><value>Choose rollback method</value></data>
+  <data name="Checkpoint_RollbackHeading" xml:space="preserve"><value>Roll back checkpoint {0} · {1}</value></data>
+  <data name="Checkpoint_RollbackChooseDescription" xml:space="preserve"><value>Choose how to restore the worktree. A separate second confirmation will open after this choice.</value></data>
+  <data name="Checkpoint_ResetHard" xml:space="preserve"><value>Reset hard</value></data>
+  <data name="Checkpoint_ResetHardDescription" xml:space="preserve"><value>Move the current branch pointer and discard commits and worktree changes after the checkpoint.</value></data>
+  <data name="Checkpoint_Revert" xml:space="preserve"><value>Revert</value></data>
+  <data name="Checkpoint_RevertDescription" xml:space="preserve"><value>Preserve Git history by creating a new commit that restores the checkpoint state.</value></data>
+  <data name="Checkpoint_ContinueReset" xml:space="preserve"><value>Choose Reset hard</value></data>
+  <data name="Checkpoint_ContinueRevert" xml:space="preserve"><value>Choose Revert</value></data>
+  <data name="Checkpoint_RollbackConfirmTitle" xml:space="preserve"><value>Confirm rollback again</value></data>
+  <data name="Checkpoint_RollbackConfirmMessage" xml:space="preserve"><value>Use {0} to return to {1}. {2}</value></data>
+  <data name="Checkpoint_ResetHardConfirm" xml:space="preserve"><value>This rewrites current branch history and cannot be automatically undone by Git.</value></data>
+  <data name="Checkpoint_RevertConfirm" xml:space="preserve"><value>This creates a new restoration commit and does not rewrite existing history.</value></data>
+  <data name="Checkpoint_ExecuteRollback" xml:space="preserve"><value>Execute rollback</value></data>
+  <data name="Checkpoint_RollbackFailed" xml:space="preserve"><value>Rollback failed: {0}</value></data>
+  <data name="Checkpoint_RecordMissing" xml:space="preserve"><value>Checkpoint record not found.</value></data>
+  <data name="Checkpoint_ActionFailed" xml:space="preserve"><value>Action failed: {0}</value></data>
+  <data name="Checkpoint_ResetDone" xml:space="preserve"><value>Returned to this checkpoint with Reset hard.</value></data>
+  <data name="Checkpoint_RevertDone" xml:space="preserve"><value>Created a restoration commit with Revert.</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>Tool call {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>Arguments</value></data>

@@ -373,6 +373,22 @@
                                                                                            Foreground="{DynamicResource OnPrimaryContainer}"
                                                                                            Text="{Binding CheckpointSourceText}"/>
                                                                             </Grid>
+                                                                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                                                                                <TextBlock Classes="LabelSmall" TextWrapping="Wrap"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding CheckpointActionMessage}"
+                                                                                           IsVisible="{Binding HasCheckpointActionMessage}"/>
+                                                                                <Button Grid.Column="1" Classes="Outlined" Padding="10,3"
+                                                                                        Content="{x:Static res:Strings.Checkpoint_Rollback}"
+                                                                                        IsEnabled="{Binding CanUseCheckpoint}"
+                                                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).RollbackCheckpointCommand}"
+                                                                                        CommandParameter="{Binding}"/>
+                                                                                <Button Grid.Column="2" Classes="FilledTonal" Padding="10,3"
+                                                                                        Content="{x:Static res:Strings.Checkpoint_Fork}"
+                                                                                        IsEnabled="{Binding CanUseCheckpoint}"
+                                                                                        Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).ForkCheckpointCommand}"
+                                                                                        CommandParameter="{Binding}"/>
+                                                                            </Grid>
                                                                         </StackPanel>
                                                                     </Border>
                                                                 </StackPanel>

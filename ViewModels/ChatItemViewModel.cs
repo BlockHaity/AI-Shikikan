@@ -314,6 +314,7 @@ public partial class SegmentItemViewModel : ViewModelBase
     public bool HasGrep => Grep is not null;
     public bool HasSubagents => Subagents is not null;
     public bool HasCheckpoint => Checkpoint is not null;
+    public bool CanUseCheckpoint => HasCheckpoint && IsToolDone && !IsCheckpointRolledBack;
     public bool HasNoDetail => ToolCardDetail is null;
 
     public string CheckpointTagText => Checkpoint is null
@@ -327,6 +328,31 @@ public partial class SegmentItemViewModel : ViewModelBase
         GitCheckpointSource.Manual => Strings.Checkpoint_SourceManual,
         _ => Strings.Checkpoint_SourceUnknown
     };
+
+    [ObservableProperty]
+    private bool _isCheckpointRolledBack;
+
+    [ObservableProperty]
+    private string? _checkpointActionMessage;
+
+    public bool HasCheckpointActionMessage => !string.IsNullOrWhiteSpace(CheckpointActionMessage);
+
+    public void MarkCheckpointRolledBack(CheckpointRollbackMode mode)
+    {
+        IsCheckpointRolledBack = true;
+        CheckpointActionMessage = mode == CheckpointRollbackMode.ResetHard
+            ? Strings.Checkpoint_ResetDone
+            : Strings.Checkpoint_RevertDone;
+    }
+
+    public void SetCheckpointActionError(string message)
+    {
+        CheckpointActionMessage = string.Format(Strings.Checkpoint_ActionFailed, message);
+    }
+
+    partial void OnIsCheckpointRolledBackChanged(bool value) => OnPropertyChanged(nameof(CanUseCheckpoint));
+
+    partial void OnCheckpointActionMessageChanged(string? value) => OnPropertyChanged(nameof(HasCheckpointActionMessage));
 
     public string FileReadMeta => FileRead is null
         ? string.Empty
@@ -355,6 +381,7 @@ public partial class SegmentItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasGrep));
         OnPropertyChanged(nameof(HasSubagents));
         OnPropertyChanged(nameof(HasCheckpoint));
+        OnPropertyChanged(nameof(CanUseCheckpoint));
         OnPropertyChanged(nameof(HasNoDetail));
         OnPropertyChanged(nameof(CheckpointTagText));
         OnPropertyChanged(nameof(CheckpointSourceText));
@@ -396,6 +423,7 @@ public partial class SegmentItemViewModel : ViewModelBase
     partial void OnIsToolDoneChanged(bool value)
     {
         OnPropertyChanged(nameof(CanRollback));
+        OnPropertyChanged(nameof(CanUseCheckpoint));
         OnPropertyChanged(nameof(IsStatusRunning));
         OnPropertyChanged(nameof(IsStatusSuccess));
         OnPropertyChanged(nameof(IsStatusError));

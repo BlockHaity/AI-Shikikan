@@ -259,6 +259,26 @@
   <data name="Checkpoint_SourceUnknown" xml:space="preserve"><value>未知</value></data>
   <data name="Checkpoint_AutoBadgeTip" xml:space="preserve"><value>发送此消息前自动创建的 Git 检查点</value></data>
   <data name="Checkpoint_Fork" xml:space="preserve"><value>Fork</value></data>
+  <data name="Checkpoint_Rollback" xml:space="preserve"><value>回滚</value></data>
+  <data name="Checkpoint_RollbackChooseTitle" xml:space="preserve"><value>选择回滚方式</value></data>
+  <data name="Checkpoint_RollbackHeading" xml:space="preserve"><value>回滚检查点 {0} · {1}</value></data>
+  <data name="Checkpoint_RollbackChooseDescription" xml:space="preserve"><value>请选择如何恢复工作区。选择后会打开独立的二次确认窗口。</value></data>
+  <data name="Checkpoint_ResetHard" xml:space="preserve"><value>Reset hard</value></data>
+  <data name="Checkpoint_ResetHardDescription" xml:space="preserve"><value>移动当前分支指针并丢弃检查点之后的提交与工作区变更。</value></data>
+  <data name="Checkpoint_Revert" xml:space="preserve"><value>Revert</value></data>
+  <data name="Checkpoint_RevertDescription" xml:space="preserve"><value>保留 Git 历史，创建一个还原检查点之后变更的新提交。</value></data>
+  <data name="Checkpoint_ContinueReset" xml:space="preserve"><value>选择 Reset hard</value></data>
+  <data name="Checkpoint_ContinueRevert" xml:space="preserve"><value>选择 Revert</value></data>
+  <data name="Checkpoint_RollbackConfirmTitle" xml:space="preserve"><value>再次确认回滚</value></data>
+  <data name="Checkpoint_RollbackConfirmMessage" xml:space="preserve"><value>即将使用 {0} 回到 {1}。{2}</value></data>
+  <data name="Checkpoint_ResetHardConfirm" xml:space="preserve"><value>此操作会重写当前分支历史，且不可由 Git 自动撤销。</value></data>
+  <data name="Checkpoint_RevertConfirm" xml:space="preserve"><value>此操作会创建一个新的还原提交，不会改写已有历史。</value></data>
+  <data name="Checkpoint_ExecuteRollback" xml:space="preserve"><value>确认执行</value></data>
+  <data name="Checkpoint_RollbackFailed" xml:space="preserve"><value>回滚失败：{0}</value></data>
+  <data name="Checkpoint_RecordMissing" xml:space="preserve"><value>找不到检查点记录。</value></data>
+  <data name="Checkpoint_ActionFailed" xml:space="preserve"><value>操作失败：{0}</value></data>
+  <data name="Checkpoint_ResetDone" xml:space="preserve"><value>已通过 Reset hard 回到此检查点。</value></data>
+  <data name="Checkpoint_RevertDone" xml:space="preserve"><value>已通过 Revert 创建还原提交。</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>工具调用 {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>思考过程</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>参数</value></data>
