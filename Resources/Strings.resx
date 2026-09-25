@@ -279,6 +279,21 @@
   <data name="Checkpoint_ActionFailed" xml:space="preserve"><value>操作失败：{0}</value></data>
   <data name="Checkpoint_ResetDone" xml:space="preserve"><value>已通过 Reset hard 回到此检查点。</value></data>
   <data name="Checkpoint_RevertDone" xml:space="preserve"><value>已通过 Revert 创建还原提交。</value></data>
+  <data name="Fork_Title" xml:space="preserve"><value>从检查点 Fork</value></data>
+  <data name="Fork_Heading" xml:space="preserve"><value>基于检查点 {0} 创建分支</value></data>
+  <data name="Fork_Description" xml:space="preserve"><value>对话会真正截断到检查点位置。请选择复用当前会话，或复制为一个新会话。</value></data>
+  <data name="Fork_TargetBranch" xml:space="preserve"><value>目标分支名</value></data>
+  <data name="Fork_BranchPlaceholder" xml:space="preserve"><value>例如 feature/checkpoint-fork</value></data>
+  <data name="Fork_SwitchSession" xml:space="preserve"><value>同会话切换</value></data>
+  <data name="Fork_SwitchSessionDescription" xml:space="preserve"><value>保留当前会话 ID，截断到检查点并绑定新分支。</value></data>
+  <data name="Fork_CopySession" xml:space="preserve"><value>复制新会话</value></data>
+  <data name="Fork_CopySessionDescription" xml:space="preserve"><value>复制检查点前的对话与 Roster 配置，创建独立会话。</value></data>
+  <data name="Fork_Action" xml:space="preserve"><value>创建并 Fork</value></data>
+  <data name="Fork_SessionOccupied" xml:space="preserve"><value>当前会话正在后台运行，Fork 操作已禁用。请先停止或等待完成。</value></data>
+  <data name="Fork_Completed" xml:space="preserve"><value>已从检查点 {0} Fork 到分支 {1}。</value></data>
+  <data name="Fork_Failed" xml:space="preserve"><value>Fork 失败：{0}</value></data>
+  <data name="Fork_NoTruncationAnchor" xml:space="preserve"><value>找不到可用于截断对话的用户消息锚点。</value></data>
+  <data name="Fork_TruncateFailed" xml:space="preserve"><value>无法持久化对话截断。</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>工具调用 {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>思考过程</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>参数</value></data>

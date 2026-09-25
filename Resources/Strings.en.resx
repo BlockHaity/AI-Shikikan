@@ -277,6 +277,21 @@
   <data name="Checkpoint_ActionFailed" xml:space="preserve"><value>Action failed: {0}</value></data>
   <data name="Checkpoint_ResetDone" xml:space="preserve"><value>Returned to this checkpoint with Reset hard.</value></data>
   <data name="Checkpoint_RevertDone" xml:space="preserve"><value>Created a restoration commit with Revert.</value></data>
+  <data name="Fork_Title" xml:space="preserve"><value>Fork from checkpoint</value></data>
+  <data name="Fork_Heading" xml:space="preserve"><value>Create a branch from checkpoint {0}</value></data>
+  <data name="Fork_Description" xml:space="preserve"><value>The conversation will be genuinely truncated at the checkpoint. Reuse this session or copy it into a new one.</value></data>
+  <data name="Fork_TargetBranch" xml:space="preserve"><value>Target branch name</value></data>
+  <data name="Fork_BranchPlaceholder" xml:space="preserve"><value>For example, feature/checkpoint-fork</value></data>
+  <data name="Fork_SwitchSession" xml:space="preserve"><value>Switch in this session</value></data>
+  <data name="Fork_SwitchSessionDescription" xml:space="preserve"><value>Keep this session ID, truncate it at the checkpoint, and bind the new branch.</value></data>
+  <data name="Fork_CopySession" xml:space="preserve"><value>Copy to a new session</value></data>
+  <data name="Fork_CopySessionDescription" xml:space="preserve"><value>Copy the conversation prefix and Roster configuration into an independent session.</value></data>
+  <data name="Fork_Action" xml:space="preserve"><value>Create &amp; fork</value></data>
+  <data name="Fork_SessionOccupied" xml:space="preserve"><value>This session is running in the background. Fork is disabled until it stops or finishes.</value></data>
+  <data name="Fork_Completed" xml:space="preserve"><value>Forked checkpoint {0} to branch {1}.</value></data>
+  <data name="Fork_Failed" xml:space="preserve"><value>Fork failed: {0}</value></data>
+  <data name="Fork_NoTruncationAnchor" xml:space="preserve"><value>No user-message anchor was found for truncating the conversation.</value></data>
+  <data name="Fork_TruncateFailed" xml:space="preserve"><value>The conversation truncation could not be persisted.</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>Tool call {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>Arguments</value></data>

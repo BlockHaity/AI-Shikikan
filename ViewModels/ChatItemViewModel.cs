@@ -350,6 +350,11 @@ public partial class SegmentItemViewModel : ViewModelBase
         CheckpointActionMessage = string.Format(Strings.Checkpoint_ActionFailed, message);
     }
 
+    public void SetCheckpointActionSuccess(string message)
+    {
+        CheckpointActionMessage = message;
+    }
+
     partial void OnIsCheckpointRolledBackChanged(bool value) => OnPropertyChanged(nameof(CanUseCheckpoint));
 
     partial void OnCheckpointActionMessageChanged(string? value) => OnPropertyChanged(nameof(HasCheckpointActionMessage));

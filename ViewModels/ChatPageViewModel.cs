@@ -722,18 +722,35 @@ public partial class ChatPageViewModel : ViewModelBase
         CanContinue = false;
     }
 
-    /// <summary>从用户消息的自动检查点分叉(D 任务中接入完整对话框)。</summary>
+    /// <summary>从用户消息的自动检查点分叉。</summary>
     [RelayCommand]
-    private void ForkUserCheckpoint(ChatItemViewModel item)
+    private async Task ForkUserCheckpointAsync(ChatItemViewModel item)
     {
-        if (string.IsNullOrWhiteSpace(item.CheckpointId)) return;
+        if (string.IsNullOrWhiteSpace(item.CheckpointId) || CurrentSession is null) return;
+        var context = _runtime.Git.ResolveContext(CurrentSession.WorkDir);
+        var record = _runtime.Checkpoints.Get(context.RepositoryRoot, item.CheckpointId);
+        if (record is null) return;
+        var detail = new CheckpointDetail
+        {
+            CheckpointId = record.Id,
+            Label = record.Label,
+            ShortSha = record.ShortSha,
+            FullSha = record.CommitSha,
+            BranchName = record.BranchName,
+            WorkDir = record.WorkDir,
+            Source = record.Source,
+            CreatedAt = record.CreatedAt,
+            SessionId = record.SessionId,
+            ConversationCutoff = record.ConversationCutoff
+        };
+        await ExecuteForkAsync(detail, null);
     }
 
-    /// <summary>检查点分叉入口(D 任务中接入目标分支与会话模式对话框)。</summary>
+    /// <summary>检查点卡片 Fork。</summary>
     [RelayCommand]
-    private void ForkCheckpoint(SegmentItemViewModel segment)
+    private async Task ForkCheckpointAsync(SegmentItemViewModel segment)
     {
-        if (segment.Checkpoint is null) return;
+        if (segment.Checkpoint is { } detail) await ExecuteForkAsync(detail, segment);
     }
 
     /// <summary>回滚检查点：先选择方式，再经过独立确认窗口才调用 Core。</summary>
@@ -791,6 +808,105 @@ public partial class ChatPageViewModel : ViewModelBase
             segment.SetCheckpointActionError(string.Format(
                 Strings.Checkpoint_RollbackFailed, result.Stderr.Trim()));
         }
+    }
+
+    private async Task ExecuteForkAsync(CheckpointDetail detail, SegmentItemViewModel? card)
+    {
+        if (CurrentSession is null || GetMainWindow() is not { } owner) return;
+        var occupied = IsSending;
+        var suggestion = $"fork/{detail.CheckpointId}-{DateTime.Now:MMdd-HHmm}";
+        var request = await Views.ForkCheckpointDialog.ShowAsync(
+            owner,
+            string.Format(Strings.Fork_Heading, detail.ShortSha),
+            Strings.Fork_Description,
+            suggestion,
+            copyNewSessionByDefault: false,
+            occupied,
+            Strings.Fork_SessionOccupied);
+        if (request is null) return;
+
+        var source = CurrentSession;
+        var context = _runtime.Git.ResolveContext(source.WorkDir);
+        var record = _runtime.Checkpoints.Get(context.RepositoryRoot, detail.CheckpointId);
+        if (record is null)
+        {
+            card?.SetCheckpointActionError(Strings.Checkpoint_RecordMissing);
+            return;
+        }
+
+        var gitResult = _runtime.Git.Fork(context, record, request.BranchName);
+        if (!gitResult.Succeeded)
+        {
+            var message = string.Format(Strings.Fork_Failed, gitResult.Stderr.Trim());
+            card?.SetCheckpointActionError(message);
+            AppendNotice(message);
+            return;
+        }
+
+        if (request.SessionMode == Views.ForkSessionMode.CopyNewSession)
+        {
+            CopySessionAtCheckpoint(source, record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+        }
+        else
+        {
+            TruncateCurrentSessionAtCheckpoint(record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+        }
+
+        Sessions = _chatService.Sessions;
+        RefreshMessages();
+        _runtime.Engine.RebuildConversation(CurrentSession?.Messages ?? []);
+        AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        RefreshWorkspaceContext();
+        AppShell.Instance.NotifyDataChanged();
+        var done = string.Format(Strings.Fork_Completed, detail.ShortSha, request.BranchName);
+        card?.SetCheckpointActionSuccess(done);
+        if (card is null) AppendNotice(done);
+    }
+
+    /// <summary>同会话 Fork：真正删除检查点 cutoff 之后的对话并持久化。</summary>
+    private void TruncateCurrentSessionAtCheckpoint(int cutoff, string branch, string repositoryRoot)
+    {
+        if (CurrentSession is not { } session) return;
+        var index = Math.Clamp(cutoff, 0, session.Messages.Count);
+        if (index < session.Messages.Count)
+        {
+            var deleteId = session.Messages[index].Id;
+            if (session.Messages[index].Role != MessageRole.User)
+            {
+                var user = session.Messages.Take(index).LastOrDefault(m => m.Role == MessageRole.User);
+                if (user is null) throw new InvalidOperationException(Strings.Fork_NoTruncationAnchor);
+                deleteId = user.Id;
+            }
+
+            if (!_chatService.DeleteMessage(session.Id, deleteId))
+                throw new InvalidOperationException(Strings.Fork_TruncateFailed);
+        }
+
+        session.BranchName = branch;
+        session.RepositoryRoot = repositoryRoot;
+        _chatService.SetSessionWorkDir(session.Id, session.WorkDir);
+        // Delete/Set 调用已持久化上下文；显式 rename 也确保仅修改绑定字段时写盘。
+        _chatService.RenameSession(session.Id, session.Title);
+    }
+
+    /// <summary>复制新会话：逐条复制 cutoff 前缀，并复制 AOT 源生成持久化的 roster.json。</summary>
+    private void CopySessionAtCheckpoint(ChatSession source, int cutoff, string branch, string repositoryRoot)
+    {
+        var prefix = source.Messages.Take(Math.Clamp(cutoff, 0, source.Messages.Count)).ToList();
+        var copy = _chatService.CreateSession(source.Title);
+        copy.WorkDir = source.WorkDir;
+        copy.RepositoryRoot = repositoryRoot;
+        copy.BranchName = branch;
+
+        foreach (var message in prefix)
+        {
+            var added = _chatService.AddMessage(copy.Id, message.Role, message.Segments);
+            added.CheckpointId = message.CheckpointId;
+        }
+
+        RosterConfigService.Save(copy.Id, RosterConfigService.Load(source.Id));
+        // 写回标题/检查点 ID，确保最后一条也在本轮持久化。
+        _chatService.RenameSession(copy.Id, source.Title);
     }
 
     /// <summary>进入用户消息 fork 编辑态。</summary>
