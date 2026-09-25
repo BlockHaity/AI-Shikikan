@@ -7,6 +7,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Llm;
+using AIShikikan.Core.Services.Git;
+using AIShikikan.Gui.Resources;
 
 namespace AIShikikan.Gui.Views;
 
@@ -15,13 +17,39 @@ public class StagedToActionConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        return value is true ? "撤销暂存" : "暂存";
+        return value is true ? Strings.GitPanel_Unstage : Strings.GitPanel_Stage;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         throw new NotSupportedException();
     }
+}
+
+/// <summary>Git porcelain 状态 → 当前语言的可读状态。</summary>
+public class GitStatusToTextConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not GitFileStatus file) return string.Empty;
+        return (file.IndexStatus, file.WorkTreeStatus) switch
+        {
+            ('?', _) => Strings.Git_StatusUntracked,
+            ('A', _) => Strings.Git_StatusAddedStaged,
+            ('M', ' ') => Strings.Git_StatusModifiedStaged,
+            ('M', _) => Strings.Git_StatusModified,
+            ('D', ' ') => Strings.Git_StatusDeletedStaged,
+            ('D', _) => Strings.Git_StatusDeleted,
+            ('R', _) => Strings.Git_StatusRenamed,
+            ('C', _) => Strings.Git_StatusCopied,
+            (_, 'M') => Strings.Git_StatusModified,
+            (_, 'D') => Strings.Git_StatusDeleted,
+            _ => Strings.Git_StatusChanged
+        };
+    }
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
 }
 
 /// <summary>object? → bool: null 时隐藏, 非 null 时显示。</summary>

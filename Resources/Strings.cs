@@ -147,6 +147,15 @@ public static class Strings
     public static string GitPanel_NoCheckpoints => Get(nameof(GitPanel_NoCheckpoints));
     public static string GitPanel_FirstCommitBeforeCheckpoint => Get(nameof(GitPanel_FirstCommitBeforeCheckpoint));
     public static string GitPanel_DefaultCheckpointLabel => Get(nameof(GitPanel_DefaultCheckpointLabel));
+    public static string Git_StatusUntracked => Get(nameof(Git_StatusUntracked));
+    public static string Git_StatusAddedStaged => Get(nameof(Git_StatusAddedStaged));
+    public static string Git_StatusModifiedStaged => Get(nameof(Git_StatusModifiedStaged));
+    public static string Git_StatusModified => Get(nameof(Git_StatusModified));
+    public static string Git_StatusDeletedStaged => Get(nameof(Git_StatusDeletedStaged));
+    public static string Git_StatusDeleted => Get(nameof(Git_StatusDeleted));
+    public static string Git_StatusRenamed => Get(nameof(Git_StatusRenamed));
+    public static string Git_StatusCopied => Get(nameof(Git_StatusCopied));
+    public static string Git_StatusChanged => Get(nameof(Git_StatusChanged));
     public static string GitPanel_NotRepo => Get(nameof(GitPanel_NotRepo));
     public static string GitPanel_SelectFolder => Get(nameof(GitPanel_SelectFolder));
     public static string GitPanel_SelectFolderTip => Get(nameof(GitPanel_SelectFolderTip));

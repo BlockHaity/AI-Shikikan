@@ -5,7 +5,7 @@
         xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
         mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="310"
         x:Class="AIShikikan.Gui.Views.RollbackChoiceDialog"
-        Title="Rollback"
+        Title="{x:Static res:Strings.Checkpoint_RollbackChooseTitle}"
         Width="500" Height="310" CanResize="False"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
 

@@ -5,9 +5,22 @@
         xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="410"
         x:Class="AIShikikan.Gui.Views.ForkCheckpointDialog"
-        Title="Fork checkpoint"
+        Title="{x:Static res:Strings.Fork_Title}"
         Width="520" SizeToContent="Height" CanResize="False"
         WindowStartupLocation="CenterOwner" ShowInTaskbar="False">
+
+    <Window.Styles>
+        <Style Selector="RadioButton.cardRadio">
+            <Setter Property="Padding" Value="12"/>
+            <Setter Property="CornerRadius" Value="9"/>
+            <Setter Property="Background" Value="{DynamicResource SurfaceContainerLow}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource OutlineVariant}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+        <Style Selector="RadioButton.cardRadio:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource SurfaceContainerHigh}"/>
+        </Style>
+    </Window.Styles>
 
     <StackPanel Margin="24" Spacing="16">
         <StackPanel Spacing="4">
@@ -23,7 +36,7 @@
         </StackPanel>
 
         <StackPanel Spacing="8">
-            <RadioButton x:Name="SwitchSessionOption" GroupName="ForkMode" Classes="CardRadio"
+            <RadioButton x:Name="SwitchSessionOption" GroupName="ForkMode" Classes="cardRadio"
                          IsChecked="True">
                 <StackPanel Spacing="2">
                     <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Fork_SwitchSession}"/>
@@ -32,7 +45,7 @@
                                Text="{x:Static res:Strings.Fork_SwitchSessionDescription}"/>
                 </StackPanel>
             </RadioButton>
-            <RadioButton x:Name="CopySessionOption" GroupName="ForkMode" Classes="CardRadio">
+            <RadioButton x:Name="CopySessionOption" GroupName="ForkMode" Classes="cardRadio">
                 <StackPanel Spacing="2">
                     <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Fork_CopySession}"/>
                     <TextBlock Classes="BodySmall" TextWrapping="Wrap"

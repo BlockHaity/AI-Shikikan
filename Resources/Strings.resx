@@ -150,6 +150,15 @@
   <data name="GitPanel_NoCheckpoints" xml:space="preserve"><value>暂无检查点</value></data>
   <data name="GitPanel_FirstCommitBeforeCheckpoint" xml:space="preserve"><value>空仓库需要先创建第一个 commit。</value></data>
   <data name="GitPanel_DefaultCheckpointLabel" xml:space="preserve"><value>手动检查点</value></data>
+  <data name="Git_StatusUntracked" xml:space="preserve"><value>未跟踪</value></data>
+  <data name="Git_StatusAddedStaged" xml:space="preserve"><value>新增（已暂存）</value></data>
+  <data name="Git_StatusModifiedStaged" xml:space="preserve"><value>修改（已暂存）</value></data>
+  <data name="Git_StatusModified" xml:space="preserve"><value>修改</value></data>
+  <data name="Git_StatusDeletedStaged" xml:space="preserve"><value>删除（已暂存）</value></data>
+  <data name="Git_StatusDeleted" xml:space="preserve"><value>删除</value></data>
+  <data name="Git_StatusRenamed" xml:space="preserve"><value>重命名</value></data>
+  <data name="Git_StatusCopied" xml:space="preserve"><value>复制</value></data>
+  <data name="Git_StatusChanged" xml:space="preserve"><value>变更</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库, 请选择文件夹或初始化仓库</value></data>
   <data name="GitPanel_SelectFolder" xml:space="preserve"><value>选择文件夹</value></data>
   <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>选定后在此目录检测 git 仓库</value></data>

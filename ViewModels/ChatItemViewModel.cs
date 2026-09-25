@@ -397,6 +397,7 @@ public partial class SegmentItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(CheckpointTagText));
         OnPropertyChanged(nameof(CheckpointSourceText));
         OnPropertyChanged(nameof(CardTitle));
+        if (value is CheckpointDetail) IsExpanded = true;
         OnPropertyChanged(nameof(FileReadMeta));
         OnPropertyChanged(nameof(GlobQueryText));
         OnPropertyChanged(nameof(GlobCountText));
