@@ -3,6 +3,7 @@ using System.Text.Json;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Serialization;
+using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services;
@@ -151,7 +152,13 @@ public class ChatService
             session.Title = plainText.Length > 30 ? plainText[..30] + "..." : plainText;
         }
 
-        SaveSession(session);
+        if (!SaveSession(session))
+        {
+            // 发送流程必须感知保存失败: 回滚内存状态并抛出
+            session.Messages.Remove(message);
+            throw new InvalidOperationException($"会话保存失败: {session.Id}");
+        }
+
         MessageAdded?.Invoke(this, message);
         return message;
     }
@@ -214,6 +221,174 @@ public class ChatService
         session.UpdatedAt = DateTime.Now;
         SaveSession(session);
         return true;
+    }
+
+    /// <summary>为消息关联检查点 ID(用户消息发送前自动标记, 或 AI 工具创建后回填)。</summary>
+    public bool SetMessageCheckpoint(string sessionId, string messageId, string checkpointId)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+        EnsureLoaded(session);
+
+        var msg = session.Messages.FirstOrDefault(m => m.Id == messageId);
+        if (msg is null) return false;
+
+        msg.CheckpointId = checkpointId;
+        session.UpdatedAt = DateTime.Now;
+        return SaveSessionWithResult(session);
+    }
+
+    /// <summary>为工具分段关联检查点 ID 与卡片详情(AI 工具执行完成后调用)。</summary>
+    public bool SetToolSegmentCheckpoint(string sessionId, string messageId, string toolSegmentName, string checkpointId, CheckpointDetail? detail = null)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+        EnsureLoaded(session);
+
+        var msg = session.Messages.FirstOrDefault(m => m.Id == messageId);
+        if (msg is null) return false;
+
+        var toolSeg = msg.Segments
+            .Where(s => s.Kind == MessageSegmentKind.Tool)
+            .Select(s => s.Tool)
+            .FirstOrDefault(t => t is not null && t.Name == toolSegmentName);
+        if (toolSeg is null) return false;
+
+        toolSeg.CheckpointId = checkpointId;
+        if (detail is not null)
+        {
+            toolSeg.Detail = detail;
+        }
+        session.UpdatedAt = DateTime.Now;
+        return SaveSessionWithResult(session);
+    }
+
+    /// <summary>复制会话(用于 Fork): 复制指定截止索引之前的消息(含), 新会话继承工作目录/仓库/分支信息。)</summary>
+    public ChatSession? ForkSession(string sourceSessionId, int conversationCutoff, string? newTitle = null)
+    {
+        var source = _sessions.FirstOrDefault(s => s.Id == sourceSessionId);
+        if (source is null) return null;
+        EnsureLoaded(source);
+
+        if (conversationCutoff < 0 || conversationCutoff >= source.Messages.Count)
+        {
+            return null;
+        }
+
+        var newSession = new ChatSession
+        {
+            Title = newTitle ?? $"{source.Title} (fork)",
+            CreatedAt = DateTime.Now,
+            UpdatedAt = DateTime.Now,
+            WorkDir = source.WorkDir,
+            RepositoryRoot = source.RepositoryRoot,
+            BranchName = source.BranchName,
+            Messages = source.Messages.Take(conversationCutoff + 1).Select(m => new ChatMessage
+            {
+                Id = Guid.NewGuid().ToString("N")[..8],
+                Role = m.Role,
+                CheckpointId = m.CheckpointId,
+                Segments = m.Segments.Select(s => new MessageSegment
+                {
+                    Kind = s.Kind,
+                    Content = s.Content,
+                    Tool = s.Tool is not null ? new ToolSegment
+                    {
+                        Name = s.Tool.Name,
+                        Arguments = s.Tool.Arguments,
+                        OutputLines = [.. s.Tool.OutputLines],
+                        Result = s.Tool.Result,
+                        IsError = s.Tool.IsError,
+                        IsDone = s.Tool.IsDone,
+                        CheckpointId = s.Tool.CheckpointId,
+                        StepId = s.Tool.StepId,
+                        Detail = s.Tool.Detail
+                    } : null,
+                    ImageData = s.ImageData,
+                    ImageMimeType = s.ImageMimeType,
+                    ImageName = s.ImageName
+                }).ToList(),
+                Timestamp = m.Timestamp
+            }).ToList()
+        };
+
+        _sessions.Insert(0, newSession);
+        CurrentSession = newSession;
+        SaveSession(newSession);
+        return newSession;
+    }
+
+    /// <summary>从指定索引截断会话消息(保留 [0, cutoffIndex] 范围, 用于继续输出/回滚后续写)。)</summary>
+    public bool TruncateMessages(string sessionId, int cutoffIndex)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return false;
+        EnsureLoaded(session);
+
+        if (cutoffIndex < 0 || cutoffIndex >= session.Messages.Count)
+        {
+            return false;
+        }
+
+        session.Messages.RemoveRange(cutoffIndex + 1, session.Messages.Count - cutoffIndex - 1);
+        session.UpdatedAt = DateTime.Now;
+        return SaveSessionWithResult(session);
+    }
+
+    /// <summary>获取会话的检查点关联消息索引映射(用于 UI 展示检查点卡片位置)。)</summary>
+    public IReadOnlyList<(string MessageId, string CheckpointId)> GetMessageCheckpoints(string sessionId)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return [];
+        EnsureLoaded(session);
+
+        return session.Messages
+            .Where(m => !string.IsNullOrEmpty(m.CheckpointId))
+            .Select(m => (m.Id, m.CheckpointId!))
+            .ToList();
+    }
+
+    /// <summary>更新会话的仓库/分支绑定信息(首次发送消息时调用)。</summary>
+    public void SetSessionRepositoryInfo(string sessionId, string repositoryRoot, string branchName)
+    {
+        var session = _sessions.FirstOrDefault(s => s.Id == sessionId);
+        if (session is null) return;
+
+        var changed = false;
+        if (!string.Equals(session.RepositoryRoot, repositoryRoot, StringComparison.Ordinal))
+        {
+            session.RepositoryRoot = repositoryRoot;
+            changed = true;
+        }
+        if (!string.Equals(session.BranchName, branchName, StringComparison.Ordinal))
+        {
+            session.BranchName = branchName;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            session.UpdatedAt = DateTime.Now;
+            SaveSession(session);
+        }
+    }
+
+    /// <summary>尝试保存会话, 返回是否成功(供调用者感知失败)。</summary>
+    private bool SaveSessionWithResult(ChatSession session)
+    {
+        try
+        {
+            Directory.CreateDirectory(SessionsDir);
+            var json = JsonSerializer.Serialize(session, AppJsonContext.Default.ChatSession);
+            var path = Path.Combine(SessionsDir, $"{session.Id}.json");
+            File.WriteAllText(path, json);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Session", ex, $"会话保存失败: {session.Id}");
+            return false;
+        }
     }
 
     /// <summary>懒加载: 启动仅解析每个会话的轻量元数据(id/title/时间/消息条数),
@@ -316,7 +491,7 @@ public class ChatService
         }
     }
 
-    private void SaveSession(ChatSession session)
+    private bool SaveSession(ChatSession session)
     {
         try
         {
@@ -324,10 +499,12 @@ public class ChatService
             var json = JsonSerializer.Serialize(session, AppJsonContext.Default.ChatSession);
             var path = Path.Combine(SessionsDir, $"{session.Id}.json");
             File.WriteAllText(path, json);
+            return true;
         }
         catch (Exception ex)
         {
             Log.Warn("Session", ex, $"会话保存失败: {session.Id}");
+            return false;
         }
     }
 

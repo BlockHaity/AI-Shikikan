@@ -53,4 +53,5 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(CheckpointRollbackMode))]
 [JsonSerializable(typeof(GitWorkspaceContext))]
 [JsonSerializable(typeof(CheckpointDetail))]
+[JsonSerializable(typeof(GitServiceError))]
 public sealed partial class AppJsonContext : JsonSerializerContext;
