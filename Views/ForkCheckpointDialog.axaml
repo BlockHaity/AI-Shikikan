@@ -31,7 +31,7 @@
 
         <StackPanel Spacing="6">
             <TextBlock Classes="LabelLarge" Text="{x:Static res:Strings.Fork_TargetBranch}"/>
-            <TextBox x:Name="BranchBox" Watermark="{x:Static res:Strings.Fork_BranchPlaceholder}"
+            <TextBox x:Name="BranchBox" PlaceholderText="{x:Static res:Strings.Fork_BranchPlaceholder}"
                      KeyDown="OnBranchKeyDown"/>
         </StackPanel>
 

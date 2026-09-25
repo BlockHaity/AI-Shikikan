@@ -153,7 +153,7 @@
                                 Command="{Binding MarkManualCheckpointCommand}"/>
                     </Grid>
                     <TextBox Text="{Binding CheckpointLabel}" FontSize="11"
-                             Watermark="{x:Static res:Strings.GitPanel_CheckpointLabelPlaceholder}"/>
+                             PlaceholderText="{x:Static res:Strings.GitPanel_CheckpointLabelPlaceholder}"/>
                     <TextBlock Text="{x:Static res:Strings.GitPanel_NoCheckpoints}" FontSize="12" Opacity="0.6"
                                IsVisible="{Binding !HasCheckpoints}"/>
                     <ItemsControl ItemsSource="{Binding Checkpoints}">
