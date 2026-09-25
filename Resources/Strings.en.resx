@@ -233,7 +233,14 @@
   <data name="Chat_AskUserUnavailable" xml:space="preserve"><value>Unable to ask the user right now (main window unavailable).</value></data>
   <data name="Chat_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="Chat_WorkDir" xml:space="preserve"><value>Work Dir</value></data>
-  <data name="Chat_WorkDirDefault" xml:space="preserve"><value>Default</value></data>
+  <data name="Chat_WorkDirDefault" xml:space="preserve"><value>Select folder</value></data>
+  <data name="Chat_RepositoryRoot" xml:space="preserve"><value>Repository</value></data>
+  <data name="Chat_BranchUnknown" xml:space="preserve"><value>Unknown branch</value></data>
+  <data name="Chat_DetachedHead" xml:space="preserve"><value>detached HEAD</value></data>
+  <data name="Chat_GitDirtyWarning" xml:space="preserve"><value>Uncommitted changes (warning only)</value></data>
+  <data name="Chat_SelectWorkDirFirst" xml:space="preserve"><value>Select a working directory first; a new session does not inherit the previous session's directory.</value></data>
+  <data name="Chat_DetachedHeadBlocked" xml:space="preserve"><value>HEAD is detached. Switch to a branch before sending.</value></data>
+  <data name="Chat_FirstCommitRequired" xml:space="preserve"><value>An empty repository needs its first commit before checkpoints can be created safely.</value></data>
   <data name="Chat_ModePlan" xml:space="preserve"><value>Plan</value></data>
   <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
   <data name="Chat_ModePlanTip" xml:space="preserve"><value>Plan mode: analyze requirements and create a plan</value></data>

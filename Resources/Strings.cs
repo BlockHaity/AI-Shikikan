@@ -233,6 +233,13 @@ public static class Strings
     public static string Chat_Thinking => Get(nameof(Chat_Thinking));
     public static string Chat_WorkDir => Get(nameof(Chat_WorkDir));
     public static string Chat_WorkDirDefault => Get(nameof(Chat_WorkDirDefault));
+    public static string Chat_RepositoryRoot => Get(nameof(Chat_RepositoryRoot));
+    public static string Chat_BranchUnknown => Get(nameof(Chat_BranchUnknown));
+    public static string Chat_DetachedHead => Get(nameof(Chat_DetachedHead));
+    public static string Chat_GitDirtyWarning => Get(nameof(Chat_GitDirtyWarning));
+    public static string Chat_SelectWorkDirFirst => Get(nameof(Chat_SelectWorkDirFirst));
+    public static string Chat_DetachedHeadBlocked => Get(nameof(Chat_DetachedHeadBlocked));
+    public static string Chat_FirstCommitRequired => Get(nameof(Chat_FirstCommitRequired));
     public static string Chat_ModePlan => Get(nameof(Chat_ModePlan));
     public static string Chat_ModeBuild => Get(nameof(Chat_ModeBuild));
     public static string Chat_ModePlanTip => Get(nameof(Chat_ModePlanTip));

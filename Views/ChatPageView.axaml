@@ -70,7 +70,7 @@
         </Border>
 
         <!-- 聊天区 -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto,Auto,Auto">
 
             <Border Grid.Row="0" Padding="16,8" BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1">
                 <Grid ColumnDefinitions="*,Auto">
@@ -622,10 +622,41 @@
                 </StackPanel>
             </Border>
 
-            <Border Grid.Row="3" Padding="16,8"
+            <!-- Git 上下文与发送前置反馈 -->
+            <Border Grid.Row="3" Padding="16,6"
+                    BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,0,0,1"
+                    Background="{DynamicResource SurfaceContainerLowest}"
+                    IsVisible="{Binding HasWorkDir}">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                    <TextBlock Classes="LabelSmall" Text="{x:Static res:Strings.Chat_RepositoryRoot}"
+                               Foreground="{DynamicResource OnSurfaceVariant}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1" Classes="LabelSmall"
+                               FontFamily="{DynamicResource MonoThemeFontFamily}"
+                               Text="{Binding RepositoryRootText}" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" ToolTip.Tip="{Binding RepositoryRootText}"/>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                        <TextBlock Classes="LabelSmall" Foreground="{DynamicResource Tertiary}"
+                                   Text="{Binding GitWarningText}" IsVisible="{Binding HasGitWarning}"/>
+                        <Border CornerRadius="10" Padding="8,2"
+                                Background="{DynamicResource SecondaryContainer}">
+                            <TextBlock Classes="LabelSmall" Foreground="{DynamicResource OnSecondaryContainer}"
+                                       Text="{Binding BranchText}"/>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="4" Padding="16,8"
                     BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="0,1,0,0"
                     DragDrop.AllowDrop="True" DragDrop.Drop="OnInputDrop" DragDrop.DragOver="OnInputDragOver">
                 <StackPanel Spacing="4">
+                    <Border CornerRadius="6" Padding="10,6" IsVisible="{Binding HasSendBlockedReason}"
+                            Background="{DynamicResource ErrorContainer}">
+                        <TextBlock Classes="LabelMedium" TextWrapping="Wrap"
+                                   Foreground="{DynamicResource OnErrorContainer}"
+                                   Text="{Binding SendBlockedReason}"/>
+                    </Border>
+
                     <!-- 输入历史浏览提示(↑/↓ 时显示位置与操作说明, 到达边界时显示边界反馈) -->
                     <TextBlock Classes="LabelSmall"
                                IsVisible="{Binding IsBrowsingHistory}"
@@ -683,7 +714,8 @@
                             <!-- 空闲: 发送按钮 -->
                             <Button Classes="Filled" Content="{x:Static res:Strings.Chat_Send}"
                                     Command="{Binding SendMessageCommand}" IsVisible="{Binding !IsSending}"
-                                    MinWidth="80"/>
+                                    IsEnabled="{Binding CanSendMessage}" MinWidth="80"
+                                    ToolTip.Tip="{Binding SendBlockedReason}"/>
                         </StackPanel>
                     </Grid>
                 </StackPanel>

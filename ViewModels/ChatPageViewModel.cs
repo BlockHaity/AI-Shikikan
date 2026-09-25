@@ -104,6 +104,108 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private string _workDir = string.Empty;
 
+    /// <summary>当前工作目录对应的 Git 仓库根目录。</summary>
+    public string RepositoryRootText => _runtime.Git.RepositoryRoot;
+
+    /// <summary>当前绑定分支；detached HEAD 时显示资源化提示。</summary>
+    public string BranchText => IsDetachedHead
+        ? Strings.Chat_DetachedHead
+        : string.IsNullOrWhiteSpace(CurrentBranch) ? Strings.Chat_BranchUnknown : CurrentBranch;
+
+    [ObservableProperty]
+    private string _currentBranch = string.Empty;
+
+    [ObservableProperty]
+    private bool _isDetachedHead;
+
+    [ObservableProperty]
+    private bool _isEmptyRepository;
+
+    [ObservableProperty]
+    private bool _isDirty;
+
+    /// <summary>工作区存在未提交变更时仅提示，不阻止发送。</summary>
+    public string? GitWarningText => IsDirty ? Strings.Chat_GitDirtyWarning : null;
+
+    public bool HasGitWarning => !string.IsNullOrEmpty(GitWarningText);
+
+    /// <summary>空工作目录始终阻止发送，新会话必须显式选择目录。</summary>
+    public bool HasWorkDir => !string.IsNullOrWhiteSpace(WorkDir);
+
+    /// <summary>输入区阻止原因；null 表示 Git 前置条件满足。</summary>
+    public string? SendBlockedReason
+    {
+        get
+        {
+            if (!HasWorkDir) return Strings.Chat_SelectWorkDirFirst;
+            if (IsDetachedHead) return Strings.Chat_DetachedHeadBlocked;
+            if (IsEmptyRepository) return Strings.Chat_FirstCommitRequired;
+            return null;
+        }
+    }
+
+    public bool HasSendBlockedReason => !string.IsNullOrEmpty(SendBlockedReason);
+
+    public bool CanSendMessage => !IsSending && !HasSendBlockedReason &&
+                                  (!string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0);
+
+    partial void OnWorkDirChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasWorkDir));
+        RefreshWorkspaceContext();
+        NotifySendState();
+    }
+
+    partial void OnIsSendingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanSendMessage));
+        SendMessageCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnInputTextChanged(string value)
+    {
+        if (!_applyingHistory)
+        {
+            HistoryUserEdited();
+        }
+
+        NotifySendState();
+    }
+
+    private void NotifySendState()
+    {
+        OnPropertyChanged(nameof(CanSendMessage));
+        SendMessageCommand.NotifyCanExecuteChanged();
+    }
+
+    private void RefreshWorkspaceContext()
+    {
+        if (HasWorkDir)
+        {
+            try
+            {
+                _runtime.Git.SetRoot(WorkDir);
+            }
+            catch
+            {
+                // 发送前置仍由目录校验拦截；面板继续显示上次可解析的上下文。
+            }
+        }
+
+        var git = _runtime.Git;
+        IsDirty = git.IsRepoAvailable && git.HasUncommittedChanges();
+        IsEmptyRepository = git.IsRepoAvailable && string.IsNullOrWhiteSpace(git.LastCommitShort());
+        CurrentBranch = git.CurrentBranch() ?? string.Empty;
+        IsDetachedHead = git.IsRepoAvailable && string.IsNullOrWhiteSpace(CurrentBranch);
+        OnPropertyChanged(nameof(RepositoryRootText));
+        OnPropertyChanged(nameof(BranchText));
+        OnPropertyChanged(nameof(GitWarningText));
+        OnPropertyChanged(nameof(HasGitWarning));
+        OnPropertyChanged(nameof(SendBlockedReason));
+        OnPropertyChanged(nameof(HasSendBlockedReason));
+        NotifySendState();
+    }
+
     [ObservableProperty]
     private bool _isPlanMode;
 
@@ -165,6 +267,8 @@ public partial class ChatPageViewModel : ViewModelBase
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
             RefreshContextUsage();
+            RefreshWorkspaceContext();
+            NotifySendState();
         };
         _chatService.MessageAdded += (_, msg) =>
         {
@@ -195,6 +299,7 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshProviders();
         RefreshThinkingOptions();
         RefreshContextUsage();
+        RefreshWorkspaceContext();
     }
 
     partial void OnSelectedModelChanged(string value)
@@ -579,6 +684,8 @@ public partial class ChatPageViewModel : ViewModelBase
     private void NewSession()
     {
         _chatService.CreateSession();
+        // 新会话必须显式选择自己的工作目录，禁止隐式继承上一会话上下文。
+        WorkDir = string.Empty;
         Sessions = _chatService.Sessions;
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
@@ -716,15 +823,6 @@ public partial class ChatPageViewModel : ViewModelBase
     private string _historyDraft = string.Empty; // 浏览期间暂存的当前输入
     private bool _applyingHistory; // 程序写入 InputText 时抑制"用户编辑"判定
 
-    /// <summary>输入框文本变化: 非程序化回填(即用户手动编辑)时结束浏览提示。</summary>
-    partial void OnInputTextChanged(string value)
-    {
-        if (!_applyingHistory)
-        {
-            HistoryUserEdited();
-        }
-    }
-
     /// <summary>输入历史: 当前会话的用户消息(按时间顺序), 按需派生以与删除/编辑保持同步。</summary>
     private List<string> CurrentInputHistory()
     {
@@ -821,15 +919,13 @@ public partial class ChatPageViewModel : ViewModelBase
         HistoryHint = string.Empty;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanSendMessage))]
     private void SendMessage()
     {
         var hasAttachments = PendingAttachments.Count > 0;
         if (string.IsNullOrWhiteSpace(InputText) && !hasAttachments) return;
-        if (CurrentSession is null)
-        {
-            NewSession();
-        }
+        if (!HasWorkDir) return;
+        if (CurrentSession is null) return;
 
         var content = InputText;
         InputText = string.Empty;
@@ -889,6 +985,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
             PendingAttachments.Add(att);
             OnPropertyChanged(nameof(HasPendingAttachments));
+            NotifySendState();
         }
     }
 
@@ -902,6 +999,7 @@ public partial class ChatPageViewModel : ViewModelBase
 
         PendingAttachments.Add(att);
         OnPropertyChanged(nameof(HasPendingAttachments));
+        NotifySendState();
     }
 
     /// <summary>移除一个待发送附件。</summary>
@@ -910,6 +1008,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         PendingAttachments.Remove(attachment);
         OnPropertyChanged(nameof(HasPendingAttachments));
+        NotifySendState();
     }
 
     /// <summary>手动终止当前生成(发送/工具循环均会收到取消信号)。</summary>
