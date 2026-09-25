@@ -228,6 +228,7 @@ public static class Strings
     public static string Session_Empty => Get(nameof(Session_Empty));
     public static string Session_Running => Get(nameof(Session_Running));
     public static string Session_BranchOccupiedTip => Get(nameof(Session_BranchOccupiedTip));
+    public static string Session_WorkDirSwitchBlocked => Get(nameof(Session_WorkDirSwitchBlocked));
     public static string Chat_BranchOccupied => Get(nameof(Chat_BranchOccupied));
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));

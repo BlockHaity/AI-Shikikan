@@ -41,6 +41,13 @@ public partial class SessionItemViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isBlocked;
 
+    [ObservableProperty]
+    private string? _blockedReason;
+
+    public string BlockedTip => !string.IsNullOrWhiteSpace(BlockedReason)
+        ? BlockedReason
+        : Strings.Session_BranchOccupiedTip;
+
     public bool HasBranch => !string.IsNullOrWhiteSpace(BranchText);
 
     public bool HasWorkDir => !string.IsNullOrWhiteSpace(WorkDirText);
@@ -55,11 +62,14 @@ public partial class SessionItemViewModel : ViewModelBase
 
     public bool HasMessages => MessageCount > 0;
 
-    public void UpdateRuntime(bool isRunning, bool isBlocked)
+    public void UpdateRuntime(bool isRunning, string? blockedReason)
     {
         IsRunning = isRunning;
-        IsBlocked = isBlocked;
+        BlockedReason = blockedReason;
+        IsBlocked = !string.IsNullOrWhiteSpace(blockedReason);
     }
+
+    partial void OnBlockedReasonChanged(string? value) => OnPropertyChanged(nameof(BlockedTip));
 
     public SessionItemViewModel(ChatSession session)
     {
@@ -168,6 +178,9 @@ public partial class SessionPanelViewModel : ViewModelBase
 
     /// <summary>返回不同分支活动会话的占用原因；null 表示可发送。</summary>
     public Func<ChatSession, string?>? GetWorkspaceBlockReason { get; set; }
+
+    /// <summary>返回运行期间跨工作目录切换的阻止原因；null 表示允许切换。</summary>
+    public Func<string, string?>? GetSessionSwitchBlockReason { get; set; }
 
     [ObservableProperty]
     private bool _groupByWorkDir;
@@ -288,8 +301,9 @@ public partial class SessionPanelViewModel : ViewModelBase
 
         item.IsSelected = session.Id == currentId;
         var running = IsSessionRunning(session.Id);
-        var blocked = GetWorkspaceBlockReason?.Invoke(session) is not null;
-        item.UpdateRuntime(running, blocked);
+        var switchReason = GetSessionSwitchBlockReason?.Invoke(session.WorkDir);
+        var blockedReason = switchReason ?? GetWorkspaceBlockReason?.Invoke(session);
+        item.UpdateRuntime(running, blockedReason);
         return item;
     }
 
@@ -347,16 +361,21 @@ public partial class SessionPanelViewModel : ViewModelBase
     [RelayCommand]
     private void NewSession()
     {
+        if (GetSessionSwitchBlockReason?.Invoke(string.Empty) is not null) return;
         _chatService.CreateSession();
     }
 
     [RelayCommand]
     private void SwitchSession(SessionItemViewModel item)
     {
-        if (item.Session.Id != _chatService.CurrentSession?.Id)
+        if (item.Session.Id == _chatService.CurrentSession?.Id) return;
+        if (GetSessionSwitchBlockReason?.Invoke(item.Session.WorkDir) is { } reason)
         {
-            _chatService.SwitchSession(item.Session.Id);
+            item.UpdateRuntime(IsSessionRunning(item.Session.Id), reason);
+            return;
         }
+
+        _chatService.SwitchSession(item.Session.Id);
     }
 
     [RelayCommand]

@@ -237,6 +237,7 @@
   <data name="Session_Empty" xml:space="preserve"><value>No sessions</value></data>
   <data name="Session_Running" xml:space="preserve"><value>Running</value></data>
   <data name="Session_BranchOccupiedTip" xml:space="preserve"><value>Another running session on a different branch is occupying this workspace.</value></data>
+  <data name="Session_WorkDirSwitchBlocked" xml:space="preserve"><value>Session “{0}” is running in working directory “{1}”. You cannot switch to a session in “{2}” until it finishes.</value></data>
   <data name="Chat_BranchOccupied" xml:space="preserve"><value>Session “{0}” is running on branch “{1}”. Same-branch work can run concurrently; wait for a different branch to finish.</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
   <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan-mode arguments (space-separated, e.g. --permission-mode plan)</value></data>

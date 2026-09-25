@@ -237,6 +237,7 @@
   <data name="Session_Empty" xml:space="preserve"><value>暂无会话</value></data>
   <data name="Session_Running" xml:space="preserve"><value>运行中</value></data>
   <data name="Session_BranchOccupiedTip" xml:space="preserve"><value>另一个不同分支的活动会话正在占用此工作区。</value></data>
+  <data name="Session_WorkDirSwitchBlocked" xml:space="preserve"><value>会话“{0}”正在工作目录“{1}”运行，无法切换到工作目录“{2}”的会话。请等待其完成。</value></data>
   <data name="Chat_BranchOccupied" xml:space="preserve"><value>会话“{0}”正在分支“{1}”运行；同分支可并发，不同分支需等待其结束。</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
   <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>

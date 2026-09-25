@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -290,7 +291,8 @@ public partial class ChatPageViewModel : ViewModelBase
         SessionPanel = new SessionPanelViewModel(_chatService)
         {
             IsSessionRunning = IsSessionRunning,
-            GetWorkspaceBlockReason = GetWorkspaceBlockReason
+            GetWorkspaceBlockReason = GetWorkspaceBlockReason,
+            GetSessionSwitchBlockReason = GetSessionSwitchBlockReason
         };
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
         GitPanel.SetWorkspace(WorkDir);
@@ -370,6 +372,46 @@ public partial class ChatPageViewModel : ViewModelBase
             string.IsNullOrWhiteSpace(blocker.DisplayTitle) ? blocker.Id : blocker.DisplayTitle,
             string.IsNullOrWhiteSpace(blocker.BranchName) ? Strings.Chat_BranchUnknown : blocker.BranchName);
     }
+
+    /// <summary>
+    /// 任一活动会话运行时，只允许切换到与所有活动会话相同工作目录的会话。
+    /// 同一 WorkDir 下继续沿用原有分支并发规则。
+    /// </summary>
+    private string? GetSessionSwitchBlockReason(string targetWorkDir)
+    {
+        if (_runningSessionIds.Count == 0) return null;
+
+        var blocker = _chatService.Sessions.FirstOrDefault(session =>
+            IsSessionRunning(session.Id) && !IsSameWorkDir(session.WorkDir, targetWorkDir));
+        if (blocker is null) return null;
+
+        return string.Format(
+            Strings.Session_WorkDirSwitchBlocked,
+            string.IsNullOrWhiteSpace(blocker.DisplayTitle) ? blocker.Id : blocker.DisplayTitle,
+            string.IsNullOrWhiteSpace(blocker.WorkDir) ? Strings.Chat_WorkDirDefault : blocker.WorkDir,
+            string.IsNullOrWhiteSpace(targetWorkDir) ? Strings.Chat_WorkDirDefault : targetWorkDir);
+    }
+
+    private static bool IsSameWorkDir(string? left, string? right) =>
+        string.Equals(NormalizeWorkDir(left), NormalizeWorkDir(right), WorkDirComparison);
+
+    private static string NormalizeWorkDir(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        try
+        {
+            return Path.GetFullPath(value.Trim());
+        }
+        catch
+        {
+            return value.Trim();
+        }
+    }
+
+    private static StringComparison WorkDirComparison =>
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
 
     private void SaveSessionInputState(string? sessionId)
     {
@@ -803,6 +845,12 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void NewSession()
     {
+        if (GetSessionSwitchBlockReason(string.Empty) is { } blockedReason)
+        {
+            AppendNotice(blockedReason);
+            return;
+        }
+
         _chatService.CreateSession();
         // 新会话必须显式选择自己的工作目录，禁止隐式继承上一会话上下文。
         WorkDir = string.Empty;
@@ -830,6 +878,14 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void SwitchSession(string sessionId)
     {
+        var target = _chatService.Sessions.FirstOrDefault(session => session.Id == sessionId);
+        if (target is null) return;
+        if (GetSessionSwitchBlockReason(target.WorkDir) is { } blockedReason)
+        {
+            AppendNotice(blockedReason);
+            return;
+        }
+
         _chatService.SwitchSession(sessionId);
     }
 
