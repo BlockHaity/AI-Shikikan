@@ -49,7 +49,7 @@ Personas/    - 人格/专家管理 (YAML frontmatter + Markdown)
 Templates/   - 任务模板
 Tools/       - 内置工具框架 (ITool/ToolResult/ToolPathSanitizer) + Builtin 文件工具
 Runtime/     - AgentToolFactory: 工具集组装 (run_<agent>/assign_task/run_subagents/git_*; AI 不可指定人格/模板, 专家只由用户配置决定)
-Git/         - Git 步骤管理 (自动分支/回滚/合并/提交)
+Git/         - Git 步骤管理 (自动分支/回滚/合并/提交) + 旧步骤无感迁移服务 (LegacyGitMigrationService)
 Mcp/         - MCP 客户端: McpConfigService(TOML 配置), McpStdioClient(手写 stdio
                JSON-RPC 2.0, 零依赖 AOT 兼容), McpService(连接管理+路由),
                McpProxyTool(ITool 桥接, 工具名 mcp_<serverId>_<toolName>)
@@ -70,6 +70,8 @@ Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelPr
 - **首页**：用量统计含 ScottPlot 折线图（固定坐标轴 + 标尺 + 折点悬浮详情）与 26 周活跃热力图，配色全部跟随主题资源。
 - **设置页**：卡片使用自绘 `Views/WaterfallPanel.cs` 自适应瀑布流布局。
 - **Linux 输入法**：Program.cs 的 `FixupLinuxImeEnvironment()` 启动时清洗 IME 环境变量弯引号、缺失时探测 fcitx/ibus 进程补写 `AVALONIA_IM_MODULE`，并显式启用 X11 IME。
+- **Git 检查点系统**：每条用户消息自动创建检查点（Commit/tag 标记），支持 Reset/Revert/Fork 卡片操作。非 Git 仓库降级为警告，聊天仍可用。会话分支绑定，同分支并发隔离。旧 `steps/*.json` 通过 `LegacyGitMigrationService` 无感迁移。
+- **旧步骤迁移**：`LegacyGitMigrationService` 扫描旧 steps，优先 MergeCommit 可解析，其次 StepBranch 取 tip。建立 oldStepId→newCheckpointId 映射，更新 assignments/sessions JSON。旧 `ac/*` 分支永不自动删除。迁移状态持久化防重复，部分成功不删除旧源文件。
 
 ## 常用命令
 

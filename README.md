@@ -34,6 +34,8 @@ AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统
 - **可配置模型**：为不同 Agent 使用不同的模型完成对应任务
 - **人格/专家注入**：对指挥官自身/Agent 程序注入角色扮演或专家文件
 - **Git 步骤管理**：自动创建步骤分支，支持回滚与合并
+- **Git 检查点**：每条用户消息自动记录检查点，支持 Commit/tag 标记、回滚与派生
+- **会话分支绑定**：每个会话绑定独立分支，支持同分支并发操作
 
 ## 支持的 LLM API
 
@@ -132,11 +134,35 @@ description = "Anthropic 官方编码 Agent"
 | OpenCode | `opencode` | 通用、跨栈、脚本 |
 | DeepSeek Harness | `dsh` | DeepSeek 官方 Harness、插件化运行时 |
 
+## Git 检查点
+
+每条用户消息自动记录检查点，支持 Commit/tag 标记与完整生命周期管理。
+
+| 功能 | 说明 |
+|------|------|
+| Commit/tag 检查点 | 每条用户消息生成检查点，可标记 commit 或 tag |
+| 每条消息检查点 | 消息发送即创建检查点，确保可回滚 |
+| 非 Git 降级 | 未初始化 Git 时聊天仍可用，检查点/Git 写工具不可用 |
+| 会话分支绑定 | 每个会话绑定独立分支，互不干扰 |
+| 同分支并发 | 同一分支支持并发操作，检查点隔离 |
+| Checkpoint 卡片 | 每条检查点支持 Reset（重置）、Revert（反向提交）、Fork（派生新分支） |
+
+### 旧步骤迁移
+
+从旧 `steps/*.json` 格式自动迁移至新检查点系统：
+
+- 启动时自动扫描旧步骤记录，优先解析 MergeCommit，其次取 StepBranch tip
+- 建立 `oldStepId → newCheckpointId` 映射，更新 assignments/sessions JSON 引用
+- 迁移状态持久化防重复，部分成功不删除旧源文件
+- 无法迁移返回结构化汇总，可重试
+- 旧 `ac/*` 分支永不自动删除
+
 ## 架构
 
 ```
 AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
   ├── Core/                - 核心逻辑（AOT 兼容）
+  │   ├── Services/Git     - Git 步骤管理 + 旧步骤迁移服务
   │   ├── Services/Engine    - Agent 调度引擎
   │   ├── Services/Agents    - Agent 定义与配置
   │   ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)

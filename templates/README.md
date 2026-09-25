@@ -74,3 +74,9 @@ cp templates/config/roster.prompt.example  ~/.config/ai-shikikan/roster.prompt
 - `models.toml` 可选: 配置模型上下文窗口与价格(USD/百万 token), 键支持
   精确 id 或 `"前缀*"` 通配; 未配置时尝试从 Provider 的 `/v1/models`
   (OpenRouter 兼容端点)拉取。价格影响 GUI 右侧「状态」面板的成本统计。
+- **Git 检查点**：每条用户消息自动创建检查点(Commit/tag 标记), 支持
+  Reset/Revert/Fork 卡片操作。非 Git 仓库降级为警告, 聊天仍可用。
+  会话分支绑定, 同分支并发隔离。旧 `steps/*.json` 自动无感迁移。
+- **旧步骤迁移**：启动时自动扫描旧 `steps/*.json`, 优先 MergeCommit
+  可解析, 其次 StepBranch 取 tip。建立 oldStepId→newCheckpointId 映射,
+  更新 assignments/sessions JSON。旧 `ac/*` 分支永不自动删除。
