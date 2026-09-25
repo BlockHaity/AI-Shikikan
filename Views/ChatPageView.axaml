@@ -219,6 +219,19 @@
                                                             Orientation="Horizontal" Spacing="2"
                                                             VerticalAlignment="Top"
                                                             Margin="8,0,0,0">
+                                                    <Border CornerRadius="10" Padding="7,2" Margin="0,0,4,0"
+                                                            Background="{DynamicResource TertiaryContainer}"
+                                                            IsVisible="{Binding HasCheckpoint}"
+                                                            ToolTip.Tip="{x:Static res:Strings.Checkpoint_AutoBadgeTip}">
+                                                        <TextBlock Classes="LabelSmall"
+                                                                   Foreground="{DynamicResource OnTertiaryContainer}"
+                                                                   Text="{Binding CheckpointId}"/>
+                                                    </Border>
+                                                    <Button Classes="Text" Padding="4,0" FontSize="11"
+                                                            Content="{x:Static res:Strings.Checkpoint_Fork}"
+                                                            IsVisible="{Binding HasCheckpoint}"
+                                                            Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).ForkUserCheckpointCommand}"
+                                                            CommandParameter="{Binding}"/>
                                                     <Button Classes="Text" Padding="4,0" FontSize="11"
                                                             Content="{x:Static res:Strings.Chat_MsgEdit}"
                                                             Command="{Binding $parent[ItemsControl].((vm:ChatPageViewModel)DataContext).StartEditUserMessageCommand}"
@@ -310,6 +323,60 @@
                                                         <Border Padding="8" Background="{DynamicResource SurfaceContainerLow}"
                                                                 CornerRadius="4">
                                                             <StackPanel Spacing="6">
+                                                                <!-- git_mark_checkpoint: 专用、持久化的检查点卡片 -->
+                                                                <StackPanel IsVisible="{Binding HasCheckpoint}" Spacing="8">
+                                                                    <Border CornerRadius="8" Padding="12"
+                                                                            BorderBrush="{DynamicResource Primary}"
+                                                                            BorderThickness="1"
+                                                                            Background="{DynamicResource PrimaryContainer}">
+                                                                        <StackPanel Spacing="7">
+                                                                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                                                                <TextBlock Classes="TitleSmall"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.ToolCard_CheckpointTitle}"/>
+                                                                                <Border Grid.Column="2" CornerRadius="10" Padding="8,2"
+                                                                                        Background="{DynamicResource Primary}">
+                                                                                    <TextBlock Classes="LabelSmall"
+                                                                                               FontFamily="{DynamicResource MonoThemeFontFamily}"
+                                                                                               Foreground="{DynamicResource OnPrimary}"
+                                                                                               Text="{Binding Checkpoint.ShortSha}"/>
+                                                                                </Border>
+                                                                            </Grid>
+                                                                            <TextBlock Classes="BodyMedium" TextWrapping="Wrap"
+                                                                                       Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                       Text="{Binding Checkpoint.Label}"/>
+                                                                            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                                                                                  ColumnSpacing="8" RowSpacing="3">
+                                                                                <TextBlock Classes="LabelSmall" Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.Checkpoint_Id}"/>
+                                                                                <TextBlock Grid.Column="1" Classes="LabelSmall" FontFamily="{DynamicResource MonoThemeFontFamily}"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding Checkpoint.CheckpointId}"/>
+                                                                                <TextBlock Grid.Row="1" Classes="LabelSmall" Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.Checkpoint_Branch}"/>
+                                                                                <TextBlock Grid.Row="1" Grid.Column="1" Classes="LabelSmall"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding Checkpoint.BranchName}"/>
+                                                                                <TextBlock Grid.Row="2" Classes="LabelSmall" Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.Checkpoint_Tag}"/>
+                                                                                <TextBlock Grid.Row="2" Grid.Column="1" Classes="LabelSmall" FontFamily="{DynamicResource MonoThemeFontFamily}"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding CheckpointTagText}"/>
+                                                                                <TextBlock Grid.Row="3" Classes="LabelSmall" Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.Checkpoint_Time}"/>
+                                                                                <TextBlock Grid.Row="3" Grid.Column="1" Classes="LabelSmall"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding Checkpoint.CreatedAt}"/>
+                                                                                <TextBlock Grid.Row="4" Classes="LabelSmall" Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{x:Static res:Strings.Checkpoint_Source}"/>
+                                                                                <TextBlock Grid.Row="4" Grid.Column="1" Classes="LabelSmall"
+                                                                                           Foreground="{DynamicResource OnPrimaryContainer}"
+                                                                                           Text="{Binding CheckpointSourceText}"/>
+                                                                            </Grid>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </StackPanel>
+
                                                                 <!-- read_file: 完整路径 + 原始内容(保留格式与缩进) -->
                                                                 <StackPanel IsVisible="{Binding HasFileRead}" Spacing="6">
                                                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">

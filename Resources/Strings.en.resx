@@ -245,6 +245,18 @@
   <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
   <data name="Chat_ModePlanTip" xml:space="preserve"><value>Plan mode: analyze requirements and create a plan</value></data>
   <data name="Chat_ModeBuildTip" xml:space="preserve"><value>Build mode: execute tasks and generate code</value></data>
+  <data name="ToolCard_CheckpointTitle" xml:space="preserve"><value>Git checkpoint</value></data>
+  <data name="Checkpoint_Id" xml:space="preserve"><value>ID</value></data>
+  <data name="Checkpoint_Branch" xml:space="preserve"><value>Branch</value></data>
+  <data name="Checkpoint_Tag" xml:space="preserve"><value>Tag</value></data>
+  <data name="Checkpoint_Time" xml:space="preserve"><value>Time</value></data>
+  <data name="Checkpoint_Source" xml:space="preserve"><value>Source</value></data>
+  <data name="Checkpoint_SourceAuto" xml:space="preserve"><value>Automatic (user message)</value></data>
+  <data name="Checkpoint_SourceAi" xml:space="preserve"><value>AI tool</value></data>
+  <data name="Checkpoint_SourceManual" xml:space="preserve"><value>Manual</value></data>
+  <data name="Checkpoint_SourceUnknown" xml:space="preserve"><value>Unknown</value></data>
+  <data name="Checkpoint_AutoBadgeTip" xml:space="preserve"><value>Git checkpoint created automatically before this message</value></data>
+  <data name="Checkpoint_Fork" xml:space="preserve"><value>Fork</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>Tool call {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>Thinking</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>Arguments</value></data>

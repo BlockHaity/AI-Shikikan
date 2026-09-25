@@ -27,6 +27,11 @@ public partial class ChatItemViewModel : ViewModelBase
     /// <summary>持久化的消息 Id(历史重建时赋值; 流式期间的临时分段为 null)。</summary>
     public string? MessageId { get; private set; }
 
+    /// <summary>消息关联的自动检查点 ID(用户消息发送前由 Core 标记)。</summary>
+    public string? CheckpointId { get; private set; }
+
+    public bool HasCheckpoint => !string.IsNullOrWhiteSpace(CheckpointId);
+
     public ObservableRange<SegmentItemViewModel> Segments { get; } = [];
 
     // 懒加载: 历史消息的分段 VM 延迟到首次访问(即容器被 realized)时才构建;
@@ -69,7 +74,12 @@ public partial class ChatItemViewModel : ViewModelBase
     public static ChatItemViewModel From(ChatMessage m)
     {
         // 不在此处构建分段 VM, 仅记录源消息; 视图绑定 Segments/UserBody 时再物化
-        return new ChatItemViewModel(m.Role) { MessageId = m.Id, _pendingSource = m };
+        return new ChatItemViewModel(m.Role)
+        {
+            MessageId = m.Id,
+            CheckpointId = m.CheckpointId,
+            _pendingSource = m
+        };
     }
 
     /// <summary>首次访问分段集合时物化延迟的历史分段。</summary>
@@ -209,6 +219,7 @@ public partial class SegmentItemViewModel : ViewModelBase
                 vm.ToolResult = t.Result;
                 vm.IsToolDone = t.IsDone;
                 vm.ToolStatus = t.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
+                vm.CheckpointId = t.CheckpointId;
                 vm.StepId = t.StepId;
                 vm.ToolCardDetail = t.Detail;
                 break;
@@ -295,12 +306,27 @@ public partial class SegmentItemViewModel : ViewModelBase
 
     public SubagentsDetail? Subagents => ToolCardDetail as SubagentsDetail;
 
+    public CheckpointDetail? Checkpoint => ToolCardDetail as CheckpointDetail;
+
     public bool HasFileRead => FileRead is not null;
     public bool HasDirectoryList => DirectoryList is not null;
     public bool HasGlob => Glob is not null;
     public bool HasGrep => Grep is not null;
     public bool HasSubagents => Subagents is not null;
+    public bool HasCheckpoint => Checkpoint is not null;
     public bool HasNoDetail => ToolCardDetail is null;
+
+    public string CheckpointTagText => Checkpoint is null
+        ? string.Empty
+        : $"ai-shikikan/checkpoint/{Checkpoint.CheckpointId}";
+
+    public string CheckpointSourceText => Checkpoint?.Source switch
+    {
+        GitCheckpointSource.AutoUserMessage => Strings.Checkpoint_SourceAuto,
+        GitCheckpointSource.AiTool => Strings.Checkpoint_SourceAi,
+        GitCheckpointSource.Manual => Strings.Checkpoint_SourceManual,
+        _ => Strings.Checkpoint_SourceUnknown
+    };
 
     public string FileReadMeta => FileRead is null
         ? string.Empty
@@ -322,12 +348,17 @@ public partial class SegmentItemViewModel : ViewModelBase
         OnPropertyChanged(nameof(Glob));
         OnPropertyChanged(nameof(Grep));
         OnPropertyChanged(nameof(Subagents));
+        OnPropertyChanged(nameof(Checkpoint));
         OnPropertyChanged(nameof(HasFileRead));
         OnPropertyChanged(nameof(HasDirectoryList));
         OnPropertyChanged(nameof(HasGlob));
         OnPropertyChanged(nameof(HasGrep));
         OnPropertyChanged(nameof(HasSubagents));
+        OnPropertyChanged(nameof(HasCheckpoint));
         OnPropertyChanged(nameof(HasNoDetail));
+        OnPropertyChanged(nameof(CheckpointTagText));
+        OnPropertyChanged(nameof(CheckpointSourceText));
+        OnPropertyChanged(nameof(CardTitle));
         OnPropertyChanged(nameof(FileReadMeta));
         OnPropertyChanged(nameof(GlobQueryText));
         OnPropertyChanged(nameof(GlobCountText));
@@ -344,7 +375,11 @@ public partial class SegmentItemViewModel : ViewModelBase
         ? Strings.ToolCard_StatusRunning
         : IsStatusError ? Strings.ToolCard_StatusError : Strings.ToolCard_StatusSuccess;
 
-    /// <summary>关联的 git 检查点步骤 ID(非空时展示回滚按钮)。</summary>
+    /// <summary>关联的新检查点 ID。</summary>
+    [ObservableProperty]
+    private string? _checkpointId;
+
+    /// <summary>兼容旧步骤检查点的关联 ID。</summary>
     [ObservableProperty]
     private string? _stepId;
 
@@ -437,7 +472,8 @@ public partial class SegmentItemViewModel : ViewModelBase
 
     public string CardTitle => Kind == MessageSegmentKind.Thinking
         ? Strings.ToolCard_Thinking
-        : string.Format(Strings.ToolCard_Title, _toolIndex, ToolName);
+        : HasCheckpoint ? Strings.ToolCard_CheckpointTitle
+            : string.Format(Strings.ToolCard_Title, _toolIndex, ToolName);
 
     public string CardGlyph => Kind == MessageSegmentKind.Thinking
         ? "🪄"

@@ -721,6 +721,13 @@ public partial class ChatPageViewModel : ViewModelBase
         CanContinue = false;
     }
 
+    /// <summary>从用户消息的自动检查点分叉(D 任务中接入完整对话框)。</summary>
+    [RelayCommand]
+    private void ForkUserCheckpoint(ChatItemViewModel item)
+    {
+        if (string.IsNullOrWhiteSpace(item.CheckpointId)) return;
+    }
+
     /// <summary>进入用户消息 fork 编辑态。</summary>
     [RelayCommand]
     private void StartEditUserMessage(ChatItemViewModel item)
@@ -1153,6 +1160,10 @@ public partial class ChatPageViewModel : ViewModelBase
                             en.Vm.IsToolDone = true;
                             en.Vm.ToolStatus = fin.IsError ? ToolStatusKind.Error : ToolStatusKind.Success;
                             en.Vm.ToolCardDetail = fin.Detail;
+                            if (fin.Detail is CheckpointDetail checkpoint)
+                            {
+                                en.Vm.CheckpointId = checkpoint.CheckpointId;
+                            }
                             if (!string.IsNullOrEmpty(fin.StepId))
                             {
                                 en.Vm.StepId = fin.StepId;
@@ -1230,6 +1241,7 @@ public partial class ChatPageViewModel : ViewModelBase
                             Result = seg.ToolResult,
                             IsError = seg.ToolStatus == ToolStatusKind.Error,
                             IsDone = seg.IsToolDone,
+                            CheckpointId = seg.CheckpointId,
                             StepId = seg.StepId,
                             Detail = seg.ToolCardDetail
                         }

@@ -247,6 +247,18 @@
   <data name="Chat_ModeBuild" xml:space="preserve"><value>Build</value></data>
   <data name="Chat_ModePlanTip" xml:space="preserve"><value>计划模式: 分析需求并制定方案</value></data>
   <data name="Chat_ModeBuildTip" xml:space="preserve"><value>构建模式: 执行任务并生成代码</value></data>
+  <data name="ToolCard_CheckpointTitle" xml:space="preserve"><value>Git 检查点</value></data>
+  <data name="Checkpoint_Id" xml:space="preserve"><value>ID</value></data>
+  <data name="Checkpoint_Branch" xml:space="preserve"><value>分支</value></data>
+  <data name="Checkpoint_Tag" xml:space="preserve"><value>标签</value></data>
+  <data name="Checkpoint_Time" xml:space="preserve"><value>时间</value></data>
+  <data name="Checkpoint_Source" xml:space="preserve"><value>来源</value></data>
+  <data name="Checkpoint_SourceAuto" xml:space="preserve"><value>自动（用户消息）</value></data>
+  <data name="Checkpoint_SourceAi" xml:space="preserve"><value>AI 工具</value></data>
+  <data name="Checkpoint_SourceManual" xml:space="preserve"><value>手动</value></data>
+  <data name="Checkpoint_SourceUnknown" xml:space="preserve"><value>未知</value></data>
+  <data name="Checkpoint_AutoBadgeTip" xml:space="preserve"><value>发送此消息前自动创建的 Git 检查点</value></data>
+  <data name="Checkpoint_Fork" xml:space="preserve"><value>Fork</value></data>
   <data name="ToolCard_Title" xml:space="preserve"><value>工具调用 {0} · {1}</value></data>
   <data name="ToolCard_Thinking" xml:space="preserve"><value>思考过程</value></data>
   <data name="ToolCard_Parameters" xml:space="preserve"><value>参数</value></data>
