@@ -175,20 +175,26 @@ sealed class Program
             checks.Add(("工具装载", runtime.Registry.All.Count > 0, $"{runtime.Registry.All.Count} 个工具"));
 
             var gitOk = runtime.Git.IsRepoAvailable;
-            checks.Add(("Git 仓库", gitOk, gitOk ? "仓库可用" : "当前目录不是 git 仓库, 步骤回滚将不可用"));
+            var gitWarn = !gitOk;
+            checks.Add(("Git 仓库", !gitWarn, gitOk ? "仓库可用" : "当前目录不是 git 仓库, 聊天可用, 检查点/Git写工具不可用"));
 
             foreach (var (name, ok, detail) in checks)
             {
-                var status = ok ? "✔" : "✘";
+                var status = ok ? "✔" : (name == "Git 仓库" ? "⚠" : "✘");
                 Console.WriteLine($"  {status} {name}  {detail}");
             }
 
-            var failed = checks.Count(c => !c.Ok);
+            var failed = checks.Count(c => !c.Ok && c.Name != "Git 仓库");
             Console.WriteLine();
             if (failed > 0)
             {
                 Console.WriteLine($"发现 {failed} 项问题。配置目录: {AppPaths.ConfigDir}");
                 return 1;
+            }
+
+            if (gitWarn)
+            {
+                Console.WriteLine("⚠ Git 仓库未初始化, 检查点与Git写工具不可用; 首次发送消息将自动执行 git init 与 first commit。");
             }
 
             Console.WriteLine("全部检查通过 ✓");
