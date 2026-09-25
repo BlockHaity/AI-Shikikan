@@ -224,6 +224,10 @@ jobs:
               packagers/deb/control > "$DEBROOT/DEBIAN/control"
           # dpkg 要求 Description 多行字段以换行终止, 缺尾换行会报 missing final newline
           [ -z "$(tail -c1 "$DEBROOT/DEBIAN/control")" ] || printf '\n' >> "$DEBROOT/DEBIAN/control"
+          # 框架依赖变体: .NET 运行时来自系统包 (最佳努力, 缺包不阻塞安装)
+          if [ "$VARIANT" = "dotnet" ]; then
+            echo "Recommends: dotnet-runtime-10.0" >> "$DEBROOT/DEBIAN/control"
+          fi
           dpkg-deb --build --root-owner-group "$DEBROOT" "dist/${PKG}_${DEB_VER}_${DEB_ARCH}_${VARIANT}.deb"
 
           # ---------- Red Hat (.rpm / dnf) ----------
@@ -238,6 +242,10 @@ jobs:
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
               packagers/rpm/ai-shikikan.spec > "$HOME/rpmbuild/SPECS/$PKG.spec"
+          # 框架依赖变体: 声明系统 .NET 运行时 (rpm Recommends 不可满足仅告警)
+          if [ "$VARIANT" = "dotnet" ]; then
+            sed -i '/^AutoReqProv: no/a Recommends: dotnet-runtime-10.0' "$HOME/rpmbuild/SPECS/$PKG.spec"
+          fi
           rpmbuild -bb --target "$PKG_ARCH" "$HOME/rpmbuild/SPECS/$PKG.spec"
           for _r in "$HOME"/rpmbuild/RPMS/*/*.rpm; do
             [ -e "$_r" ] || continue
@@ -279,6 +287,10 @@ jobs:
           depend = glib2
           depend = icu
           EOF
+          # 框架依赖变体: 声明系统 .NET 运行时 (optdependency)
+          if [ "$VARIANT" = "dotnet" ]; then
+            printf 'optdepend = dotnet-runtime: 框架依赖变体需要系统 .NET 10 运行时\n' >> "$PKGROOT/.PKGINFO"
+          fi
           tar --zstd -cf "dist/${PKG}-${PVER}-1-${PKG_ARCH}_${VARIANT}.pkg.tar.zst" \
             -C "$PKGROOT" .PKGINFO usr
           done
