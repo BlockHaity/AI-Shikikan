@@ -16,7 +16,7 @@ pkgdesc="AI Agent commander desktop app"
 arch=('x86_64' 'aarch64')
 url="https://github.com/BlockHaity/AI-Shikikan"
 license=('MIT')
-depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libglvnd' 'mesa' 'glib2' 'icu')
+depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libglvnd' 'mesa' 'fontconfig' 'glib2' 'icu')
 makedepends=('tar' 'imagemagick')
 
 source=("../ai-shikikan.desktop" "../../Assets/logo.jpg" "../../LICENSE")

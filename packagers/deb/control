@@ -3,7 +3,7 @@ Version: @VERSION@
 Architecture: @ARCH@
 Maintainer: @MAINTAINER@
 Installed-Size: @SIZE@
-Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libicu74 | libicu72 | libicu67 | libicu66
+Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libicu74 | libicu72 | libicu67 | libicu66, libfontconfig1, libfreetype6
 Section: utils
 Priority: optional
 Homepage: @HOMEPAGE@
