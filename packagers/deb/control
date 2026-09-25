@@ -3,7 +3,8 @@ Version: @VERSION@
 Architecture: @ARCH@
 Maintainer: @MAINTAINER@
 Installed-Size: @SIZE@
-Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libicu74 | libicu72 | libicu67 | libicu66, libfontconfig1, libfreetype6
+Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libfontconfig1, libfreetype6
+Recommends: libicu78 | libicu76 | libicu75 | libicu74 | libicu73 | libicu72 | libicu71 | libicu70 | libicu69 | libicu68 | libicu67 | libicu66 | libicu65 | libicu64 | libicu63
 Section: utils
 Priority: optional
 Homepage: @HOMEPAGE@
