@@ -308,6 +308,7 @@ public partial class ChatPageViewModel : ViewModelBase
             CanContinue = false;
             // 切换会话时恢复绑定目录；新会话为空，必须显式重新选择。
             WorkDir = session?.WorkDir ?? string.Empty;
+            _runtime.Engine.RebuildConversation(session?.Messages ?? []);
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
             GitPanel.SetWorkspace(WorkDir);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -351,7 +352,7 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
     private (string SessionId, int ConversationCutoff) GetCurrentConversationPosition() =>
-        (_currentSessionId ?? string.Empty, Math.Max(0, (CurrentSession?.MessageCount ?? 1) - 1));
+        (_currentSessionId ?? string.Empty, (CurrentSession?.MessageCount ?? 0) - 1);
 
     private bool IsSessionRunning(string sessionId) =>
         !string.IsNullOrEmpty(sessionId) && _runningSessionIds.Contains(sessionId);
@@ -806,6 +807,7 @@ public partial class ChatPageViewModel : ViewModelBase
         // 新会话必须显式选择自己的工作目录，禁止隐式继承上一会话上下文。
         WorkDir = string.Empty;
         Sessions = _chatService.Sessions;
+        SessionPanel.RefreshItems();
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -818,6 +820,7 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.DeleteSession(sessionId);
         AppShell.Instance.NotifyDataChanged(); // 主页会话分布移除该会话
         Sessions = _chatService.Sessions;
+        SessionPanel.RefreshItems();
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
@@ -989,6 +992,7 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         Sessions = _chatService.Sessions;
+        SessionPanel.RefreshItems();
         RefreshMessages();
         _runtime.Engine.RebuildConversation(CurrentSession?.Messages ?? []);
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);

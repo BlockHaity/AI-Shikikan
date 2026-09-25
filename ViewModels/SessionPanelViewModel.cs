@@ -195,6 +195,8 @@ public partial class SessionPanelViewModel : ViewModelBase
 
     public void RefreshRuntime() => Reload();
 
+    public void RefreshItems() => Reload();
+
     /// <summary>重建期望顺序并对账到 DisplayItems(原地增/移/删, 避免整集合替换触发容器回收级联 NRE)。</summary>
     private void Reload()
     {
