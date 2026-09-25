@@ -21,7 +21,14 @@ public sealed class CommanderRuntime
 
     public required string WorkspaceRoot { get; init; }
     public required LlmService Llm { get; init; }
+
+    /// <summary>旧步骤服务，仅保留给待迁移的兼容工具和旧数据读取。</summary>
     public required GitStepService Git { get; init; }
+
+    /// <summary>显式工作区上下文的 Commit/tag 检查点服务。</summary>
+    public required GitService GitService { get; init; }
+
+    public required GitCheckpointStore Checkpoints { get; init; }
     public required AssignmentManager Assignments { get; init; }
     public required ToolRegistry Registry { get; init; }
     public required SessionRuntimeRegistry Sessions { get; init; }
@@ -83,6 +90,8 @@ public sealed class CommanderRuntime
 
         var llm = new LlmService();
         var git = new GitStepService(root);
+        var checkpoints = new GitCheckpointStore();
+        var gitService = new GitService(checkpoints);
         var assignments = new AssignmentManager(git);
         var mcp = new McpService();
 
@@ -131,6 +140,8 @@ public sealed class CommanderRuntime
             WorkspaceRoot = root,
             Llm = llm,
             Git = git,
+            GitService = gitService,
+            Checkpoints = checkpoints,
             Assignments = assignments,
             Registry = registry,
             Sessions = sessions,

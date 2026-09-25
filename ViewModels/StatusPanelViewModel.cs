@@ -120,7 +120,7 @@ public partial class StatusPanelViewModel : ViewModelBase
             return;
         }
 
-        var context = _runtime.Git.ResolveContext(_workDir);
+        var context = _runtime.GitService.ResolveContext(_workDir);
         WorkspaceRoot = context.RepositoryRoot;
         IsRepoAvailable = context.IsValidRepo;
         BranchText = !IsRepoAvailable

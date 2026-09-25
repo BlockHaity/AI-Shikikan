@@ -445,14 +445,50 @@ public sealed class GitService : IDisposable
         return r.Succeeded ? r.Stdout.Trim() : null;
     }
 
-    /// <summary>检查是否为空仓库(无任何 commit)。)</summary>
+    /// <summary>检查是否为空仓库(无任何 commit)。</summary>
     public bool IsEmptyRepository(string repositoryRoot)
     {
         var r = Run(repositoryRoot, "rev-parse", "--verify", "HEAD");
         return !r.Succeeded; // unborn HEAD 返回失败
     }
 
-    /// <summary>查找仓库根目录(从 workDir 向上查找 .git)。)</summary>
+    /// <summary>获取仓库当前 HEAD 的完整 SHA；空仓库或失败时返回 null。</summary>
+    public string? GetHeadSha(string repositoryRoot)
+    {
+        var result = Run(repositoryRoot, "rev-parse", "HEAD");
+        return result.Succeeded ? result.Stdout.Trim() : null;
+    }
+
+    /// <summary>切换当前 worktree 到指定本地分支。</summary>
+    public GitCommandResult SwitchBranch(GitWorkspaceContext context, string branch)
+    {
+        if (!context.IsValidRepo) return GitCommandResult.Failure("非 Git 仓库", GitServiceError.NotARepository);
+        if (string.IsNullOrWhiteSpace(branch)) return GitCommandResult.Failure("分支名为空", GitServiceError.InvalidArgument);
+        var sem = GetRepoLock(context.RepositoryRoot);
+        sem.Wait();
+        try
+        {
+            return Run(context.RepositoryRoot, "switch", branch.Trim());
+        }
+        finally
+        {
+            sem.Release();
+        }
+    }
+
+    /// <summary>从当前上游拉取。</summary>
+    public GitCommandResult Pull(GitWorkspaceContext context) =>
+        context.IsValidRepo
+            ? Run(context.RepositoryRoot, "pull")
+            : GitCommandResult.Failure("非 Git 仓库", GitServiceError.NotARepository);
+
+    /// <summary>推送当前分支到已配置上游。</summary>
+    public GitCommandResult Push(GitWorkspaceContext context) =>
+        context.IsValidRepo
+            ? Run(context.RepositoryRoot, "push")
+            : GitCommandResult.Failure("非 Git 仓库", GitServiceError.NotARepository);
+
+    /// <summary>查找仓库根目录(从 workDir 向上查找 .git)。</summary>
     public string? FindRepositoryRoot(string workDir)
     {
         var dir = new DirectoryInfo(Path.GetFullPath(workDir));

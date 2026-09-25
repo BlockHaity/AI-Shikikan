@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Git;
+using AIShikikan.Gui.Resources;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -113,7 +114,7 @@ public partial class GitPanelViewModel : ViewModelBase
             return;
         }
 
-        _context = _runtime.Git.ResolveContext(_workDir);
+        _context = _runtime.GitService.ResolveContext(_workDir);
         RootText = _context.RepositoryRoot;
         IsRepoAvailable = _context.IsValidRepo;
         IsEmptyRepository = _context.IsEmptyRepo;
@@ -127,8 +128,8 @@ public partial class GitPanelViewModel : ViewModelBase
             return;
         }
 
-        IsDirty = !_runtime.Git.IsClean(_context).Succeeded;
-        var head = _runtime.Git.GetHeadSha(_context.RepositoryRoot);
+        IsDirty = !_runtime.GitService.IsClean(_context).Succeeded;
+        var head = _runtime.GitService.GetHeadSha(_context.RepositoryRoot);
         StateText = $"{_context.BranchName} {(IsDirty ? "●" : "○")} {head?[..Math.Min(8, head.Length)] ?? string.Empty}".TrimEnd();
         if (IsEmptyRepository) StateText = string.Empty;
 
@@ -148,26 +149,26 @@ public partial class GitPanelViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private void StageFile(GitFileStatus file) => Run(_runtime.Git.StageFile(_context!, file.Path), RefreshStatus);
+    private void StageFile(GitFileStatus file) => Run(_runtime.GitService.StageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
     private void ToggleStage(GitFileStatus file) => Run(file.IsStaged
-        ? _runtime.Git.UnstageFile(_context!, file.Path)
-        : _runtime.Git.StageFile(_context!, file.Path), RefreshStatus);
+        ? _runtime.GitService.UnstageFile(_context!, file.Path)
+        : _runtime.GitService.StageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
-    private void UnstageFile(GitFileStatus file) => Run(_runtime.Git.UnstageFile(_context!, file.Path), RefreshStatus);
+    private void UnstageFile(GitFileStatus file) => Run(_runtime.GitService.UnstageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
-    private void StageAll() => Run(_runtime.Git.StageAll(_context!), RefreshStatus);
+    private void StageAll() => Run(_runtime.GitService.StageAll(_context!), RefreshStatus);
 
     [RelayCommand]
     private void Commit()
     {
         if (!IsRepoAvailable || _context is null) return;
-        var files = _runtime.Git.GetStatusFiles(_context);
-        if (files.Count > 0 && !files.Any(f => f.IsStaged)) _runtime.Git.StageAll(_context);
-        var result = _runtime.Git.Commit(_context, CommitMessage);
+        var files = _runtime.GitService.GetStatusFiles(_context);
+        if (files.Count > 0 && !files.Any(f => f.IsStaged)) _runtime.GitService.StageAll(_context);
+        var result = _runtime.GitService.Commit(_context, CommitMessage);
         SetResult(result);
         if (result.Succeeded) CommitMessage = string.Empty;
         Refresh();
@@ -177,26 +178,26 @@ public partial class GitPanelViewModel : ViewModelBase
     private void SwitchBranch(string branch)
     {
         if (_context is null || string.IsNullOrWhiteSpace(branch)) return;
-        Run(_runtime.Git.SwitchBranch(_context, branch.Trim()), Refresh);
+        Run(_runtime.GitService.SwitchBranch(_context, branch.Trim()), Refresh);
     }
 
     [RelayCommand]
     private void Pull()
     {
-        if (_context is not null) Run(_runtime.Git.Pull(_context), Refresh);
+        if (_context is not null) Run(_runtime.GitService.Pull(_context), Refresh);
     }
 
     [RelayCommand]
     private void Push()
     {
-        if (_context is not null) Run(_runtime.Git.Push(_context), Refresh);
+        if (_context is not null) Run(_runtime.GitService.Push(_context), Refresh);
     }
 
     [RelayCommand]
     private void ShowCheckpointDiff(GitCheckpointRecord checkpoint)
     {
         if (_context is null) return;
-        var result = _runtime.Git.GetDiff(_context, checkpoint.CommitSha, "HEAD");
+        var result = _runtime.GitService.GetDiff(_context, checkpoint.CommitSha, "HEAD");
         DiffText = result.Succeeded ? result.Stdout : result.Stderr;
         HasDiff = true;
     }
@@ -212,7 +213,7 @@ public partial class GitPanelViewModel : ViewModelBase
     private void MarkManualCheckpoint()
     {
         if (_context is null || !IsRepoAvailable) return;
-        var sha = _runtime.Git.GetHeadSha(_context.RepositoryRoot);
+        var sha = _runtime.GitService.GetHeadSha(_context.RepositoryRoot);
         if (string.IsNullOrWhiteSpace(sha))
         {
             ResultText = Strings.GitPanel_FirstCommitBeforeCheckpoint;
@@ -238,7 +239,7 @@ public partial class GitPanelViewModel : ViewModelBase
             Label = label,
             CreatedAt = DateTime.Now
         };
-        Run(_runtime.Git.MarkCheckpoint(_context, record), Refresh);
+        Run(_runtime.GitService.MarkCheckpoint(_context, record), Refresh);
         CheckpointLabel = string.Empty;
     }
 
@@ -246,7 +247,7 @@ public partial class GitPanelViewModel : ViewModelBase
     {
         if (_context is null) return;
         StatusFiles.Clear();
-        foreach (var file in _runtime.Git.GetStatusFiles(_context)) StatusFiles.Add(file);
+        foreach (var file in _runtime.GitService.GetStatusFiles(_context)) StatusFiles.Add(file);
         HasChanges = StatusFiles.Count > 0;
         IsDirty = HasChanges;
     }
@@ -261,14 +262,14 @@ public partial class GitPanelViewModel : ViewModelBase
     private void RefreshBranches()
     {
         if (_context is null) return;
-        foreach (var branch in _runtime.Git.GetLocalBranches(_context)) Branches.Add(branch);
+        foreach (var branch in _runtime.GitService.GetLocalBranches(_context)) Branches.Add(branch);
         SelectedBranch = _context.BranchName;
     }
 
     private void RefreshGraph()
     {
         if (_context is null) return;
-        foreach (var line in _runtime.Git.GetCommitGraph(_context)) Graph.Add(line);
+        foreach (var line in _runtime.GitService.GetCommitGraph(_context)) Graph.Add(line);
         HasGraph = Graph.Count > 0;
     }
 

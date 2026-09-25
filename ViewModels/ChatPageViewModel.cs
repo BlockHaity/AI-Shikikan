@@ -215,7 +215,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private void RefreshWorkspaceContext()
     {
         var context = HasWorkDir
-            ? _runtime.Git.ResolveContext(WorkDir)
+            ? _runtime.GitService.ResolveContext(WorkDir)
             : new GitWorkspaceContext
             {
                 WorkDir = string.Empty,
@@ -226,7 +226,7 @@ public partial class ChatPageViewModel : ViewModelBase
                 IsEmptyRepo = false
             };
         CurrentRepositoryRoot = context.RepositoryRoot;
-        IsDirty = context.IsValidRepo && !_runtime.Git.IsClean(context).Succeeded;
+        IsDirty = context.IsValidRepo && !_runtime.GitService.IsClean(context).Succeeded;
         IsEmptyRepository = context.IsValidRepo && context.IsEmptyRepo;
         CurrentBranch = context.BranchName;
         IsDetachedHead = context.IsValidRepo && context.IsDetachedHead;
@@ -904,7 +904,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private async Task ForkUserCheckpointAsync(ChatItemViewModel item)
     {
         if (string.IsNullOrWhiteSpace(item.CheckpointId) || CurrentSession is null) return;
-        var context = _runtime.Git.ResolveContext(CurrentSession.WorkDir);
+        var context = _runtime.GitService.ResolveContext(CurrentSession.WorkDir);
         var record = _runtime.Checkpoints.Get(context.RepositoryRoot, item.CheckpointId);
         if (record is null) return;
         var detail = new CheckpointDetail
@@ -961,7 +961,7 @@ public partial class ChatPageViewModel : ViewModelBase
             Strings.Settings_Cancel);
         if (!confirmed) return;
 
-        var context = _runtime.Git.ResolveContext(WorkDir);
+        var context = _runtime.GitService.ResolveContext(WorkDir);
         var record = _runtime.Checkpoints.Get(context.RepositoryRoot, detail.CheckpointId);
         if (record is null)
         {
@@ -970,8 +970,8 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         var result = isReset
-            ? _runtime.Git.ResetHardToCheckpoint(context, record)
-            : _runtime.Git.RevertToCheckpoint(context, record);
+            ? _runtime.GitService.ResetHardToCheckpoint(context, record)
+            : _runtime.GitService.RevertToCheckpoint(context, record);
         if (result.Succeeded)
         {
             segment.MarkCheckpointRolledBack(isReset
@@ -1021,7 +1021,7 @@ public partial class ChatPageViewModel : ViewModelBase
         if (request is null) return;
 
         var source = CurrentSession;
-        var context = _runtime.Git.ResolveContext(source.WorkDir);
+        var context = _runtime.GitService.ResolveContext(source.WorkDir);
         var record = _runtime.Checkpoints.Get(context.RepositoryRoot, detail.CheckpointId);
         if (record is null)
         {
@@ -1029,7 +1029,7 @@ public partial class ChatPageViewModel : ViewModelBase
             return;
         }
 
-        var gitResult = _runtime.Git.Fork(context, record, request.BranchName);
+        var gitResult = _runtime.GitService.Fork(context, record, request.BranchName);
         if (!gitResult.Succeeded)
         {
             var message = string.Format(Strings.Fork_Failed, gitResult.Stderr.Trim());
@@ -1288,7 +1288,7 @@ public partial class ChatPageViewModel : ViewModelBase
     private GitCheckpointRecord? MarkAutomaticCheckpoint(
         GitWorkspaceContext context, ChatSession session, string userText)
     {
-        var head = _runtime.Git.GetHeadSha(context.RepositoryRoot);
+        var head = _runtime.GitService.GetHeadSha(context.RepositoryRoot);
         if (string.IsNullOrWhiteSpace(head)) return null;
         var id = Guid.NewGuid().ToString("N")[..8];
         var record = new GitCheckpointRecord
@@ -1307,7 +1307,7 @@ public partial class ChatPageViewModel : ViewModelBase
                 : userText.Length <= 48 ? userText : userText[..48] + "…",
             CreatedAt = DateTime.Now
         };
-        var result = _runtime.Git.MarkCheckpoint(context, record);
+        var result = _runtime.GitService.MarkCheckpoint(context, record);
         if (!result.Succeeded)
         {
             AppendNotice(string.Format(Strings.Checkpoint_AutoFailed, result.Stderr.Trim()));
@@ -1331,7 +1331,7 @@ public partial class ChatPageViewModel : ViewModelBase
         _sessionAttachments.Remove(sessionId);
         HistoryReset(); // 发送后该条已进入会话历史, 退出浏览态
 
-        var context = _runtime.Git.ResolveContext(WorkDir);
+        var context = _runtime.GitService.ResolveContext(WorkDir);
         CurrentSession.RepositoryRoot = context.RepositoryRoot;
         CurrentSession.BranchName = context.BranchName;
         var checkpoint = MarkAutomaticCheckpoint(context, CurrentSession, content);

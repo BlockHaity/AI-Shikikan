@@ -92,7 +92,7 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
             ActiveTurnId = turnId;
         }
 
-        StateChanged?.Invoke();
+        StateChanged?.Invoke(this);
         return true;
     }
 
@@ -106,7 +106,7 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
             ActiveTurnId = null;
         }
 
-        StateChanged?.Invoke();
+        StateChanged?.Invoke(this);
     }
 
     /// <summary>停止该会话进行中/后续回合(每会话独立取消)。</summary>
