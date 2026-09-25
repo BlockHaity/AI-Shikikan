@@ -150,12 +150,36 @@
                                             </Button>
                                         </StackPanel>
                                     </Grid>
-                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="24,2,0,0">
-                                        <TextBlock Text="{Binding TimeLabel}" FontSize="10"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}"/>
-                                        <TextBlock Text="{Binding MessageText}" FontSize="10"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}"
-                                                   IsVisible="{Binding HasMessages}"/>
+                                    <StackPanel Spacing="3" Margin="24,3,0,0">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding TimeLabel}" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                            <TextBlock Text="{Binding MessageText}" FontSize="10"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                                       IsVisible="{Binding HasMessages}"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="5" IsVisible="{Binding HasWorkDir}">
+                                            <PathIcon Data="{StaticResource IconFolder}" Width="11" Height="11"
+                                                      Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                            <TextBlock Text="{Binding WorkDirText}" FontSize="10"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding WorkDirText}"
+                                                       Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <Border CornerRadius="8" Padding="6,1" IsVisible="{Binding HasBranch}"
+                                                    Background="{DynamicResource SecondaryContainer}">
+                                                <TextBlock Text="{Binding BranchText}" FontSize="10"
+                                                           Foreground="{DynamicResource OnSecondaryContainer}"/>
+                                            </Border>
+                                            <TextBlock Text="{x:Static res:Strings.Session_Running}" FontSize="10"
+                                                       Foreground="{DynamicResource Primary}"
+                                                       IsVisible="{Binding IsRunning}"/>
+                                            <TextBlock Text="⚠" FontSize="10"
+                                                       Foreground="{DynamicResource Error}"
+                                                       IsVisible="{Binding IsBlocked}"
+                                                       ToolTip.Tip="{x:Static res:Strings.Session_BranchOccupiedTip}"/>
+                                        </StackPanel>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

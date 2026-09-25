@@ -16,6 +16,7 @@ public partial class StatusPanelViewModel : ViewModelBase
 {
     private readonly CommanderRuntime _runtime = AppShell.Instance.Runtime;
     private string _sessionId = string.Empty;
+    private string _workDir = string.Empty;
 
     // 上下文
     [ObservableProperty]
@@ -67,7 +68,7 @@ public partial class StatusPanelViewModel : ViewModelBase
 
     public StatusPanelViewModel()
     {
-        WorkspaceRoot = _runtime.WorkspaceRoot;
+        _workDir = _runtime.WorkspaceRoot;
         Refresh();
         _runtime.Engine.OnEvent += OnEngineEvent;
         AppShell.Instance.DataChanged += OnShellDataChanged;
@@ -77,6 +78,12 @@ public partial class StatusPanelViewModel : ViewModelBase
     {
         _sessionId = sessionId;
         Dispatcher.UIThread.Post(RefreshUsage);
+    }
+
+    public void SetWorkspace(string workDir)
+    {
+        _workDir = workDir;
+        Dispatcher.UIThread.Post(RefreshRepo);
     }
 
     private void OnEngineEvent(AgentEngineEvent e)
@@ -105,9 +112,22 @@ public partial class StatusPanelViewModel : ViewModelBase
 
     private void RefreshRepo()
     {
-        var git = _runtime.Git;
-        IsRepoAvailable = git.IsRepoAvailable;
-        BranchText = IsRepoAvailable ? git.CurrentBranch() ?? "detached HEAD" : Strings.GitPanel_NotRepo;
+        if (string.IsNullOrWhiteSpace(_workDir))
+        {
+            WorkspaceRoot = string.Empty;
+            IsRepoAvailable = false;
+            BranchText = Strings.GitPanel_NotRepo;
+            return;
+        }
+
+        var context = _runtime.Git.ResolveContext(_workDir);
+        WorkspaceRoot = context.RepositoryRoot;
+        IsRepoAvailable = context.IsValidRepo;
+        BranchText = !IsRepoAvailable
+            ? Strings.GitPanel_NotRepo
+            : context.IsDetachedHead
+                ? Strings.Chat_DetachedHead
+                : string.IsNullOrWhiteSpace(context.BranchName) ? Strings.Chat_BranchUnknown : context.BranchName;
     }
 
     private void RefreshUsage()

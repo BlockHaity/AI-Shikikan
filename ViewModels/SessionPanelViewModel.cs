@@ -30,6 +30,22 @@ public partial class SessionItemViewModel : ViewModelBase
     private int _messageCount;
 
     [ObservableProperty]
+    private string _workDirText = string.Empty;
+
+    [ObservableProperty]
+    private string _branchText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isRunning;
+
+    [ObservableProperty]
+    private bool _isBlocked;
+
+    public bool HasBranch => !string.IsNullOrWhiteSpace(BranchText);
+
+    public bool HasWorkDir => !string.IsNullOrWhiteSpace(WorkDirText);
+
+    [ObservableProperty]
     private bool _isEditing;
 
     [ObservableProperty]
@@ -39,12 +55,20 @@ public partial class SessionItemViewModel : ViewModelBase
 
     public bool HasMessages => MessageCount > 0;
 
+    public void UpdateRuntime(bool isRunning, bool isBlocked)
+    {
+        IsRunning = isRunning;
+        IsBlocked = isBlocked;
+    }
+
     public SessionItemViewModel(ChatSession session)
     {
         Session = session;
         _title = session.DisplayTitle;
         _messageCount = session.MessageCount;
         _timeLabel = FormatRelativeTime(session.UpdatedAt);
+        _workDirText = session.WorkDir;
+        _branchText = session.BranchName;
         _editTitle = _title;
     }
 
@@ -54,6 +78,10 @@ public partial class SessionItemViewModel : ViewModelBase
         Title = session.DisplayTitle;
         MessageCount = session.MessageCount;
         TimeLabel = FormatRelativeTime(session.UpdatedAt);
+        WorkDirText = session.WorkDir;
+        BranchText = session.BranchName;
+        OnPropertyChanged(nameof(HasBranch));
+        OnPropertyChanged(nameof(HasWorkDir));
         if (!IsEditing)
         {
             EditTitle = Title;
@@ -135,6 +163,12 @@ public partial class SessionPanelViewModel : ViewModelBase
     private readonly Dictionary<string, SessionItemViewModel> _items = new(StringComparer.Ordinal);
     private readonly Dictionary<string, SessionGroupHeaderViewModel> _headers = new(StringComparer.Ordinal);
 
+    /// <summary>由聊天页注入 Core 会话运行态，避免 UI 自行维护第二份状态。</summary>
+    public Func<string, bool> IsSessionRunning { get; set; } = _ => false;
+
+    /// <summary>返回不同分支活动会话的占用原因；null 表示可发送。</summary>
+    public Func<ChatSession, string?>? GetWorkspaceBlockReason { get; set; }
+
     [ObservableProperty]
     private bool _groupByWorkDir;
 
@@ -158,6 +192,8 @@ public partial class SessionPanelViewModel : ViewModelBase
             }
         });
     }
+
+    public void RefreshRuntime() => Reload();
 
     /// <summary>重建期望顺序并对账到 DisplayItems(原地增/移/删, 避免整集合替换触发容器回收级联 NRE)。</summary>
     private void Reload()
@@ -249,6 +285,9 @@ public partial class SessionPanelViewModel : ViewModelBase
         }
 
         item.IsSelected = session.Id == currentId;
+        var running = IsSessionRunning(session.Id);
+        var blocked = GetWorkspaceBlockReason?.Invoke(session) is not null;
+        item.UpdateRuntime(running, blocked);
         return item;
     }
 

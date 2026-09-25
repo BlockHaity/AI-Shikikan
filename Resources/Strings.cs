@@ -141,6 +141,12 @@ public static class Strings
     public static string GitPanel_Pull => Get(nameof(GitPanel_Pull));
     public static string GitPanel_Push => Get(nameof(GitPanel_Push));
     public static string GitPanel_Steps => Get(nameof(GitPanel_Steps));
+    public static string GitPanel_Checkpoints => Get(nameof(GitPanel_Checkpoints));
+    public static string GitPanel_MarkCheckpoint => Get(nameof(GitPanel_MarkCheckpoint));
+    public static string GitPanel_CheckpointLabelPlaceholder => Get(nameof(GitPanel_CheckpointLabelPlaceholder));
+    public static string GitPanel_NoCheckpoints => Get(nameof(GitPanel_NoCheckpoints));
+    public static string GitPanel_FirstCommitBeforeCheckpoint => Get(nameof(GitPanel_FirstCommitBeforeCheckpoint));
+    public static string GitPanel_DefaultCheckpointLabel => Get(nameof(GitPanel_DefaultCheckpointLabel));
     public static string GitPanel_NotRepo => Get(nameof(GitPanel_NotRepo));
     public static string GitPanel_SelectFolder => Get(nameof(GitPanel_SelectFolder));
     public static string GitPanel_SelectFolderTip => Get(nameof(GitPanel_SelectFolderTip));
@@ -211,6 +217,9 @@ public static class Strings
     public static string Session_AgoJustNow => Get(nameof(Session_AgoJustNow));
     public static string Session_NewTitle => Get(nameof(Session_NewTitle));
     public static string Session_Empty => Get(nameof(Session_Empty));
+    public static string Session_Running => Get(nameof(Session_Running));
+    public static string Session_BranchOccupiedTip => Get(nameof(Session_BranchOccupiedTip));
+    public static string Chat_BranchOccupied => Get(nameof(Chat_BranchOccupied));
     public static string Settings_ProviderModelCustom => Get(nameof(Settings_ProviderModelCustom));
     public static string Settings_AgentArgs => Get(nameof(Settings_AgentArgs));
     public static string Settings_AgentArgsPlaceholder => Get(nameof(Settings_AgentArgsPlaceholder));
@@ -255,6 +264,8 @@ public static class Strings
     public static string Checkpoint_SourceManual => Get(nameof(Checkpoint_SourceManual));
     public static string Checkpoint_SourceUnknown => Get(nameof(Checkpoint_SourceUnknown));
     public static string Checkpoint_AutoBadgeTip => Get(nameof(Checkpoint_AutoBadgeTip));
+    public static string Checkpoint_AutoLabel => Get(nameof(Checkpoint_AutoLabel));
+    public static string Checkpoint_AutoFailed => Get(nameof(Checkpoint_AutoFailed));
     public static string Checkpoint_Fork => Get(nameof(Checkpoint_Fork));
     public static string Checkpoint_Rollback => Get(nameof(Checkpoint_Rollback));
     public static string Checkpoint_RollbackChooseTitle => Get(nameof(Checkpoint_RollbackChooseTitle));

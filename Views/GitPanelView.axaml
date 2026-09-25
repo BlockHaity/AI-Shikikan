@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:core="using:AIShikikan.Core.Services.Git"
+             xmlns:models="using:AIShikikan.Core.Models"
              xmlns:local="using:AIShikikan.Gui.Views"
              xmlns:res="clr-namespace:AIShikikan.Gui.Resources"
              mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="600"
@@ -57,9 +58,6 @@
                         Content="{x:Static res:Strings.GitPanel_SelectFolder}"
                         Command="{Binding SelectFolderCommand}"
                         ToolTip.Tip="{x:Static res:Strings.GitPanel_SelectFolderTip}"/>
-                <Button Classes="Outlined" HorizontalAlignment="Stretch"
-                        Content="{x:Static res:Strings.GitPanel_InitRepo}"
-                        Command="{Binding InitializeRepoCommand}"/>
             </StackPanel>
 
             <StackPanel IsVisible="{Binding IsRepoAvailable}" Spacing="10">
@@ -144,34 +142,44 @@
                     </ScrollViewer>
                 </StackPanel>
 
-                <!-- 步骤检查点 -->
-                <StackPanel Spacing="4">
-                    <TextBlock Text="{x:Static res:Strings.GitPanel_Steps}" Classes="secTitle"/>
-                    <ItemsControl ItemsSource="{Binding Steps}">
+                <!-- Git 检查点（替代旧 Steps） -->
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{x:Static res:Strings.GitPanel_Checkpoints}" Classes="secTitle"
+                                   VerticalAlignment="Center"/>
+                        <Button Grid.Column="1" Classes="Text"
+                                Content="{x:Static res:Strings.GitPanel_MarkCheckpoint}"
+                                Command="{Binding MarkManualCheckpointCommand}"/>
+                    </Grid>
+                    <TextBox Text="{Binding CheckpointLabel}" FontSize="11"
+                             Watermark="{x:Static res:Strings.GitPanel_CheckpointLabelPlaceholder}"/>
+                    <TextBlock Text="{x:Static res:Strings.GitPanel_NoCheckpoints}" FontSize="12" Opacity="0.6"
+                               IsVisible="{Binding !HasCheckpoints}"/>
+                    <ItemsControl ItemsSource="{Binding Checkpoints}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="core:GitStepRecord">
-                                <Border Margin="0,2" Padding="8,6" CornerRadius="6"
-                                        BorderBrush="{DynamicResource OutlineVariant}" BorderThickness="1">
-                                    <StackPanel Spacing="4">
-                                        <TextBlock Text="{Binding StepId}" FontSize="12"
-                                                   Foreground="{DynamicResource Primary}"/>
-                                        <TextBlock Text="{Binding Label}" FontSize="12" TextWrapping="Wrap"/>
-                                        <TextBlock FontSize="11"
-                                                   Foreground="{DynamicResource OnSurfaceVariant}"
-                                                   Text="{Binding StepBranch} → {Binding BaseBranch}"/>
+                            <DataTemplate x:DataType="models:GitCheckpointRecord">
+                                <Border Margin="0,2" Padding="9,7" CornerRadius="8"
+                                        BorderBrush="{DynamicResource Primary}" BorderThickness="1">
+                                    <StackPanel Spacing="5">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Grid.Column="1" Text="{Binding ShortSha}"
+                                                       FontFamily="{DynamicResource MonoThemeFontFamily}" FontSize="11"
+                                                       Foreground="{DynamicResource Primary}"/>
+                                        </Grid>
+                                        <TextBlock FontSize="10" Foreground="{DynamicResource OnSurfaceVariant}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Text="{Binding BranchName}"/>
+                                        <TextBlock FontSize="10" Foreground="{DynamicResource OnSurfaceVariant}"
+                                                   Text="{Binding CreatedText}"/>
                                         <StackPanel Orientation="Horizontal" Spacing="6">
-                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitMerge}"
-                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).MergeStepCommand}"
-                                                    CommandParameter="{Binding StepId}"/>
-                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDrop}"
-                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).DropStepCommand}"
-                                                    CommandParameter="{Binding StepId}"/>
-                                            <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitRevert}"
-                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).RevertStepCommand}"
-                                                    CommandParameter="{Binding StepId}"/>
                                             <Button Classes="Text" Content="{x:Static res:Strings.Chat_GitDiff}"
-                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).ShowGitDiffCommand}"
-                                                    CommandParameter="{Binding StepId}"/>
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).ShowCheckpointDiffCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                            <Button Classes="Text" Content="{x:Static res:Strings.Checkpoint_Fork}"
+                                                    Command="{Binding $parent[UserControl].((vm:GitPanelViewModel)DataContext).ForkCheckpointCommand}"
+                                                    CommandParameter="{Binding}"/>
                                         </StackPanel>
                                     </StackPanel>
                                 </Border>

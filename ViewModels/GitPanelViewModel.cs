@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
+using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Git;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -9,15 +11,25 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace AIShikikan.Gui.ViewModels;
 
-/// <summary>侧栏"源代码管理": 类 VSCode 的 Git 面板。</summary>
+/// <summary>侧栏源代码管理：保留常规 Git 操作，并以检查点列表替代旧步骤列表。</summary>
 public partial class GitPanelViewModel : ViewModelBase
 {
     private readonly CommanderRuntime _runtime = AppShell.Instance.Runtime;
+    private GitWorkspaceContext? _context;
+    private string _workDir = string.Empty;
 
     public ObservableCollection<GitFileStatus> StatusFiles { get; } = [];
-    public ObservableCollection<GitStepRecord> Steps { get; } = [];
+    public ObservableCollection<GitCheckpointRecord> Checkpoints { get; } = [];
     public ObservableCollection<string> Branches { get; } = [];
     public ObservableCollection<GitGraphLine> Graph { get; } = [];
+
+    /// <summary>视图注入的文件夹选择器，返回 null 表示取消。</summary>
+    public Func<Task<string?>>? FolderPicker { get; set; }
+
+    /// <summary>由聊天页注入统一 Fork 流程，确保分支与会话截断使用同一套对话框。</summary>
+    public Func<GitCheckpointRecord, Task>? CheckpointForker { get; set; }
+
+    public Func<(string SessionId, int ConversationCutoff)>? CurrentConversationPosition { get; set; }
 
     [ObservableProperty]
     private string _stateText = string.Empty;
@@ -25,11 +37,9 @@ public partial class GitPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRepoAvailable;
 
-    /// <summary>当前 Git 工作目录显示文本。</summary>
     [ObservableProperty]
     private string _rootText = string.Empty;
 
-    /// <summary>是否已通过面板显式选择过文件夹。</summary>
     [ObservableProperty]
     private bool _hasSelectedFolder;
 
@@ -54,241 +64,218 @@ public partial class GitPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _hasGraph;
 
+    [ObservableProperty]
+    private bool _hasCheckpoints;
+
+    [ObservableProperty]
+    private bool _isDirty;
+
+    [ObservableProperty]
+    private bool _isEmptyRepository;
+
+    [ObservableProperty]
+    private bool _isDetachedHead;
+
+    [ObservableProperty]
+    private string _checkpointLabel = string.Empty;
+
     public GitPanelViewModel()
     {
+        Refresh();
+    }
+
+    public void SetWorkspace(string workDir)
+    {
+        _workDir = workDir ?? string.Empty;
+        HasSelectedFolder = !string.IsNullOrWhiteSpace(_workDir);
         Refresh();
     }
 
     [RelayCommand]
     public void Refresh()
     {
-        var git = _runtime.Git;
-        RootText = git.RepositoryRoot;
-        IsRepoAvailable = git.IsRepoAvailable;
-        if (!IsRepoAvailable)
+        StatusFiles.Clear();
+        Checkpoints.Clear();
+        Branches.Clear();
+        Graph.Clear();
+        HasDiff = false;
+        DiffText = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(_workDir))
         {
-            StateText = "";
-            StatusFiles.Clear();
-            Steps.Clear();
-            Branches.Clear();
+            _context = null;
+            IsRepoAvailable = false;
+            RootText = string.Empty;
+            StateText = string.Empty;
+            HasChanges = false;
+            HasGraph = false;
+            HasCheckpoints = false;
             return;
         }
 
-        var branch = git.CurrentBranch() ?? "?";
-        var dirty = git.HasUncommittedChanges() ? "●" : "○";
-        StateText = $"{branch} {dirty}  {git.LastCommitShort() ?? ""}";
+        _context = _runtime.Git.ResolveContext(_workDir);
+        RootText = _context.RepositoryRoot;
+        IsRepoAvailable = _context.IsValidRepo;
+        IsEmptyRepository = _context.IsEmptyRepo;
+        IsDetachedHead = _context.IsDetachedHead;
+        if (!IsRepoAvailable)
+        {
+            StateText = string.Empty;
+            HasChanges = false;
+            HasGraph = false;
+            HasCheckpoints = false;
+            return;
+        }
+
+        IsDirty = !_runtime.Git.IsClean(_context).Succeeded;
+        var head = _runtime.Git.GetHeadSha(_context.RepositoryRoot);
+        StateText = $"{_context.BranchName} {(IsDirty ? "●" : "○")} {head?[..Math.Min(8, head.Length)] ?? string.Empty}".TrimEnd();
+        if (IsEmptyRepository) StateText = string.Empty;
 
         RefreshStatus();
-        RefreshSteps();
+        RefreshCheckpoints();
         RefreshBranches();
         RefreshGraph();
     }
 
-    /// <summary>视图注入的文件夹选择器(UI 层), 返回 null 表示取消。</summary>
-    public Func<Task<string?>>? FolderPicker { get; set; }
-
-    /// <summary>选择工作目录: 选定后立即刷新, 若为仓库则展开全部功能。</summary>
     [RelayCommand]
     private async Task SelectFolderAsync()
     {
         if (FolderPicker is null) return;
         var path = await FolderPicker();
         if (string.IsNullOrWhiteSpace(path)) return;
-
-        SetWorkingDirectory(path);
-    }
-
-    /// <summary>初始化 Git 仓库: 已选目录则直接在该目录 init, 否则先弹出选择器。</summary>
-    [RelayCommand]
-    private async Task InitializeRepoAsync()
-    {
-        string path;
-        if (HasSelectedFolder)
-        {
-            path = _runtime.Git.RepositoryRoot;
-        }
-        else
-        {
-            if (FolderPicker is null) return;
-            var picked = await FolderPicker();
-            if (string.IsNullOrWhiteSpace(picked)) return;
-            SetWorkingDirectory(picked);
-            path = _runtime.Git.RepositoryRoot;
-        }
-
-        SetResult(_runtime.Git.Init());
-        ResultText = $"{ResultText}\n({path})".TrimStart('\n');
-        Refresh();
-    }
-
-    private void SetWorkingDirectory(string path)
-    {
-        try
-        {
-            _runtime.Git.SetRoot(path);
-            HasSelectedFolder = true;
-            ResultText = "";
-        }
-        catch (Exception ex)
-        {
-            ResultText = $"✘ {ex.Message}";
-        }
-
-        Refresh();
-    }
-
-    private void RefreshStatus()
-    {
-        StatusFiles.Clear();
-        foreach (var f in _runtime.Git.GetStatusFiles())
-        {
-            StatusFiles.Add(f);
-        }
-
-        HasChanges = StatusFiles.Count > 0;
-    }
-
-    private void RefreshSteps()
-    {
-        Steps.Clear();
-        foreach (var s in _runtime.Git.PendingReview())
-        {
-            Steps.Add(s);
-        }
-    }
-
-    private void RefreshBranches()
-    {
-        var current = _runtime.Git.CurrentBranch();
-        Branches.Clear();
-        foreach (var b in _runtime.Git.GetLocalBranches())
-        {
-            Branches.Add(b);
-            if (string.Equals(b, current, StringComparison.Ordinal))
-            {
-                SelectedBranch = b;
-            }
-        }
-
-        if (SelectedBranch.Length == 0 && Branches.Count > 0)
-        {
-            SelectedBranch = Branches[0];
-        }
-    }
-
-    private void RefreshGraph()
-    {
-        var lines = _runtime.Git.GetCommitGraph();
-        Graph.Clear();
-        foreach (var line in lines)
-        {
-            Graph.Add(line);
-        }
-
-        HasGraph = Graph.Count > 0;
+        SetWorkspace(path);
     }
 
     [RelayCommand]
-    private void StageFile(GitFileStatus file)
-    {
-        SetResult(_runtime.Git.StageFile(file.Path));
-        RefreshStatus();
-    }
+    private void StageFile(GitFileStatus file) => Run(_runtime.Git.StageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
-    private void ToggleStage(GitFileStatus file)
-    {
-        SetResult(file.IsStaged
-            ? _runtime.Git.UnstageFile(file.Path)
-            : _runtime.Git.StageFile(file.Path));
-        RefreshStatus();
-    }
+    private void ToggleStage(GitFileStatus file) => Run(file.IsStaged
+        ? _runtime.Git.UnstageFile(_context!, file.Path)
+        : _runtime.Git.StageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
-    private void UnstageFile(GitFileStatus file)
-    {
-        SetResult(_runtime.Git.UnstageFile(file.Path));
-        RefreshStatus();
-    }
+    private void UnstageFile(GitFileStatus file) => Run(_runtime.Git.UnstageFile(_context!, file.Path), RefreshStatus);
 
     [RelayCommand]
-    private void StageAll()
-    {
-        SetResult(_runtime.Git.StageAll());
-        RefreshStatus();
-    }
+    private void StageAll() => Run(_runtime.Git.StageAll(_context!), RefreshStatus);
 
     [RelayCommand]
     private void Commit()
     {
-        var files = _runtime.Git.GetStatusFiles();
-        if (files.Count > 0 && !files.Any(f => f.IsStaged))
-        {
-            _runtime.Git.StageAll();
-        }
-
-        var result = _runtime.Git.CommitAll(CommitMessage);
+        if (!IsRepoAvailable || _context is null) return;
+        var files = _runtime.Git.GetStatusFiles(_context);
+        if (files.Count > 0 && !files.Any(f => f.IsStaged)) _runtime.Git.StageAll(_context);
+        var result = _runtime.Git.Commit(_context, CommitMessage);
         SetResult(result);
-        if (result.Succeeded)
-        {
-            CommitMessage = string.Empty;
-        }
-
+        if (result.Succeeded) CommitMessage = string.Empty;
         Refresh();
     }
 
     [RelayCommand]
     private void SwitchBranch(string branch)
     {
-        if (string.IsNullOrWhiteSpace(branch)) return;
-        SetResult(_runtime.Git.SwitchBranch(branch.Trim()));
-        Refresh();
+        if (_context is null || string.IsNullOrWhiteSpace(branch)) return;
+        Run(_runtime.Git.SwitchBranch(_context, branch.Trim()), Refresh);
     }
 
     [RelayCommand]
     private void Pull()
     {
-        SetResult(_runtime.Git.Pull());
-        Refresh();
+        if (_context is not null) Run(_runtime.Git.Pull(_context), Refresh);
     }
 
     [RelayCommand]
     private void Push()
     {
-        SetResult(_runtime.Git.Push());
-        Refresh();
+        if (_context is not null) Run(_runtime.Git.Push(_context), Refresh);
     }
 
     [RelayCommand]
-    private void ShowGitDiff(string stepId)
+    private void ShowCheckpointDiff(GitCheckpointRecord checkpoint)
     {
-        var diff = _runtime.Git.GetDiff(stepId);
-        DiffText = diff.Succeeded ? diff.Stdout : diff.Stderr;
+        if (_context is null) return;
+        var result = _runtime.Git.GetDiff(_context, checkpoint.CommitSha, "HEAD");
+        DiffText = result.Succeeded ? result.Stdout : result.Stderr;
         HasDiff = true;
     }
 
     [RelayCommand]
-    private void MergeStep(string stepId) => RunStepAction(stepId, s => _runtime.Git.MergeStep(s));
-
-    [RelayCommand]
-    private void DropStep(string stepId) => RunStepAction(stepId, s => _runtime.Git.DropStep(s));
-
-    [RelayCommand]
-    private void RevertStep(string stepId) => RunStepAction(stepId, s => _runtime.Git.RevertStep(s));
-
-    private void RunStepAction(string stepId, Func<string, GitCommandResult> action)
+    private async Task ForkCheckpointAsync(GitCheckpointRecord checkpoint)
     {
-        try
+        if (CheckpointForker is not null) await CheckpointForker(checkpoint);
+        Refresh();
+    }
+
+    [RelayCommand]
+    private void MarkManualCheckpoint()
+    {
+        if (_context is null || !IsRepoAvailable) return;
+        var sha = _runtime.Git.GetHeadSha(_context.RepositoryRoot);
+        if (string.IsNullOrWhiteSpace(sha))
         {
-            var result = action(stepId);
-            SetResult(result);
-        }
-        catch (Exception ex)
-        {
-            ResultText = ex.Message;
+            ResultText = Strings.GitPanel_FirstCommitBeforeCheckpoint;
+            return;
         }
 
-        Refresh();
+        var id = Guid.NewGuid().ToString("N")[..8];
+        var label = string.IsNullOrWhiteSpace(CheckpointLabel)
+            ? Strings.GitPanel_DefaultCheckpointLabel
+            : CheckpointLabel.Trim();
+        var position = CurrentConversationPosition?.Invoke() ?? (string.Empty, 0);
+        var record = new GitCheckpointRecord
+        {
+            Id = id,
+            RepositoryRoot = _context.RepositoryRoot,
+            WorkDir = _context.WorkDir,
+            BranchName = _context.BranchName,
+            CommitSha = sha,
+            TagName = $"ai-shikikan/checkpoint/{id}",
+            SessionId = position.SessionId,
+            ConversationCutoff = position.ConversationCutoff,
+            Source = GitCheckpointSource.Manual,
+            Label = label,
+            CreatedAt = DateTime.Now
+        };
+        Run(_runtime.Git.MarkCheckpoint(_context, record), Refresh);
+        CheckpointLabel = string.Empty;
+    }
+
+    private void RefreshStatus()
+    {
+        if (_context is null) return;
+        StatusFiles.Clear();
+        foreach (var file in _runtime.Git.GetStatusFiles(_context)) StatusFiles.Add(file);
+        HasChanges = StatusFiles.Count > 0;
+        IsDirty = HasChanges;
+    }
+
+    private void RefreshCheckpoints()
+    {
+        if (_context is null) return;
+        foreach (var checkpoint in _runtime.Checkpoints.GetAll(_context.RepositoryRoot)) Checkpoints.Add(checkpoint);
+        HasCheckpoints = Checkpoints.Count > 0;
+    }
+
+    private void RefreshBranches()
+    {
+        if (_context is null) return;
+        foreach (var branch in _runtime.Git.GetLocalBranches(_context)) Branches.Add(branch);
+        SelectedBranch = _context.BranchName;
+    }
+
+    private void RefreshGraph()
+    {
+        if (_context is null) return;
+        foreach (var line in _runtime.Git.GetCommitGraph(_context)) Graph.Add(line);
+        HasGraph = Graph.Count > 0;
+    }
+
+    private void Run(GitCommandResult result, Action? refresh = null)
+    {
+        SetResult(result);
+        refresh?.Invoke();
     }
 
     private void SetResult(GitCommandResult result)

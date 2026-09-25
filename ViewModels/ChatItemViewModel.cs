@@ -32,6 +32,12 @@ public partial class ChatItemViewModel : ViewModelBase
 
     public bool HasCheckpoint => !string.IsNullOrWhiteSpace(CheckpointId);
 
+    public void SetCheckpointId(string? checkpointId)
+    {
+        CheckpointId = checkpointId;
+        OnPropertyChanged(nameof(HasCheckpoint));
+    }
+
     public ObservableRange<SegmentItemViewModel> Segments { get; } = [];
 
     // 懒加载: 历史消息的分段 VM 延迟到首次访问(即容器被 realized)时才构建;

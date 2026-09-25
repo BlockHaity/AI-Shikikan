@@ -32,6 +32,9 @@ public partial class ChatPageViewModel : ViewModelBase
 {
     private readonly ChatService _chatService;
     private readonly CommanderRuntime _runtime;
+    private readonly HashSet<string> _runningSessionIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _sessionDrafts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, List<PendingImageAttachment>> _sessionAttachments = new(StringComparer.Ordinal);
     private string? _currentSessionId;
 
     public ThemeService ThemeService { get; }
@@ -74,7 +77,9 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isSending;
 
-    /// <summary>手动终止当前回合的取消源。</summary>
+    /// <summary>手动终止当前回合的取消源（按会话保存，支持后台会话独立停止）。</summary>
+    private readonly Dictionary<string, CancellationTokenSource> _turnCtsMap = new(StringComparer.Ordinal);
+
     private CancellationTokenSource? _turnCts;
 
     /// <summary>上一轮被中断后可继续输出。</summary>
@@ -106,12 +111,15 @@ public partial class ChatPageViewModel : ViewModelBase
     private string _workDir = string.Empty;
 
     /// <summary>当前工作目录对应的 Git 仓库根目录。</summary>
-    public string RepositoryRootText => _runtime.Git.RepositoryRoot;
+    public string RepositoryRootText => CurrentRepositoryRoot;
 
     /// <summary>当前绑定分支；detached HEAD 时显示资源化提示。</summary>
     public string BranchText => IsDetachedHead
         ? Strings.Chat_DetachedHead
         : string.IsNullOrWhiteSpace(CurrentBranch) ? Strings.Chat_BranchUnknown : CurrentBranch;
+
+    [ObservableProperty]
+    private string _currentRepositoryRoot = string.Empty;
 
     [ObservableProperty]
     private string _currentBranch = string.Empty;
@@ -141,7 +149,29 @@ public partial class ChatPageViewModel : ViewModelBase
             if (!HasWorkDir) return Strings.Chat_SelectWorkDirFirst;
             if (IsDetachedHead) return Strings.Chat_DetachedHeadBlocked;
             if (IsEmptyRepository) return Strings.Chat_FirstCommitRequired;
-            return null;
+            return WorkspaceBlockedReason;
+        }
+    }
+
+    /// <summary>其他分支的活动会话占用同一工作区时给出明确原因。</summary>
+    public string? WorkspaceBlockedReason
+    {
+        get
+        {
+            if (CurrentSession is not { } current || IsSessionRunning(current.Id)) return null;
+            var currentBranch = !string.IsNullOrWhiteSpace(current.BranchName)
+                ? current.BranchName
+                : CurrentBranch;
+            if (string.IsNullOrWhiteSpace(currentBranch)) return null;
+
+            var blocker = _chatService.Sessions.FirstOrDefault(s =>
+                s.Id != current.Id && IsSessionRunning(s.Id) &&
+                !string.Equals(s.BranchName, currentBranch, StringComparison.OrdinalIgnoreCase));
+            return blocker is null
+                ? null
+                : string.Format(Strings.Chat_BranchOccupied,
+                    string.IsNullOrWhiteSpace(blocker.DisplayTitle) ? blocker.Id : blocker.DisplayTitle,
+                    string.IsNullOrWhiteSpace(blocker.BranchName) ? Strings.Chat_BranchUnknown : blocker.BranchName);
         }
     }
 
@@ -153,6 +183,8 @@ public partial class ChatPageViewModel : ViewModelBase
     partial void OnWorkDirChanged(string value)
     {
         OnPropertyChanged(nameof(HasWorkDir));
+        GitPanel.SetWorkspace(value);
+        StatusPanel.SetWorkspace(value);
         RefreshWorkspaceContext();
         NotifySendState();
     }
@@ -181,27 +213,27 @@ public partial class ChatPageViewModel : ViewModelBase
 
     private void RefreshWorkspaceContext()
     {
-        if (HasWorkDir)
-        {
-            try
+        var context = HasWorkDir
+            ? _runtime.Git.ResolveContext(WorkDir)
+            : new GitWorkspaceContext
             {
-                _runtime.Git.SetRoot(WorkDir);
-            }
-            catch
-            {
-                // 发送前置仍由目录校验拦截；面板继续显示上次可解析的上下文。
-            }
-        }
-
-        var git = _runtime.Git;
-        IsDirty = git.IsRepoAvailable && git.HasUncommittedChanges();
-        IsEmptyRepository = git.IsRepoAvailable && string.IsNullOrWhiteSpace(git.LastCommitShort());
-        CurrentBranch = git.CurrentBranch() ?? string.Empty;
-        IsDetachedHead = git.IsRepoAvailable && string.IsNullOrWhiteSpace(CurrentBranch);
+                WorkDir = string.Empty,
+                RepositoryRoot = string.Empty,
+                BranchName = string.Empty,
+                IsValidRepo = false,
+                IsDetachedHead = false,
+                IsEmptyRepo = false
+            };
+        CurrentRepositoryRoot = context.RepositoryRoot;
+        IsDirty = context.IsValidRepo && !_runtime.Git.IsClean(context).Succeeded;
+        IsEmptyRepository = context.IsValidRepo && context.IsEmptyRepo;
+        CurrentBranch = context.BranchName;
+        IsDetachedHead = context.IsValidRepo && context.IsDetachedHead;
         OnPropertyChanged(nameof(RepositoryRootText));
         OnPropertyChanged(nameof(BranchText));
         OnPropertyChanged(nameof(GitWarningText));
         OnPropertyChanged(nameof(HasGitWarning));
+        OnPropertyChanged(nameof(WorkspaceBlockedReason));
         OnPropertyChanged(nameof(SendBlockedReason));
         OnPropertyChanged(nameof(HasSendBlockedReason));
         NotifySendState();
@@ -244,36 +276,51 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime = AppShell.Instance.Runtime;
         Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
+        _workDir = CurrentSession?.WorkDir ?? string.Empty;
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
 
         AgentPanel = new AgentPanelViewModel();
-        GitPanel = new GitPanelViewModel();
+        GitPanel = new GitPanelViewModel
+        {
+            CheckpointForker = ForkCheckpointRecordAsync,
+            CurrentConversationPosition = GetCurrentConversationPosition
+        };
         StatusPanel = new StatusPanelViewModel();
-        SessionPanel = new SessionPanelViewModel(_chatService);
+        SessionPanel = new SessionPanelViewModel(_chatService)
+        {
+            IsSessionRunning = IsSessionRunning,
+            GetWorkspaceBlockReason = GetWorkspaceBlockReason
+        };
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        GitPanel.SetWorkspace(WorkDir);
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
+        StatusPanel.SetWorkspace(WorkDir);
 
         _chatService.CurrentSessionChanged += (_, session) =>
         {
+            SaveSessionInputState(_currentSessionId);
             CurrentSession = session;
             RefreshMessages();
             _currentSessionId = session?.Id;
+            RestoreSessionInputState(_currentSessionId);
+            UpdateCurrentSendingState();
             CanContinue = false;
-            // 切换会话时恢复该会话绑定的工作目录(未绑定的新会话保留当前选择)
-            if (!string.IsNullOrWhiteSpace(session?.WorkDir))
-            {
-                WorkDir = session!.WorkDir;
-            }
+            // 切换会话时恢复绑定目录；新会话为空，必须显式重新选择。
+            WorkDir = session?.WorkDir ?? string.Empty;
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+            GitPanel.SetWorkspace(WorkDir);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
+            StatusPanel.SetWorkspace(WorkDir);
             RefreshContextUsage();
             RefreshWorkspaceContext();
             NotifySendState();
         };
         _chatService.MessageAdded += (_, msg) =>
         {
-            if (IsSending) return; // 流式期间由 RespondAsync 维护, 避免重建列表
+            // 任一会话流式期间由对应 RunTurn 维护；Core 事件未携带 sessionId 时，
+            // 忽略后台会话事件可避免消息串到当前同分支会话。
+            if (_runningSessionIds.Count > 0) return;
 
             // 增量追加优先: 整集合替换会大规模回收容器, 触发 Material 主题过渡 NRE
             if (CurrentSession is { } s && s.Messages.Count == Messages.Count + 1 &&
@@ -301,6 +348,77 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshThinkingOptions();
         RefreshContextUsage();
         RefreshWorkspaceContext();
+    }
+
+    private (string SessionId, int ConversationCutoff) GetCurrentConversationPosition() =>
+        (_currentSessionId ?? string.Empty, Math.Max(0, (CurrentSession?.MessageCount ?? 1) - 1));
+
+    private bool IsSessionRunning(string sessionId) =>
+        !string.IsNullOrEmpty(sessionId) && _runningSessionIds.Contains(sessionId);
+
+    private string? GetWorkspaceBlockReason(ChatSession target)
+    {
+        if (IsSessionRunning(target.Id)) return null;
+        var branch = !string.IsNullOrWhiteSpace(target.BranchName) ? target.BranchName : CurrentBranch;
+        if (string.IsNullOrWhiteSpace(branch)) return null;
+        var blocker = _chatService.Sessions.FirstOrDefault(s =>
+            s.Id != target.Id && IsSessionRunning(s.Id) &&
+            !string.Equals(s.BranchName, branch, StringComparison.OrdinalIgnoreCase));
+        return blocker is null ? null : string.Format(
+            Strings.Chat_BranchOccupied,
+            string.IsNullOrWhiteSpace(blocker.DisplayTitle) ? blocker.Id : blocker.DisplayTitle,
+            string.IsNullOrWhiteSpace(blocker.BranchName) ? Strings.Chat_BranchUnknown : blocker.BranchName);
+    }
+
+    private void SaveSessionInputState(string? sessionId)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return;
+        if (string.IsNullOrEmpty(InputText)) _sessionDrafts.Remove(sessionId);
+        else _sessionDrafts[sessionId] = InputText;
+        if (PendingAttachments.Count == 0) _sessionAttachments.Remove(sessionId);
+        else _sessionAttachments[sessionId] = PendingAttachments.ToList();
+    }
+
+    private void RestoreSessionInputState(string? sessionId)
+    {
+        _applyingHistory = true;
+        InputText = sessionId is not null && _sessionDrafts.TryGetValue(sessionId, out var draft)
+            ? draft
+            : string.Empty;
+        _applyingHistory = false;
+        PendingAttachments.Clear();
+        if (sessionId is not null && _sessionAttachments.TryGetValue(sessionId, out var attachments))
+        {
+            foreach (var attachment in attachments) PendingAttachments.Add(attachment);
+        }
+        OnPropertyChanged(nameof(HasPendingAttachments));
+        NotifySendState();
+    }
+
+    private void BeginSessionRun(string sessionId)
+    {
+        _runningSessionIds.Add(sessionId);
+        UpdateCurrentSendingState();
+        SessionPanel.RefreshRuntime();
+    }
+
+    private void EndSessionRun(string sessionId)
+    {
+        _runningSessionIds.Remove(sessionId);
+        if (_turnCtsMap.Remove(sessionId, out var cts)) cts.Dispose();
+        UpdateCurrentSendingState();
+        SessionPanel.RefreshRuntime();
+        RefreshWorkspaceContext();
+    }
+
+    private void UpdateCurrentSendingState()
+    {
+        IsSending = _currentSessionId is not null && IsSessionRunning(_currentSessionId);
+        OnPropertyChanged(nameof(WorkspaceBlockedReason));
+        OnPropertyChanged(nameof(SendBlockedReason));
+        OnPropertyChanged(nameof(HasSendBlockedReason));
+        NotifySendState();
+        SessionPanel.RefreshRuntime();
     }
 
     partial void OnSelectedModelChanged(string value)
@@ -810,6 +928,24 @@ public partial class ChatPageViewModel : ViewModelBase
         }
     }
 
+    private Task ForkCheckpointRecordAsync(GitCheckpointRecord record)
+    {
+        var detail = new CheckpointDetail
+        {
+            CheckpointId = record.Id,
+            Label = record.Label,
+            ShortSha = record.ShortSha,
+            FullSha = record.CommitSha,
+            BranchName = record.BranchName,
+            WorkDir = record.WorkDir,
+            Source = record.Source,
+            CreatedAt = record.CreatedAt,
+            SessionId = record.SessionId,
+            ConversationCutoff = record.ConversationCutoff
+        };
+        return ExecuteForkAsync(detail, null);
+    }
+
     private async Task ExecuteForkAsync(CheckpointDetail detail, SegmentItemViewModel? card)
     {
         if (CurrentSession is null || GetMainWindow() is not { } owner) return;
@@ -863,50 +999,32 @@ public partial class ChatPageViewModel : ViewModelBase
         if (card is null) AppendNotice(done);
     }
 
-    /// <summary>同会话 Fork：真正删除检查点 cutoff 之后的对话并持久化。</summary>
+    /// <summary>同会话 Fork：通过 Core 真正截断并持久化 [0, cutoff] 对话。</summary>
     private void TruncateCurrentSessionAtCheckpoint(int cutoff, string branch, string repositoryRoot)
     {
         if (CurrentSession is not { } session) return;
-        var index = Math.Clamp(cutoff, 0, session.Messages.Count);
-        if (index < session.Messages.Count)
-        {
-            var deleteId = session.Messages[index].Id;
-            if (session.Messages[index].Role != MessageRole.User)
-            {
-                var user = session.Messages.Take(index).LastOrDefault(m => m.Role == MessageRole.User);
-                if (user is null) throw new InvalidOperationException(Strings.Fork_NoTruncationAnchor);
-                deleteId = user.Id;
-            }
+        if (cutoff < session.Messages.Count && !_chatService.TruncateMessages(session.Id, cutoff))
+            throw new InvalidOperationException(Strings.Fork_TruncateFailed);
 
-            if (!_chatService.DeleteMessage(session.Id, deleteId))
-                throw new InvalidOperationException(Strings.Fork_TruncateFailed);
-        }
-
-        session.BranchName = branch;
-        session.RepositoryRoot = repositoryRoot;
-        _chatService.SetSessionWorkDir(session.Id, session.WorkDir);
-        // Delete/Set 调用已持久化上下文；显式 rename 也确保仅修改绑定字段时写盘。
-        _chatService.RenameSession(session.Id, session.Title);
+        _chatService.SetSessionRepositoryInfo(session.Id, repositoryRoot, branch);
     }
 
-    /// <summary>复制新会话：逐条复制 cutoff 前缀，并复制 AOT 源生成持久化的 roster.json。</summary>
+    /// <summary>复制新会话：Core 复制 cutoff 前缀，UI 额外复制 AOT 持久化的 Roster。</summary>
     private void CopySessionAtCheckpoint(ChatSession source, int cutoff, string branch, string repositoryRoot)
     {
-        var prefix = source.Messages.Take(Math.Clamp(cutoff, 0, source.Messages.Count)).ToList();
-        var copy = _chatService.CreateSession(source.Title);
-        copy.WorkDir = source.WorkDir;
-        copy.RepositoryRoot = repositoryRoot;
-        copy.BranchName = branch;
-
-        foreach (var message in prefix)
+        ChatSession? copy;
+        if (cutoff < 0)
         {
-            var added = _chatService.AddMessage(copy.Id, message.Role, message.Segments);
-            added.CheckpointId = message.CheckpointId;
+            copy = _chatService.CreateSession(source.Title);
         }
-
+        else
+        {
+            copy = _chatService.ForkSession(source.Id, cutoff, source.Title);
+        }
+        if (copy is null) throw new InvalidOperationException(Strings.Fork_TruncateFailed);
+        _chatService.SetSessionWorkDir(copy.Id, source.WorkDir);
+        _chatService.SetSessionRepositoryInfo(copy.Id, repositoryRoot, branch);
         RosterConfigService.Save(copy.Id, RosterConfigService.Load(source.Id));
-        // 写回标题/检查点 ID，确保最后一条也在本轮持久化。
-        _chatService.RenameSession(copy.Id, source.Title);
     }
 
     /// <summary>进入用户消息 fork 编辑态。</summary>
@@ -950,7 +1068,7 @@ public partial class ChatPageViewModel : ViewModelBase
             .ToList();
 
         AIShikikan.Core.Logging.Log.Info("Session", $"fork 编辑消息 {messageId}, 截断后重发");
-        IsSending = true;
+        BeginSessionRun(session.Id);
         await RunTurnCoreAsync(newText, resendImages.Count > 0 ? resendImages : null);
     }
 
@@ -1107,6 +1225,37 @@ public partial class ChatPageViewModel : ViewModelBase
         HistoryHint = string.Empty;
     }
 
+    private GitCheckpointRecord? MarkAutomaticCheckpoint(
+        GitWorkspaceContext context, ChatSession session, string userText)
+    {
+        var head = _runtime.Git.GetHeadSha(context.RepositoryRoot);
+        if (string.IsNullOrWhiteSpace(head)) return null;
+        var id = Guid.NewGuid().ToString("N")[..8];
+        var record = new GitCheckpointRecord
+        {
+            Id = id,
+            RepositoryRoot = context.RepositoryRoot,
+            WorkDir = context.WorkDir,
+            BranchName = context.BranchName,
+            CommitSha = head,
+            TagName = $"ai-shikikan/checkpoint/{id}",
+            SessionId = session.Id,
+            ConversationCutoff = session.MessageCount - 1,
+            Source = GitCheckpointSource.AutoUserMessage,
+            Label = string.IsNullOrWhiteSpace(userText)
+                ? string.Format(Strings.Checkpoint_AutoLabel, session.MessageCount + 1)
+                : userText.Length <= 48 ? userText : userText[..48] + "…",
+            CreatedAt = DateTime.Now
+        };
+        var result = _runtime.Git.MarkCheckpoint(context, record);
+        if (!result.Succeeded)
+        {
+            AppendNotice(string.Format(Strings.Checkpoint_AutoFailed, result.Stderr.Trim()));
+            return null;
+        }
+        return record;
+    }
+
     [RelayCommand(CanExecute = nameof(CanSendMessage))]
     private void SendMessage()
     {
@@ -1115,9 +1264,17 @@ public partial class ChatPageViewModel : ViewModelBase
         if (!HasWorkDir) return;
         if (CurrentSession is null) return;
 
+        var sessionId = CurrentSession.Id;
         var content = InputText;
         InputText = string.Empty;
+        _sessionDrafts.Remove(sessionId);
+        _sessionAttachments.Remove(sessionId);
         HistoryReset(); // 发送后该条已进入会话历史, 退出浏览态
+
+        var context = _runtime.Git.ResolveContext(WorkDir);
+        CurrentSession.RepositoryRoot = context.RepositoryRoot;
+        CurrentSession.BranchName = context.BranchName;
+        var checkpoint = MarkAutomaticCheckpoint(context, CurrentSession, content);
 
         // 附件转图片分段(与引擎侧 ChatImagePart 同源), 发送后清空待发送条带
         var attachments = PendingAttachments.ToList();
@@ -1142,7 +1299,16 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         // AddMessage 同步触发 MessageAdded 处理器完成列表重建, 无需在此重复 RefreshMessages
-        _chatService.AddMessage(CurrentSession!.Id, MessageRole.User, segments);
+        var userMessage = _chatService.AddMessage(sessionId, MessageRole.User, segments);
+        if (checkpoint is not null)
+        {
+            _chatService.SetMessageCheckpoint(sessionId, userMessage.Id, checkpoint.Id);
+            userMessage.CheckpointId = checkpoint.Id;
+            if (Messages.LastOrDefault()?.MessageId == userMessage.Id)
+            {
+                Messages[^1].SetCheckpointId(checkpoint.Id);
+            }
+        }
         // 记录会话绑定的工作目录(用于按目录整理会话与切换会话时恢复)
         _chatService.SetSessionWorkDir(CurrentSession.Id, WorkDir);
 
@@ -1152,7 +1318,7 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         CanContinue = false;
-        IsSending = true;
+        BeginSessionRun(sessionId);
         var images = attachments
             .Select(a => new ChatImagePart { Base64Data = a.Base64, MimeType = a.MimeType })
             .ToList();
@@ -1203,17 +1369,18 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void StopGeneration()
     {
-        if (!IsSending) return;
-        _turnCts?.Cancel();
+        if (!IsSending || _currentSessionId is not { } sessionId) return;
+        if (_turnCtsMap.TryGetValue(sessionId, out var cts)) cts.Cancel();
+        else _turnCts?.Cancel();
     }
 
     /// <summary>继续输出: 以固定指令驱动引擎从中断处续写(不新增用户气泡)。</summary>
     [RelayCommand]
     private void ContinueOutput()
     {
-        if (!CanContinue || IsSending) return;
+        if (!CanContinue || IsSending || _currentSessionId is not { } sessionId) return;
         CanContinue = false;
-        IsSending = true;
+        BeginSessionRun(sessionId);
         _ = RunTurnCoreAsync(Strings.Chat_ContinuePrompt);
     }
 
@@ -1235,8 +1402,9 @@ public partial class ChatPageViewModel : ViewModelBase
     /// <summary>驱动一轮引擎调用: 流式呈现、取消处理与分段持久化。images 为用户本轮附带的多模态图片。</summary>
     private async Task RunTurnCoreAsync(string engineMessage, IReadOnlyList<ChatImagePart>? images = null)
     {
+        var sessionId = _currentSessionId ?? string.Empty;
         var assistantItem = new ChatItemViewModel(MessageRole.Assistant);
-        Messages.Add(assistantItem);
+        if (CurrentSession?.Id == sessionId) Messages.Add(assistantItem);
 
         // 线性时间线: 分段按事件到达顺序排列(思考/正文/工具交替), UI 顺序 = 实际发生顺序
         var entries = new List<TimelineEntry>();
@@ -1359,6 +1527,11 @@ public partial class ChatPageViewModel : ViewModelBase
         _runtime.Engine.OnEvent += OnEngineEvent;
         _turnCts?.Dispose();
         _turnCts = new CancellationTokenSource();
+        if (!string.IsNullOrEmpty(sessionId))
+        {
+            if (_turnCtsMap.Remove(sessionId, out var previous)) previous.Dispose();
+            _turnCtsMap[sessionId] = _turnCts;
+        }
         try
         {
             _runtime.Engine.Options.Thinking = SelectedThinking;
@@ -1431,12 +1604,13 @@ public partial class ChatPageViewModel : ViewModelBase
             }
         }
 
-        if (segments.Count > 0)
+        if (segments.Count > 0 && !string.IsNullOrEmpty(sessionId))
         {
-            _chatService.AddMessage(CurrentSession!.Id, MessageRole.Assistant, segments);
+            _chatService.AddMessage(sessionId, MessageRole.Assistant, segments);
         }
 
-        IsSending = false;
+        if (!string.IsNullOrEmpty(sessionId)) EndSessionRun(sessionId);
+        else IsSending = false;
     }
 
     /// <summary>时间线条目: 按引擎事件顺序累积的显示分段(工具调用与文本交替呈现)。</summary>

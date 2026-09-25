@@ -143,7 +143,13 @@
   <data name="GitPanel_Switch" xml:space="preserve"><value>切换</value></data>
   <data name="GitPanel_Pull" xml:space="preserve"><value>拉取</value></data>
   <data name="GitPanel_Push" xml:space="preserve"><value>推送</value></data>
-  <data name="GitPanel_Steps" xml:space="preserve"><value>步骤检查点</value></data>
+  <data name="GitPanel_Steps" xml:space="preserve"><value>旧步骤</value></data>
+  <data name="GitPanel_Checkpoints" xml:space="preserve"><value>检查点</value></data>
+  <data name="GitPanel_MarkCheckpoint" xml:space="preserve"><value>手动标记</value></data>
+  <data name="GitPanel_CheckpointLabelPlaceholder" xml:space="preserve"><value>检查点标签（可选）...</value></data>
+  <data name="GitPanel_NoCheckpoints" xml:space="preserve"><value>暂无检查点</value></data>
+  <data name="GitPanel_FirstCommitBeforeCheckpoint" xml:space="preserve"><value>空仓库需要先创建第一个 commit。</value></data>
+  <data name="GitPanel_DefaultCheckpointLabel" xml:space="preserve"><value>手动检查点</value></data>
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库, 请选择文件夹或初始化仓库</value></data>
   <data name="GitPanel_SelectFolder" xml:space="preserve"><value>选择文件夹</value></data>
   <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>选定后在此目录检测 git 仓库</value></data>
@@ -220,6 +226,9 @@
   <data name="Session_AgoJustNow" xml:space="preserve"><value>刚刚</value></data>
   <data name="Session_NewTitle" xml:space="preserve"><value>新会话</value></data>
   <data name="Session_Empty" xml:space="preserve"><value>暂无会话</value></data>
+  <data name="Session_Running" xml:space="preserve"><value>运行中</value></data>
+  <data name="Session_BranchOccupiedTip" xml:space="preserve"><value>另一个不同分支的活动会话正在占用此工作区。</value></data>
+  <data name="Chat_BranchOccupied" xml:space="preserve"><value>会话“{0}”正在分支“{1}”运行；同分支可并发，不同分支需等待其结束。</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>自定义模型 ID</value></data>
   <data name="Settings_AgentArgs" xml:space="preserve"><value>参数模板</value></data>
   <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>空格分隔的参数, 使用 {prompt} 指代提示词 (如: -p {prompt})</value></data>
@@ -258,6 +267,8 @@
   <data name="Checkpoint_SourceManual" xml:space="preserve"><value>手动</value></data>
   <data name="Checkpoint_SourceUnknown" xml:space="preserve"><value>未知</value></data>
   <data name="Checkpoint_AutoBadgeTip" xml:space="preserve"><value>发送此消息前自动创建的 Git 检查点</value></data>
+  <data name="Checkpoint_AutoLabel" xml:space="preserve"><value>用户消息 #{0}</value></data>
+  <data name="Checkpoint_AutoFailed" xml:space="preserve"><value>自动检查点创建失败：{0}</value></data>
   <data name="Checkpoint_Fork" xml:space="preserve"><value>Fork</value></data>
   <data name="Checkpoint_Rollback" xml:space="preserve"><value>回滚</value></data>
   <data name="Checkpoint_RollbackChooseTitle" xml:space="preserve"><value>选择回滚方式</value></data>
