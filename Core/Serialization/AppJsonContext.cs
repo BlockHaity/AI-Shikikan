@@ -48,4 +48,9 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(AgentCallEntry))]
 [JsonSerializable(typeof(ModelProfileCache))]
 [JsonSerializable(typeof(ApiModelProfile))]
+[JsonSerializable(typeof(GitCheckpointRecord))]
+[JsonSerializable(typeof(GitCheckpointSource))]
+[JsonSerializable(typeof(CheckpointRollbackMode))]
+[JsonSerializable(typeof(GitWorkspaceContext))]
+[JsonSerializable(typeof(CheckpointDetail))]
 public sealed partial class AppJsonContext : JsonSerializerContext;

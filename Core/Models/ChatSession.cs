@@ -13,6 +13,12 @@ public class ChatSession
     /// <summary>会话绑定的工作目录(首次发送消息时记录, 用于按目录整理会话与切换会话时恢复)。</summary>
     public string WorkDir { get; set; } = string.Empty;
 
+    /// <summary>会话绑定的 Git 仓库根目录(首次发送消息时解析并记录, 为空表示非 Git 或未解析)。</summary>
+    public string RepositoryRoot { get; set; } = string.Empty;
+
+    /// <summary>会话绑定的分支名(首次发送消息时记录, 用于 Fork/检查点上下文)。</summary>
+    public string BranchName { get; set; } = string.Empty;
+
     [JsonIgnore]
     public string DisplayTitle => string.IsNullOrEmpty(Title) ? "New Session" : Title;
 

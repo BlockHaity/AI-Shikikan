@@ -31,7 +31,11 @@ public class ToolSegment
     public bool IsError { get; set; }
     public bool IsDone { get; set; }
 
-    /// <summary>关联的 git 检查点步骤 ID(子 Agent 调用), 会话回放时据此提供回滚按钮。</summary>
+    /// <summary>关联的 git 检查点 ID(新检查点系统)。</summary>
+    public string? CheckpointId { get; set; }
+
+    /// <summary>关联的 git 检查点步骤 ID(旧步骤系统兼容, 只读不再写入)。</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? StepId { get; set; }
 
     /// <summary>结构化卡片展示数据(按工具类型渲染专属卡体), 会话回放时重建。</summary>
@@ -63,6 +67,9 @@ public class ChatMessage
 {
     public string Id { get; init; } = Guid.NewGuid().ToString("N")[..8];
     public MessageRole Role { get; init; } = MessageRole.User;
+
+    /// <summary>关联的 git 检查点 ID(用户消息发送前自动标记, 或 AI 工具创建)。</summary>
+    public string? CheckpointId { get; set; }
 
     /// <summary>结构化分段内容。历史遗留整段文本(单 Text 分段)也兼容展示。</summary>
     public List<MessageSegment> Segments { get; set; } = [];

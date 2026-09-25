@@ -26,6 +26,7 @@ public static class AppPaths
     public static string StepsDir { get; }
     public static string SubagentsDir { get; }
     public static string AssignmentsDir { get; }
+    public static string CheckpointsDir { get; }
     public static string UsageStatsPath { get; }
 
     static AppPaths()
@@ -78,6 +79,7 @@ public static class AppPaths
         StepsDir = Path.Combine(DataDir, "steps");
         SubagentsDir = Path.Combine(DataDir, "subagents");
         AssignmentsDir = Path.Combine(DataDir, "assignments");
+        CheckpointsDir = Path.Combine(DataDir, "checkpoints");
         UsageStatsPath = Path.Combine(DataDir, "usage.json");
     }
 
@@ -94,5 +96,6 @@ public static class AppPaths
         Directory.CreateDirectory(StepsDir);
         Directory.CreateDirectory(SubagentsDir);
         Directory.CreateDirectory(AssignmentsDir);
+        Directory.CreateDirectory(CheckpointsDir);
     }
 }
