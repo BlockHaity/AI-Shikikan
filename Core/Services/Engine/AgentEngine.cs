@@ -6,13 +6,33 @@ using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Personas;
+using AIShikikan.Core.Services.Session;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Tools;
 using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services.Engine;
 
-public abstract record AgentEngineEvent;
+/// <summary>事件归属上下文: 会话/回合/标题/分支, 由引擎在事件出口统一标注。</summary>
+public sealed record EngineEventScope(string SessionId, string TurnId, string SessionTitle, string? Branch);
+
+public abstract record AgentEngineEvent
+{
+    /// <summary>事件归属; 兼容旧构造(未标注)时为空。</summary>
+    public EngineEventScope? Scope { get; set; }
+
+    /// <summary>归属会话 ID(未标注为空串)。</summary>
+    public string SessionId => Scope?.SessionId ?? string.Empty;
+
+    /// <summary>归属回合 ID(未标注为空串)。</summary>
+    public string TurnId => Scope?.TurnId ?? string.Empty;
+
+    /// <summary>归属会话标题(未标注为空串)。</summary>
+    public string SessionTitle => Scope?.SessionTitle ?? string.Empty;
+
+    /// <summary>归属工作区分支(未标注为 null)。</summary>
+    public string? Branch => Scope?.Branch;
+}
 
 public sealed record EngineTextDelta(string Text) : AgentEngineEvent;
 
@@ -80,6 +100,27 @@ public sealed class AgentEngine
     /// <summary>最近一次 LLM 调用的输入 token 数(即上下文占用), 供自动压缩阈值判断。</summary>
     private int _lastInputTokens;
 
+    // ---- 会话身份 / 事件路由 ----
+
+    private readonly EngineEventHub? _hub;
+    private readonly ISessionEngineHost? _host;
+    private Action<AgentEngineEvent>? _localHandlers;
+    private int _turnSeq;
+    private string? _currentTurnId;
+    private readonly CancellationTokenSource _sessionCts = new();
+
+    /// <summary>归属会话 ID(每会话独立引擎)。</summary>
+    public string SessionId { get; }
+
+    /// <summary>归属会话标题(事件携带, 由注册表维护)。</summary>
+    public string SessionTitle { get; private set; }
+
+    /// <summary>会话当前绑定分支(回合开始时由协调器解析刷新)。</summary>
+    public string? Branch { get; private set; }
+
+    /// <summary>当前进行中的回合 ID(无回合时为 null)。</summary>
+    public string? CurrentTurnId => _currentTurnId;
+
     public AgentEngine(
         LlmService llm,
         ToolRegistry registry,
@@ -91,13 +132,16 @@ public sealed class AgentEngine
         string workspaceRoot,
         string? personaText = null,
         EngineOptions? options = null,
-        IReadOnlyList<AgentRosterEntry>? rosterEntries = null)
+        IReadOnlyList<AgentRosterEntry>? rosterEntries = null,
+        string? sessionId = null,
+        string? sessionTitle = null,
+        ISessionEngineHost? host = null,
+        EngineEventHub? hub = null)
     {
         _llm = llm;
         _registry = registry;
         _git = git;
         _assignments = assignments;
-        _assignments.AssignmentChanged += a => OnEvent?.Invoke(new EngineAssignmentChanged(a));
         _personas = personas;
         _templates = templates;
         _agents = agents;
@@ -105,9 +149,63 @@ public sealed class AgentEngine
         _personaText = personaText;
         _rosterEntries = rosterEntries;
         _options = options ?? new EngineOptions();
+        SessionId = string.IsNullOrWhiteSpace(sessionId) ? "default" : sessionId;
+        SessionTitle = sessionTitle ?? SessionId;
+        _host = host;
+        _hub = hub;
     }
 
-    public event Action<AgentEngineEvent>? OnEvent;
+    /// <summary>引擎事件: 存在事件 Hub 时订阅进入 Hub(按活动会话过滤投递), 否则为本引擎原始事件。</summary>
+    public event Action<AgentEngineEvent>? OnEvent
+    {
+        add
+        {
+            if (value is null) return;
+            if (_hub is not null) _hub.Subscribe(value);
+            else _localHandlers += value;
+        }
+        remove
+        {
+            if (value is null) return;
+            if (_hub is not null) _hub.Unsubscribe(value);
+            else _localHandlers -= value;
+        }
+    }
+
+    /// <summary>未过滤的原始事件出口(会话注册表订阅, 用于后台会话用量落盘等簿记)。</summary>
+    internal event Action<AgentEngineEvent>? RawEvent;
+
+    /// <summary>事件出口: 标注归属上下文 → 原始订阅者 → 本地订阅者 → Hub(过滤投递)。</summary>
+    private void Raise(AgentEngineEvent e)
+    {
+        e.Scope ??= CurrentScope();
+        RawEvent?.Invoke(e);
+        _localHandlers?.Invoke(e);
+        _hub?.Publish(e);
+    }
+
+    private EngineEventScope CurrentScope() =>
+        new(SessionId, _currentTurnId ?? string.Empty, SessionTitle, Branch);
+
+    /// <summary>更新会话标题/分支(注册表维护; 分支同时在回合开始时由协调器刷新)。</summary>
+    public void SetSessionInfo(string? title, string? branch)
+    {
+        if (title is not null) SessionTitle = title;
+        if (branch is not null) Branch = branch;
+    }
+
+    /// <summary>取消该会话的进行中与后续回合(会话删除/停止会话时调用)。</summary>
+    public void CancelSession()
+    {
+        try
+        {
+            _sessionCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 引擎已释放: 忽略
+        }
+    }
 
     public EngineOptions Options => _options;
 
@@ -307,8 +405,44 @@ public sealed class AgentEngine
     public Task<string> RunTurnAsync(string userMessage, CancellationToken ct = default) =>
         RunTurnAsync(userMessage, null, ct);
 
-    /// <summary>发起一轮对话; images 为用户消息附带的多模态图片(base64)。</summary>
+    /// <summary>发起一轮对话; images 为用户消息附带的多模态图片(base64)。
+    /// 回合开始前向工作区协调器申请执行权(同 worktree 跨分支已有活动/保留期直接拒绝, 不改动对话)。</summary>
     public async Task<string> RunTurnAsync(string userMessage, IReadOnlyList<ChatImagePart>? images, CancellationToken ct = default)
+    {
+        var turnId = $"{SessionId}-{Interlocked.Increment(ref _turnSeq)}";
+        WorkspaceActivity? activity = null;
+        if (_host is not null)
+        {
+            if (!_host.TryBeginTurn(this, turnId, _options.WorkDir, out var blockedReason, out activity))
+            {
+                var blocked = $"⛔ 无法发送: {blockedReason}";
+                Log.Warn("Engine", $"回合 {turnId} 被工作区协调器拒绝: {blockedReason}");
+                Raise(new EngineDone(null, blocked));
+                return blocked;
+            }
+
+            if (activity is not null)
+            {
+                Branch = activity.Key.Branch; // 事件归属携带最新分支
+            }
+        }
+
+        _currentTurnId = turnId;
+        // 手动停止(会话级 CTS)与 GUI 停止按钮(外部 ct)合并: 每会话独立取消
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, _sessionCts.Token);
+        try
+        {
+            return await RunTurnCoreAsync(userMessage, images, linkedCts.Token).ConfigureAwait(false);
+        }
+        finally
+        {
+            _currentTurnId = null;
+            _host?.EndTurn(this, activity);
+        }
+    }
+
+    /// <summary>回合主体: 组装提示词 → LLM 流式 → 工具循环(工作区执行权由调用方持有)。</summary>
+    private async Task<string> RunTurnCoreAsync(string userMessage, IReadOnlyList<ChatImagePart>? images, CancellationToken ct)
     {
         // 连续用户消息合并为一条(继续输出场景), 避免部分 API 要求严格角色交替
         var last = _conversation.Count > 0 ? _conversation[^1] : null;
@@ -337,7 +471,7 @@ public sealed class AgentEngine
             if (provider is null)
             {
                 var msg = "未配置 Provider。请在 providers.toml 中添加(见 ConfigDir)或设置 OPENAI_API_KEY / ANTHROPIC_API_KEY。";
-                OnEvent?.Invoke(new EngineDone(null, msg));
+                Raise(new EngineDone(null, msg));
                 return msg;
             }
 
@@ -359,7 +493,7 @@ public sealed class AgentEngine
                     {
                         if (await CompactConversationAsync(ct).ConfigureAwait(false))
                         {
-                            OnEvent?.Invoke(new EngineContextCompacted());
+                            Raise(new EngineContextCompacted());
                         }
                     }
                 }
@@ -385,15 +519,15 @@ public sealed class AgentEngine
                     switch (sse.Kind)
                     {
                         case StreamEventKind.TextDelta:
-                            OnEvent?.Invoke(new EngineTextDelta(sse.Text ?? ""));
+                            Raise(new EngineTextDelta(sse.Text ?? ""));
                             break;
                         case StreamEventKind.ThinkingDelta:
-                            OnEvent?.Invoke(new EngineThinkingDelta(sse.Thinking ?? ""));
+                            Raise(new EngineThinkingDelta(sse.Thinking ?? ""));
                             break;
                         case StreamEventKind.Error:
                             var sErr = $"流式错误: {sse.Error}";
                             Log.Warn("LLM", sErr);
-                            OnEvent?.Invoke(new EngineDone(null, sErr));
+                            Raise(new EngineDone(null, sErr));
                             return $"模型调用失败: {sErr}";
                         case StreamEventKind.Done:
                             response = sse.Final;
@@ -406,13 +540,13 @@ public sealed class AgentEngine
                 if (response.Usage is { InputTokens: > 0 } or { OutputTokens: > 0 })
                 {
                     _lastInputTokens = response.Usage.InputTokens;
-                    OnEvent?.Invoke(new EngineUsageRecorded(provider.Id, model, response.Usage));
+                    Raise(new EngineUsageRecorded(provider.Id, model, response.Usage));
                 }
 
                 if (response.IsError)
                 {
                     Log.Warn("LLM", $"响应错误: {response.Error}");
-                    OnEvent?.Invoke(new EngineDone(null, response.Error));
+                    Raise(new EngineDone(null, response.Error));
                     return $"模型调用失败: {response.Error}";
                 }
 
@@ -440,7 +574,7 @@ public sealed class AgentEngine
                         catch (OperationCanceledException)
                         {
                             // 取消时补齐占位结果并闭环事件, 保持 tool_calls/tool 配对完整, 便于后续继续输出
-                            OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name,
+                            Raise(new EngineToolFinished(call.Id, call.Name,
                                 ToolResult.Error("用户中断了此工具调用。")));
                             _conversation.Add(new ChatTurnMessage
                             {
@@ -462,12 +596,12 @@ public sealed class AgentEngine
                     Content = content
                 });
 
-                OnEvent?.Invoke(new EngineDone(content, null));
+                Raise(new EngineDone(content, null));
                 return content;
             }
 
             var stopMsg = $"工具迭代超过 {_options.MaxTurns} 轮, 已停止。";
-            OnEvent?.Invoke(new EngineDone(null, stopMsg));
+            Raise(new EngineDone(null, stopMsg));
             return stopMsg;
         }
         catch (OperationCanceledException)
@@ -477,33 +611,33 @@ public sealed class AgentEngine
         catch (Exception ex)
         {
             var msg = $"发生错误: {ex.Message}";
-            OnEvent?.Invoke(new EngineDone(null, msg));
+            Raise(new EngineDone(null, msg));
             return msg;
         }
     }
 
     private async Task<string> ExecuteToolAsync(ToolCallData call, CancellationToken ct)
     {
-        OnEvent?.Invoke(new EngineToolStarted(call.Id, call.Name, call.Arguments));
+        Raise(new EngineToolStarted(call.Id, call.Name, call.Arguments));
         var sw = System.Diagnostics.Stopwatch.StartNew();
 
         if (!_registry.TryGet(call.Name, out var tool))
         {
             var err = $"工具不存在: {call.Name}";
             Log.Warn("Engine", err);
-            OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(err)));
+            Raise(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(err)));
             return $"工具调用失败: {err}";
         }
 
         if (tool.RequiresApproval && !_options.AutoApprove)
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            OnEvent?.Invoke(new EngineApprovalRequested(call.Id, call.Name, call.Arguments, tcs));
+            Raise(new EngineApprovalRequested(call.Id, call.Name, call.Arguments, tcs));
             var approved = await tcs.Task.WaitAsync(ct);
             if (!approved)
             {
                 var declined = $"用户拒绝了工具调用 {call.Name}。请向用户说明并询问替代方案。";
-                OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(declined)));
+                Raise(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(declined)));
                 return declined;
             }
         }
@@ -525,12 +659,12 @@ public sealed class AgentEngine
             {
                 WorkspaceRoot = _workspaceRoot,
                 IsPlanMode = _options.IsPlanMode,
-                OnToolOutput = line => OnEvent?.Invoke(new EngineToolOutput(call.Id, call.Name, line)),
+                OnToolOutput = line => Raise(new EngineToolOutput(call.Id, call.Name, line)),
                 // ask_user 工具经此回调触达 GUI: 发事件 → 弹输入框 → 等待用户回答(取消随回合中断)
                 AskUser = async (question, askCt) =>
                 {
                     var answerTcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-                    OnEvent?.Invoke(new EngineQuestionRequested(call.Id, question, answerTcs));
+                    Raise(new EngineQuestionRequested(call.Id, question, answerTcs));
                     return await answerTcs.Task.WaitAsync(askCt);
                 }
             };
@@ -557,7 +691,7 @@ public sealed class AgentEngine
             result = ToolResult.Error($"工具执行异常: {ex.Message}");
         }
 
-        OnEvent?.Invoke(new EngineToolFinished(call.Id, call.Name, result));
+        Raise(new EngineToolFinished(call.Id, call.Name, result));
         return result.Content;
 
         static string TruncateOneLine(string s)

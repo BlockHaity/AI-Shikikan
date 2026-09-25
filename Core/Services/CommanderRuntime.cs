@@ -7,6 +7,7 @@ using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Mcp;
 using AIShikikan.Core.Services.Personas;
 using AIShikikan.Core.Services.Runtime;
+using AIShikikan.Core.Services.Session;
 using AIShikikan.Core.Services.Templates;
 using AIShikikan.Core.Services.Tools;
 using AIShikikan.Core.Services.Usage;
@@ -23,26 +24,41 @@ public sealed class CommanderRuntime
     public required GitStepService Git { get; init; }
     public required AssignmentManager Assignments { get; init; }
     public required ToolRegistry Registry { get; init; }
-    public required AgentEngine Engine { get; init; }
+    public required SessionRuntimeRegistry Sessions { get; init; }
+    public required WorkspaceExecutionCoordinator Coordinator { get; init; }
     public required McpService Mcp { get; init; }
     public required IReadOnlyList<Persona> Personas { get; init; }
     public required IReadOnlyList<AgentTemplate> Templates { get; init; }
     public required IReadOnlyList<CliAgentDefinition> Agents { get; init; }
+
+    /// <summary>当前活动会话引擎(兼容访问: GUI 现有调用点等价于 Sessions.ActiveEngine)。</summary>
+    public AgentEngine Engine => Sessions.ActiveEngine;
 
     public string? CurrentPersonaText { get; private set; }
 
     /// <summary>当前指挥官人格(按 Plan/Build 模式解析出生效提示词)。</summary>
     private Persona? _commanderPersona;
 
-    /// <summary>按当前模式重新解析指挥官人格提示词并同步到引擎。</summary>
+    /// <summary>按当前模式重新解析指挥官人格提示词并同步到全部会话引擎。</summary>
     private void RefreshCommanderPersonaText()
     {
         var text = _commanderPersona?.ResolveForMode(_isPlanMode);
         CurrentPersonaText = string.IsNullOrWhiteSpace(text) ? null : text;
-        Engine.SetPersonaText(CurrentPersonaText);
+        ApplyPersonaTextToSessions();
     }
 
-    public IReadOnlyList<AgentRosterEntry> CurrentRosterEntries { get; private set; } = [];
+    /// <summary>指挥官人格是全局设置: 同步到所有已创建的会话引擎(下一回合生效)。</summary>
+    private void ApplyPersonaTextToSessions()
+    {
+        foreach (var rt in Sessions.All)
+        {
+            rt.Engine.SetPersonaText(CurrentPersonaText);
+        }
+    }
+
+    /// <summary>当前活动会话的 Roster 快照(未选定会话时为空列表)。</summary>
+    public IReadOnlyList<AgentRosterEntry> CurrentRosterEntries =>
+        Sessions.Active?.Engine.RosterEntries ?? [];
 
     public static CommanderRuntime Boot(string? workspaceRoot = null, string? personaId = null)
     {
@@ -69,6 +85,15 @@ public sealed class CommanderRuntime
         var git = new GitStepService(root);
         var assignments = new AssignmentManager(git);
         var mcp = new McpService();
+
+        // 工作区执行协调器 + 会话事件 Hub: 同 worktree 同分支多会话并发, 跨分支互斥
+        var coordinator = new WorkspaceExecutionCoordinator(new GitWorkspaceResolver(root));
+        var hub = new EngineEventHub();
+        CommanderRuntime? self = null;
+        var sessions = new SessionRuntimeRegistry(hub, coordinator,
+            (sessionId, sessionTitle, host) => self is null
+                ? throw new InvalidOperationException("会话引擎工厂在运行时装配前被调用")
+                : self.CreateEngine(sessionId, sessionTitle, host, hub));
 
         // 子 Agent 终态时记录调用统计(Completed 视为成功)
         assignments.AssignmentChanged += a =>
@@ -100,33 +125,26 @@ public sealed class CommanderRuntime
         var personaText = string.IsNullOrWhiteSpace(persona?.ResolveForMode(false))
             ? null
             : persona!.ResolveForMode(false);
-        var engine = new AgentEngine(
-            llm: llm,
-            registry: registry,
-            git: git,
-            assignments: assignments,
-            personas: personasList,
-            templates: templatesList,
-            agents: agentsList,
-            workspaceRoot: root,
-            personaText: personaText);
 
-        Instance = new CommanderRuntime
+        self = Instance = new CommanderRuntime
         {
             WorkspaceRoot = root,
             Llm = llm,
             Git = git,
             Assignments = assignments,
             Registry = registry,
-            Engine = engine,
+            Sessions = sessions,
+            Coordinator = coordinator,
             Mcp = mcp,
             Personas = personasList,
             Templates = templatesList,
             Agents = agentsList,
-            CurrentPersonaText = personaText,
-            CurrentRosterEntries = []
+            CurrentPersonaText = personaText
         };
         Instance._commanderPersona = persona;
+
+        // 分派状态经 Hub 广播一次(替代旧的每引擎订阅, 避免多会话重复触发)
+        assignments.AssignmentChanged += a => hub.Publish(new EngineAssignmentChanged(a));
 
         // 后台连接 MCP 服务器并注册桥接工具(不阻塞启动)
         var runtime = Instance;
@@ -138,6 +156,26 @@ public sealed class CommanderRuntime
 
         return Instance;
     }
+
+    /// <summary>创建会话引擎(注册表工厂回调): 新会话继承当前 Plan 模式与人格设置;
+    /// Roster 由 GUI 选定会话后单独推送, 不跨会话继承。</summary>
+    private AgentEngine CreateEngine(string sessionId, string sessionTitle,
+        ISessionEngineHost host, EngineEventHub hub)
+        => new AgentEngine(
+            llm: Llm,
+            registry: Registry,
+            git: Git,
+            assignments: Assignments,
+            personas: Personas,
+            templates: Templates,
+            agents: Agents,
+            workspaceRoot: WorkspaceRoot,
+            personaText: CurrentPersonaText,
+            options: new EngineOptions { IsPlanMode = _isPlanMode },
+            sessionId: sessionId,
+            sessionTitle: sessionTitle,
+            host: host,
+            hub: hub);
 
     /// <summary>重建 MCP 桥接工具: 断开旧连接, 连接全部启用服务器并注册 mcp_* 工具。
     /// 返回状态消息列表(含连接失败说明), UI 可展示。</summary>
@@ -174,7 +212,7 @@ public sealed class CommanderRuntime
     {
         _commanderPersona = null; // 避免后续模式切换时用 persona 解析结果覆盖显式设定
         CurrentPersonaText = text;
-        Engine.SetPersonaText(text);
+        ApplyPersonaTextToSessions(); // 全局设置同步到所有会话
     }
 
     /// <summary>指定指挥官人格并按当前模式解析生效提示词(通用正文 + Plan/Build 专属段)。</summary>
@@ -317,8 +355,8 @@ public sealed class CommanderRuntime
 
     public void SetRosterEntries(IReadOnlyList<AgentRosterEntry> entries)
     {
-        CurrentRosterEntries = entries;
-        Engine.SetRosterEntries(entries);
+        // 仅写入当前活动会话的 Roster 快照: 其它会话的运行中回合不受影响, 下一回合各按自己的快照
+        Sessions.ActiveEngine.SetRosterEntries(entries);
 
         // Plan 模式下 Roster 变化(如切换"在 Plan 模式中使用")需同步重建工具注册
         if (_isPlanMode && _subagentToolsVisible)

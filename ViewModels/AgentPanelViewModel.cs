@@ -162,6 +162,8 @@ public partial class AgentPanelViewModel : ViewModelBase
     public void SetSession(string sessionId)
     {
         _sessionId = sessionId;
+        // 会话运行时随 GUI 选择同步: CommanderRuntime.Engine 从此指向该会话的独立引擎
+        _runtime.Sessions.SetActiveSession(sessionId);
         QueueRefreshSubAgents();
     }
 
