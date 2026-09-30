@@ -33,9 +33,8 @@ AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统
 - **多 Agent 调度**：让 AI 调用主流 Agent 程序（Claude Code、OpenCode、DeepSeek Harness、Codex CLI、Gemini CLI）
 - **可配置模型**：为不同 Agent 使用不同的模型完成对应任务
 - **人格/专家注入**：对指挥官自身/Agent 程序注入角色扮演或专家文件
-- **Git 步骤管理**：自动创建步骤分支，支持回滚与合并
-- **Git 检查点**：每条用户消息自动记录检查点，支持 Commit/tag 标记、回滚与派生
-- **会话分支绑定**：每个会话绑定独立分支，支持同分支并发操作
+- **Git 检查点**：每条用户消息自动记录检查点，支持 Commit/tag 标记、回滚与派生；子 Agent 直接在当前分支运行，产出由检查点兜底
+- **并发隔离**：以「工作树 + 当前分支」为键管理执行权，同分支可多会话并发，跨分支互斥
 
 ## 支持的 LLM API
 
@@ -47,18 +46,20 @@ AI-Shikikan 是一款可以将多个终端 Agent 集合在一起，并让 AI 统
 ### 构建
 
 ```bash
-# 构建所有平台
-./build.sh all
+# 构建当前平台的三种变体（输出到 artifacts/）
+./build.sh                # = ./build.sh all，三变体全部构建并打包
+./build.sh aot            # 只构建 Native AOT（无需 .NET 运行时）
+./build.sh selfcontained  # 只构建自带 .NET 运行时
+./build.sh dotnet         # 只构建框架依赖（需目标机已装 .NET 运行时）
+./build.sh clean          # 清理 artifacts/
 
-# 仅构建 Linux
-./build.sh linux
-
-# 仅构建 ARM64
-ARCH=arm64 ./build.sh linux
-
-# 不使用 AOT
-AOT_MODE=off ./build.sh linux
+# 覆盖构建配置
+CONFIGURATION=Debug ./build.sh selfcontained
 ```
+
+> 脚本只构建**当前平台**（架构由 `uname` 自动探测，无 `ARCH` 覆盖）；Linux / macOS / Windows × x64 / arm64 的交叉构建由 CI 各 runner 分别完成。
+
+Windows 对应 `.\build.ps1 [all|aot|selfcontained|dotnet|clean|help] -Configuration Release`，参数而非环境变量，且 `.\debug.ps1` 的应用参数需显式走 `-AppArgs`（与 sh 版并不等价）。
 
 ### 运行
 
@@ -140,35 +141,28 @@ description = "Anthropic 官方编码 Agent"
 
 | 功能 | 说明 |
 |------|------|
-| Commit/tag 检查点 | 每条用户消息生成检查点，可标记 commit 或 tag |
+| Commit/tag 检查点 | 每条用户消息生成检查点，记录 HEAD commit 并打 `ai-shikikan/checkpoint/<id>` tag |
 | 每条消息检查点 | 消息发送即创建检查点，确保可回滚 |
 | 非 Git 降级 | 未初始化 Git 时聊天仍可用，检查点/Git 写工具不可用 |
-| 会话分支绑定 | 每个会话绑定独立分支，互不干扰 |
-| 同分支并发 | 同一分支支持并发操作，检查点隔离 |
+| 工作区并发隔离 | 以「工作树 + 当前分支」为键：同 worktree 同分支可多会话并发，跨分支互斥 |
+| 子 Agent 不自动建分支 | 子 Agent 直接在当前分支运行，产出由检查点兜底 |
 | Checkpoint 卡片 | 每条检查点支持 Reset（重置）、Revert（反向提交）、Fork（派生新分支） |
-
-### 旧步骤迁移
-
-从旧 `steps/*.json` 格式自动迁移至新检查点系统：
-
-- 启动时自动扫描旧步骤记录，优先解析 MergeCommit，其次取 StepBranch tip
-- 建立 `oldStepId → newCheckpointId` 映射，更新 assignments/sessions JSON 引用
-- 迁移状态持久化防重复，部分成功不删除旧源文件
-- 无法迁移返回结构化汇总，可重试
-- 旧 `ac/*` 分支永不自动删除
 
 ## 架构
 
 ```
 AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
   ├── Core/                - 核心逻辑（AOT 兼容）
-  │   ├── Services/Git     - Git 步骤管理 + 旧步骤迁移服务
+  │   ├── Services/Git     - Git 检查点服务 (Commit/tag + Reset/Revert/Fork)
   │   ├── Services/Engine    - Agent 调度引擎
   │   ├── Services/Agents    - Agent 定义与配置
   │   ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)
   │   ├── Services/Personas  - 人格/专家管理
   │   ├── Services/Templates - 任务模板
-  │   └── Services/Tools     - 内置工具集
+  │   ├── Services/Tools     - 内置工具集
+  │   ├── Services/Mcp       - MCP 客户端 (stdio/http/sse)
+  │   ├── Services/Session   - 会话运行时与工作区并发协调
+  │   └── Services/Usage     - 用量统计与模型档案
   ├── ViewModels/          - MVVM 视图模型
   └── Views/               - Avalonia XAML 视图
 ```
