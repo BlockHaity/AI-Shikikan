@@ -151,13 +151,24 @@ public partial class StatusPanelViewModel : ViewModelBase
         {
             ProfileSource.Manual => Strings.Status_PriceSourceManual,
             ProfileSource.Api => Strings.Status_PriceSourceApi,
-            _ => Strings.Status_PriceSourceUnknown
+            _ => FormatPriceSourceUnknown(provider)
         };
 
         OnPropertyChanged(nameof(ContextTokensText));
         OnPropertyChanged(nameof(ContextPercent));
         OnPropertyChanged(nameof(ContextPercentText));
         OnPropertyChanged(nameof(UnknownModelText));
+    }
+
+    /// <summary>未收录价格时的文案: 若最近一次拉取失败, 展示失败原因而非笼统的"未收录"。</summary>
+    private static string FormatPriceSourceUnknown(ProviderConfig? provider)
+    {
+        if (string.IsNullOrEmpty(provider?.Id)) return Strings.Status_PriceSourceUnknown;
+
+        var error = ModelProfileService.LoadApiCache().Error;
+        return string.IsNullOrWhiteSpace(error)
+            ? Strings.Status_PriceSourceUnknown
+            : string.Format(Strings.Status_PriceFetchFailed, error);
     }
 
     /// <summary>从 Provider 的 /v1/models 拉取模型价格与上下文窗口(OpenRouter 兼容端点)。</summary>
@@ -188,8 +199,11 @@ public partial class StatusPanelViewModel : ViewModelBase
             await ModelProfileService.FetchFromApiAsync(effective);
             Dispatcher.UIThread.Post(RefreshUsage);
         }
-        catch
+        catch (Exception ex)
         {
+            // 拉取失败原因由 ModelProfileCache.Error 承载, 在 RefreshUsage 中展示;
+            // 这里仅兜底捕获以避免命令异常冒泡, 同时记日志便于排查。
+            AIShikikan.Core.Logging.Log.Warn("StatusPanel", ex, "价格拉取失败");
             Dispatcher.UIThread.Post(RefreshUsage);
         }
         finally

@@ -108,6 +108,7 @@ public static class Strings
     public static string Status_PriceSourceManual => Get(nameof(Status_PriceSourceManual));
     public static string Status_PriceSourceApi => Get(nameof(Status_PriceSourceApi));
     public static string Status_PriceSourceUnknown => Get(nameof(Status_PriceSourceUnknown));
+    public static string Status_PriceFetchFailed => Get(nameof(Status_PriceFetchFailed));
     public static string SubAgent_Title => Get(nameof(SubAgent_Title));
     public static string SubAgent_Add => Get(nameof(SubAgent_Add));
     public static string SubAgent_AddName => Get(nameof(SubAgent_AddName));

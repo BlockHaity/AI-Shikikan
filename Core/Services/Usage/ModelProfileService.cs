@@ -1,6 +1,7 @@
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Llm;
 
@@ -68,9 +69,12 @@ public sealed class ModelProfileCache
     public DateTime FetchedAt { get; set; }
     public string ProviderId { get; set; } = string.Empty;
     public List<ApiModelProfile> Profiles { get; set; } = [];
+
+    /// <summary>最近一次拉取的失败原因(含请求地址与状态码); 为空表示无错误。供界面展示与排障。</summary>
+    public string Error { get; set; } = string.Empty;
 }
 
-/// <summary>模型档案服务: 合并 手动配置(models.toml) > API 拉取(/v1/models) > 未知 三档来源,
+/// <summary>模型档案服务: 合并 手动配置(models.toml) > API 拉取(/models) > 未知 三档来源,
 /// 提供上下文窗口大小与成本计算。价格统一以 USD 计。</summary>
 public static class ModelProfileService
 {
@@ -137,9 +141,10 @@ public static class ModelProfileService
         }
     }
 
-    /// <summary>从 Provider 的 OpenAI 兼容 /v1/models 端点拉取模型档案(OpenRouter 风格的
+    /// <summary>从 Provider 的 OpenAI 兼容 /models 端点拉取模型档案(OpenRouter 风格的
     /// pricing 字段 + OpenAI 风格的 context_window / context_length)。Anthropic 官方 API
-    /// 不提供计价与上下文信息, 直接跳过。结果持久化到 models-cache.json。</summary>
+    /// 不提供计价与上下文信息, 直接跳过。结果持久化到 models-cache.json; 失败时把原因写入
+    /// <see cref="ModelProfileCache.Error"/> 并记 Warn 日志(旧档案保留, 不因一次抖动清空)。</summary>
     public static async Task<ModelProfileCache> FetchFromApiAsync(
         ProviderConfig provider, CancellationToken ct = default)
     {
@@ -150,58 +155,26 @@ public static class ModelProfileService
             return new ModelProfileCache { ProviderId = provider.Id };
         }
 
-        var url = provider.BaseUrl.TrimEnd('/') + "/v1/models";
-        using var request = new HttpRequestMessage(HttpMethod.Get, url);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
-            "Bearer", provider.ApiKey);
-
-        var profiles = new List<ApiModelProfile>();
-        using (var response = await Http.SendAsync(request, ct).ConfigureAwait(false))
+        // 统一由 ModelListService 从 base_url 推导地址(处理 /v1 前缀、尾部斜杠、Azure 形态),
+        // 避免这里硬拼 /v1/models 造成 /v1/v1 双重前缀
+        var url = ModelListService.BuildModelsUrl(provider.BaseUrl);
+        if (url is null)
         {
-            response.EnsureSuccessStatusCode();
-            var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
-            {
-                return new ModelProfileCache { ProviderId = provider.Id };
-            }
+            Log.Info("ModelProfile",
+                $"跳过 {provider.Id} 的档案拉取: 无法从 base_url 推导模型列表地址({provider.BaseUrl})");
+            return new ModelProfileCache { ProviderId = provider.Id };
+        }
 
-            foreach (var item in data.EnumerateArray())
-            {
-                if (!item.TryGetProperty("id", out var idEl) || string.IsNullOrWhiteSpace(idEl.GetString()))
-                {
-                    continue;
-                }
-
-                var id = idEl.GetString()!;
-                long context = 0;
-                if (item.TryGetProperty("context_window", out var cw) && cw.TryGetInt64(out var cwVal))
-                {
-                    context = cwVal;
-                }
-                else if (item.TryGetProperty("context_length", out var cl) && cl.TryGetInt64(out var clVal))
-                {
-                    context = clVal;
-                }
-
-                double inPrice = 0, outPrice = 0;
-                if (item.TryGetProperty("pricing", out var pricing) && pricing.ValueKind == JsonValueKind.Object)
-                {
-                    inPrice = ReadPrice(pricing, "prompt");
-                    outPrice = ReadPrice(pricing, "completion");
-                }
-
-                // 无上下文窗口且无价格信息的模型条目没有意义, 丢弃
-                if (context <= 0 && inPrice <= 0 && outPrice <= 0) continue;
-
-                profiles.Add(new ApiModelProfile
-                {
-                    Model = id,
-                    ContextTokens = context,
-                    InputPricePer1M = inPrice,
-                    OutputPricePer1M = outPrice
-                });
-            }
+        List<ApiModelProfile> profiles;
+        try
+        {
+            profiles = await FetchProfilesAsync(url, provider, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            // 只放行用户主动取消; 超时/网络异常(HttpClient 超时抛 TaskCanceledException)同样记录为失败
+            Log.Warn("ModelProfile", ex, $"拉取模型档案失败({provider.Id})");
+            return StoreError(provider.Id, $"GET {url} → {ex.Message}");
         }
 
         var cache = new ModelProfileCache
@@ -213,6 +186,91 @@ public static class ModelProfileService
 
         lock (Sync)
         {
+            _apiCache = cache;
+        }
+
+        TrySaveCache(cache);
+        return cache;
+    }
+
+    /// <summary>实际发起 /models 请求并解析档案条目; 响应结构不符时抛异常交由上层记录失败原因。</summary>
+    private static async Task<List<ApiModelProfile>> FetchProfilesAsync(
+        string url, ProviderConfig provider, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue(
+            "Bearer", provider.ApiKey);
+
+        using var response = await Http.SendAsync(request, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
+        using var doc = JsonDocument.Parse(json);
+        if (!doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Array)
+        {
+            throw new LlmApiException($"响应缺少 data 数组(非 OpenAI 兼容 /models 响应): {url}");
+        }
+
+        var profiles = new List<ApiModelProfile>();
+        foreach (var item in data.EnumerateArray())
+        {
+            if (!item.TryGetProperty("id", out var idEl) || string.IsNullOrWhiteSpace(idEl.GetString()))
+            {
+                continue;
+            }
+
+            var id = idEl.GetString()!;
+            long context = 0;
+            if (item.TryGetProperty("context_window", out var cw) && cw.TryGetInt64(out var cwVal))
+            {
+                context = cwVal;
+            }
+            else if (item.TryGetProperty("context_length", out var cl) && cl.TryGetInt64(out var clVal))
+            {
+                context = clVal;
+            }
+
+            double inPrice = 0, outPrice = 0;
+            if (item.TryGetProperty("pricing", out var pricing) && pricing.ValueKind == JsonValueKind.Object)
+            {
+                inPrice = ReadPrice(pricing, "prompt");
+                outPrice = ReadPrice(pricing, "completion");
+            }
+
+            // 无上下文窗口且无价格信息的模型条目没有意义, 丢弃
+            if (context <= 0 && inPrice <= 0 && outPrice <= 0) continue;
+
+            profiles.Add(new ApiModelProfile
+            {
+                Model = id,
+                ContextTokens = context,
+                InputPricePer1M = inPrice,
+                OutputPricePer1M = outPrice
+            });
+        }
+
+        return profiles;
+    }
+
+    /// <summary>记录拉取失败: 保留同一 Provider 的旧档案(避免一次网络抖动清空缓存)与原拉取时间,
+    /// 附加错误原因后写回内存与磁盘, 供界面读取展示。</summary>
+    private static ModelProfileCache StoreError(string providerId, string reason)
+    {
+        var cache = new ModelProfileCache
+        {
+            ProviderId = providerId,
+            Error = reason
+        };
+
+        lock (Sync)
+        {
+            var prev = _apiCache;
+            if (prev is not null &&
+                string.Equals(prev.ProviderId, providerId, StringComparison.OrdinalIgnoreCase))
+            {
+                cache.FetchedAt = prev.FetchedAt;
+                cache.Profiles = prev.Profiles;
+            }
+
             _apiCache = cache;
         }
 

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -6,6 +8,7 @@ using OpenAI;
 using OpenAI.Chat;
 using System.ClientModel;
 using System.Net.Http.Headers;
+using AIShikikan.Core.Logging;
 
 namespace AIShikikan.Core.Services.Llm;
 
@@ -16,6 +19,20 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         // 长任务(子代理)下流式响应可能持续很久
         Timeout = TimeSpan.FromMinutes(30)
     };
+
+    /// <summary>
+    /// 已知不接受 <c>stream_options.include_usage</c> 的端点(键为 base_url 规范化后的绝对地址)。
+    /// 老版 vLLM / 严格网关会因未知字段直接 400, 命中后本进程内不再附带该字段, 避免每次请求都吃一次重试。
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, byte> NoStreamUsageEndpoints =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>"未知/不支持的请求参数"类错误措辞关键词(配合字段名一起判定降级)。</summary>
+    private static readonly string[] UnknownParamHints =
+    [
+        "unknown", "unrecognized", "unsupported", "not supported", "not permitted",
+        "invalid", "unexpected", "additional", "extra", "未知", "不支持", "无效", "未定义"
+    ];
 
     private readonly string _providerId;
     private readonly bool _isAzure;
@@ -191,18 +208,7 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
     private async IAsyncEnumerable<ChatStreamEvent> EmitViaHttp(
         ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        var body = BuildRequestBody(request);
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(_baseUrl, "chat/completions"));
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
-        req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
-
-        using var resp = await s_http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
-        if (!resp.IsSuccessStatusCode)
-        {
-            var errBody = await resp.Content.ReadAsStringAsync(ct);
-            throw new HttpRequestException($"LLM 请求失败 ({(int)resp.StatusCode}): {Truncate(errBody, 400)}");
-        }
+        using var resp = await SendStreamingAsync(request, ct).ConfigureAwait(false);
 
         var text = new StringBuilder();
         var toolCalls = new Dictionary<int, ToolCallData>();
@@ -237,6 +243,8 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
                     $"LLM 返回错误: {(errEl.ValueKind == JsonValueKind.String ? errEl.GetString() : errEl.GetRawText())}");
             }
 
+            // 用量块: 官方在 [DONE] 之前追加一个 choices 为空的 usage 块,
+            // 因此这里必须先读 usage 再看 choices, 空 choices 走 continue 不会丢用量
             if (json.TryGetProperty("usage", out var u))
             {
                 if (u.TryGetProperty("prompt_tokens", out var pt)) usage.InputTokens = pt.GetInt32();
@@ -317,7 +325,66 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         yield return FinalEvent(text, toolCalls.Values.Where(t => t.Name.Length > 0).ToList(), usage, finishReason);
     }
 
-    private JsonObject BuildRequestBody(ChatRequest request)
+    /// <summary>发起流式请求并返回已成功的响应(失败抛 HttpRequestException)。
+    /// 首次请求携带 <c>stream_options.include_usage</c>, 否则官方端点不会在流末尾返回 usage
+    /// (没有 usage → AgentEngine 不发 EngineUsageRecorded → 用量统计/上下文环/自动压缩/成本全失效)。
+    /// 若端点因"未知字段"拒绝该参数, 则记住该端点并去掉它重试一次。</summary>
+    private async Task<HttpResponseMessage> SendStreamingAsync(ChatRequest request, CancellationToken ct)
+    {
+        var endpoint = _baseUrl.AbsoluteUri;
+        var wantUsage = !NoStreamUsageEndpoints.ContainsKey(endpoint);
+        var (resp, errBody) = await PostAsync(BuildRequestBody(request, wantUsage), ct).ConfigureAwait(false);
+
+        if (wantUsage && !resp.IsSuccessStatusCode && IsUnknownParamError(resp.StatusCode, errBody))
+        {
+            resp.Dispose();
+            NoStreamUsageEndpoints[endpoint] = 0;
+            Log.Info("LLM", $"端点 {endpoint} 不接受 stream_options.include_usage, 已降级(本进程内该端点不再请求用量统计)");
+            (resp, errBody) = await PostAsync(BuildRequestBody(request, includeUsage: false), ct).ConfigureAwait(false);
+        }
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"LLM 请求失败 ({(int)resp.StatusCode}): {Truncate(errBody, 400)}");
+        }
+
+        return resp;
+    }
+
+    /// <summary>POST chat/completions; 失败时把错误体读出来(响应释放后仍可读), 便于判定与展示。</summary>
+    private async Task<(HttpResponseMessage Response, string ErrorBody)> PostAsync(JsonObject body, CancellationToken ct)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Post, new Uri(_baseUrl, "chat/completions"));
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+        req.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+
+        var resp = await s_http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct).ConfigureAwait(false);
+        var errBody = resp.IsSuccessStatusCode ? string.Empty : await resp.Content.ReadAsStringAsync(ct);
+        return (resp, errBody);
+    }
+
+    /// <summary>判断响应是否为"未知/不支持的请求参数"所致的失败(用于 stream_options 降级)。
+    /// 只认 400 / 422(参数级拒绝), 且错误体需同时提到字段名与未知参数类措辞;
+    /// 401/403(鉴权失败)、404、429 等一律不降级, 照常抛出。</summary>
+    private static bool IsUnknownParamError(HttpStatusCode status, string errorBody)
+    {
+        if (status is not (HttpStatusCode.BadRequest or HttpStatusCode.UnprocessableEntity))
+        {
+            return false;
+        }
+
+        if (string.IsNullOrEmpty(errorBody)) return false;
+
+        if (!errorBody.Contains("stream_options", StringComparison.OrdinalIgnoreCase)
+            && !errorBody.Contains("include_usage", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return UnknownParamHints.Any(h => errorBody.Contains(h, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private JsonObject BuildRequestBody(ChatRequest request, bool includeUsage)
     {
         var body = new JsonObject
         {
@@ -325,6 +392,12 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
             ["messages"] = BuildMessagesArray(request),
             ["stream"] = true
         };
+
+        // 请求流末尾返回 usage; 部分严格端点不支持, 由 SendStreamingAsync 降级重试
+        if (includeUsage)
+        {
+            body["stream_options"] = new JsonObject { ["include_usage"] = true };
+        }
 
         var reasoning = IsReasoningMode(request);
         if (reasoning)
