@@ -310,8 +310,10 @@ public partial class ChatPageViewModel : ViewModelBase
             CanContinue = false;
             // 切换会话时恢复绑定目录；新会话为空，必须显式重新选择。
             WorkDir = session?.WorkDir ?? string.Empty;
-            _runtime.Engine.RebuildConversation(session?.Messages ?? []);
+            // 必须先切换活动会话: _runtime.Engine 是 Sessions.ActiveEngine 的转发属性,
+            // SetSession 内部才调用 SetActiveSession。顺序颠倒会把新会话历史写进上一个会话的引擎。
             AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+            _runtime.Engine.RebuildConversation(session?.Messages ?? []);
             GitPanel.SetWorkspace(WorkDir);
             StatusPanel.SetSession(_currentSessionId ?? string.Empty);
             StatusPanel.SetWorkspace(WorkDir);
@@ -1038,20 +1040,32 @@ public partial class ChatPageViewModel : ViewModelBase
             return;
         }
 
-        if (request.SessionMode == Views.ForkSessionMode.CopyNewSession)
+        // 会话截断/复制失败时不要让异常逃逸: 此时 git 分支已切换, 状态已不一致,
+        // 崩溃只会掩盖问题, 应给出可读提示并同步刷新界面, 让用户看到真实状态。
+        try
         {
-            CopySessionAtCheckpoint(source, record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+            if (request.SessionMode == Views.ForkSessionMode.CopyNewSession)
+            {
+                CopySessionAtCheckpoint(source, record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+            }
+            else
+            {
+                TruncateCurrentSessionAtCheckpoint(record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+            }
         }
-        else
+        catch (Exception ex)
         {
-            TruncateCurrentSessionAtCheckpoint(record.ConversationCutoff, request.BranchName, context.RepositoryRoot);
+            AIShikikan.Core.Logging.Log.Error("Fork", ex, $"会话截断失败(分支 {request.BranchName} 已创建)");
+            AppendNotice(Strings.Fork_TruncateFailed);
         }
 
         Sessions = _chatService.Sessions;
         SessionPanel.RefreshItems();
         RefreshMessages();
-        _runtime.Engine.RebuildConversation(CurrentSession?.Messages ?? []);
+        // 必须先切换活动会话: _runtime.Engine 是 Sessions.ActiveEngine 的转发属性,
+        // SetSession 内部才调用 SetActiveSession(复制新会话模式下当前会话已改变)。
         AgentPanel.SetSession(_currentSessionId ?? string.Empty);
+        _runtime.Engine.RebuildConversation(CurrentSession?.Messages ?? []);
         RefreshWorkspaceContext();
         AppShell.Instance.NotifyDataChanged();
         var done = string.Format(Strings.Fork_Completed, detail.ShortSha, request.BranchName);
@@ -1059,12 +1073,23 @@ public partial class ChatPageViewModel : ViewModelBase
         if (card is null) AppendNotice(done);
     }
 
-    /// <summary>同会话 Fork：通过 Core 真正截断并持久化 [0, cutoff] 对话。</summary>
+    /// <summary>
+    /// 同会话 Fork：通过 Core 真正截断并持久化 [0, cutoff] 对话。
+    /// cutoff &lt; 0 表示检查点创建时对话尚为空(ConversationCutoff = MessageCount - 1),
+    /// 此时应清空全部消息而不是把非法索引传给 TruncateMessages(会返回 false)。
+    /// </summary>
     private void TruncateCurrentSessionAtCheckpoint(int cutoff, string branch, string repositoryRoot)
     {
         if (CurrentSession is not { } session) return;
-        if (cutoff < session.Messages.Count && !_chatService.TruncateMessages(session.Id, cutoff))
+
+        if (cutoff < 0)
+        {
+            _chatService.ClearMessages(session.Id);
+        }
+        else if (cutoff < session.Messages.Count && !_chatService.TruncateMessages(session.Id, cutoff))
+        {
             throw new InvalidOperationException(Strings.Fork_TruncateFailed);
+        }
 
         _chatService.SetSessionRepositoryInfo(session.Id, repositoryRoot, branch);
     }
