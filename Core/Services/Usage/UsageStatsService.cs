@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Usage;
@@ -117,6 +118,12 @@ public static class UsageStatsService
     private static readonly object Lock = new();
     private static UsageData? _data;
 
+    /// <summary>
+    /// 统计数据是否处于只读保护状态: usage.json 与其 .bak 备份均无法反序列化。
+    /// 为 true 时 <see cref="Save"/> 拒绝写入, 避免空数据永久覆盖用户历史用量。
+    /// </summary>
+    private static bool _readOnly;
+
     private static UsageData Data
     {
         get
@@ -130,41 +137,68 @@ public static class UsageStatsService
 
     private static UsageData Load()
     {
-        try
+        // 损坏时回退 .bak; 两者都不可用则降级为只读空数据, 禁止后续 Save 覆盖原始文件
+        var ok = AtomicFile.TryReadText(AppPaths.UsageStatsPath, out var content, text =>
         {
-            if (File.Exists(AppPaths.UsageStatsPath))
+            try
             {
-                var content = File.ReadAllText(AppPaths.UsageStatsPath);
-                var data = JsonSerializer.Deserialize(content, AppJsonContext.Default.UsageData);
-                if (data is not null)
-                {
-                    data.Trim();
-                    return data;
-                }
+                return JsonSerializer.Deserialize(text, AppJsonContext.Default.UsageData) is not null;
             }
-        }
-        catch
+            catch
+            {
+                return false;
+            }
+        });
+
+        if (!ok)
         {
+            if (File.Exists(AppPaths.UsageStatsPath) || File.Exists(AppPaths.UsageStatsPath + ".bak"))
+            {
+                Log.Error("Usage", "usage.json 损坏且无可用备份, 已锁定写入以保护历史用量数据");
+                _readOnly = true;
+            }
+
+            return new UsageData();
         }
 
-        return new UsageData();
+        try
+        {
+            var data = JsonSerializer.Deserialize(content, AppJsonContext.Default.UsageData);
+            if (data is null)
+            {
+                _readOnly = true;
+                return new UsageData();
+            }
+
+            data.Trim();
+            return data;
+        }
+        catch (Exception ex)
+        {
+            Log.Error("Usage", ex, "usage.json 解析失败, 已锁定写入");
+            _readOnly = true;
+            return new UsageData();
+        }
     }
 
     private static void Save()
     {
-        try
+        // 历史数据损坏时拒绝写入: 否则空数据会永久覆盖用户的用量记录
+        if (_readOnly)
         {
-            var data = _data;
-            if (data is null) return;
+            Log.Warn("Usage", "统计数据处于只读保护状态, 跳过写入");
+            return;
+        }
 
-            data.Trim();
-            Directory.CreateDirectory(AppPaths.DataDir);
-            File.WriteAllText(AppPaths.UsageStatsPath,
-                JsonSerializer.Serialize(data, AppJsonContext.Default.UsageData));
-        }
-        catch
-        {
-        }
+        var data = _data;
+        if (data is null) return;
+
+        data.Trim();
+        Directory.CreateDirectory(AppPaths.DataDir);
+        AtomicFile.TryWriteAllText(
+            AppPaths.UsageStatsPath,
+            JsonSerializer.Serialize(data, AppJsonContext.Default.UsageData),
+            "usage.json");
     }
 
     /// <summary>记录一次 LLM 调用用量; 输入输出均为 0 时忽略。</summary>

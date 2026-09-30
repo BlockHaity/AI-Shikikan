@@ -376,12 +376,27 @@ public class ChatService
     /// <summary>尝试保存会话, 返回是否成功(供调用者感知失败)。</summary>
     private bool SaveSessionWithResult(ChatSession session)
     {
+        return SaveSessionCore(session);
+    }
+
+    /// <summary>
+    /// 会话落盘统一出口: 损坏会话拒绝写回 + 原子写入(tmp -> 刷盘 -> rename)。
+    /// </summary>
+    private bool SaveSessionCore(ChatSession session)
+    {
+        // 文件已损坏且无可用备份: 拒绝写回, 否则空消息列表会永久覆盖用户原始对话
+        if (session.IsCorrupted)
+        {
+            Log.Warn("Session", $"会话已损坏, 跳过写回以保护原始数据: {session.Id}");
+            return false;
+        }
+
         try
         {
             Directory.CreateDirectory(SessionsDir);
             var json = JsonSerializer.Serialize(session, AppJsonContext.Default.ChatSession);
             var path = Path.Combine(SessionsDir, $"{session.Id}.json");
-            File.WriteAllText(path, json);
+            AtomicFile.WriteAllText(path, json);
             return true;
         }
         catch (Exception ex)
@@ -462,61 +477,73 @@ public class ChatService
         return session;
     }
 
-    /// <summary>确保会话消息已从文件加载(幂等)。加载后置 IsLoaded, 后续写回安全。</summary>
+    /// <summary>
+    /// 确保会话消息已从文件加载(幂等)。加载后置 IsLoaded, 后续写回安全。
+    ///
+    /// <para>损坏处理: 主文件无法反序列化时自动回退 <c>.bak</c>(AtomicFile 在每次成功写入前留下的备份)。
+    /// 主文件与备份都不可用时标记 <see cref="ChatSession.IsCorrupted"/>,
+    /// 后续 <see cref="SaveSession"/> 会拒绝写回, 避免"读失败 -> 空列表 -> 覆盖原文件"造成永久数据丢失。</para>
+    /// </summary>
     private void EnsureLoaded(ChatSession session)
     {
         if (session.IsLoaded) return;
         session.IsLoaded = true;
 
+        var path = Path.Combine(SessionsDir, $"{session.Id}.json");
+        if (!File.Exists(path) && !File.Exists(path + ".bak"))
+        {
+            session.Messages = [];
+            return;
+        }
+
+        // validate 回调负责把"反序列化成功"作为可用性判据, 失败则触发 .bak 回退
+        var ok = AtomicFile.TryReadText(path, out var json, content =>
+        {
+            try
+            {
+                return JsonSerializer.Deserialize(
+                    content, AppJsonContext.Default.ChatSession) is not null;
+            }
+            catch
+            {
+                return false;
+            }
+        });
+
+        if (!ok)
+        {
+            session.Messages = [];
+            session.IsCorrupted = true;
+            Log.Error("Session",
+                $"会话文件损坏且无可用备份, 已锁定写回以保护原始数据: {path}");
+            return;
+        }
+
         try
         {
-            var path = Path.Combine(SessionsDir, $"{session.Id}.json");
-            if (!File.Exists(path))
-            {
-                session.Messages = [];
-                return;
-            }
-
-            var full = JsonSerializer.Deserialize(
-                File.ReadAllText(path), AppJsonContext.Default.ChatSession);
-            if (full is not null)
-            {
-                session.Messages = full.Messages;
-            }
+            var full = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatSession);
+            session.Messages = full?.Messages ?? [];
         }
         catch (Exception ex)
         {
-            Log.Warn("Session", ex, $"会话消息加载失败: {session.Id}");
+            // 走到这里说明 validate 与实际反序列化结果不一致(理论上不应发生)
             session.Messages = [];
+            session.IsCorrupted = true;
+            Log.Error("Session", ex, $"会话消息加载失败, 已锁定写回: {session.Id}");
         }
     }
 
     private bool SaveSession(ChatSession session)
     {
-        try
-        {
-            Directory.CreateDirectory(SessionsDir);
-            var json = JsonSerializer.Serialize(session, AppJsonContext.Default.ChatSession);
-            var path = Path.Combine(SessionsDir, $"{session.Id}.json");
-            File.WriteAllText(path, json);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Session", ex, $"会话保存失败: {session.Id}");
-            return false;
-        }
+        return SaveSessionCore(session);
     }
 
     private void DeleteSessionFile(string sessionId)
     {
         try
         {
-            var path = Path.Combine(SessionsDir, $"{sessionId}.json");
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            // 同时清理 AtomicFile 产生的 .bak / .tmp 附属文件, 避免留下孤儿文件
+            AtomicFile.Delete(Path.Combine(SessionsDir, $"{sessionId}.json"));
         }
         catch (Exception ex)
         {

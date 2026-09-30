@@ -26,6 +26,13 @@ public class ChatSession
     [JsonIgnore]
     public bool IsLoaded { get; set; } = true;
 
+    /// <summary>
+    /// 会话文件是否已损坏(主文件与 .bak 备份均无法反序列化)。
+    /// 为 true 时<em>禁止</em>把内存中的空消息列表写回原文件, 否则会把损坏放大为永久数据丢失。
+    /// </summary>
+    [JsonIgnore]
+    public bool IsCorrupted { get; set; }
+
     /// <summary>未加载消息时由元数据扫描得到的消息条数。</summary>
     [JsonIgnore]
     public int MetadataMessageCount { get; set; }
