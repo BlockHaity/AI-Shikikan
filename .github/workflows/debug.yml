@@ -180,6 +180,32 @@ jobs:
           VARIANTS="dotnet selfcontained"
           [ "$AOT_ENABLED" = "true" ] && VARIANTS="$VARIANTS aot"
 
+          # 三种变体的发布布局不同, 必须分支安装到 <root>/usr/lib/$PKG:
+          #   dotnet         框架依赖「多文件」布局 —— apphost + AIShikikan.Gui.dll
+          #                  + 依赖 DLL + .deps.json + .runtimeconfig.json +
+          #                  卫星资源目录 en/, 整目录安装。
+          #   aot / selfcontained
+          #                  单文件布局, 卫星资源已内嵌进单文件, 只需 apphost +
+          #                  同目录原生共享库。
+          # 两种布局都排除 *.pdb 调试符号。
+          install_app_tree() {
+            _tree_root="$1" _tree_src="$2"
+            mkdir -p "$_tree_root/usr/lib/$PKG"
+            if [ "$VARIANT" = "dotnet" ]; then
+              cp -a "$_tree_src/." "$_tree_root/usr/lib/$PKG/"
+              find "$_tree_root/usr/lib/$PKG" -name '*.pdb' -delete
+            else
+              install -m 755 "$_tree_src/AIShikikan.Gui" "$_tree_root/usr/lib/$PKG/AIShikikan.Gui"
+              # 原生共享库 (libSkiaSharp/libHarfBuzzSharp 等) 必须与可执行文件同目录:
+              # 运行时 dlopen 动态引用按 应用目录 -> 系统库路径 探测; selfcontained 因
+              # IncludeNativeLibrariesForSelfExtract 已内嵌, glob 为空自动跳过
+              for _so in "$_tree_src"/*.so; do
+                [ -e "$_so" ] || continue
+                install -m 755 "$_so" "$_tree_root/usr/lib/$PKG/"
+              done
+            fi
+          }
+
           for VARIANT in $VARIANTS; do
           echo "== 打包变体 $VARIANT =="
           case "$VARIANT" in
@@ -189,21 +215,12 @@ jobs:
             *) echo "unexpected variant $VARIANT"; exit 1 ;;
           esac
           [ -f "$BIN" ] || { echo "缺少二进制 $BIN"; exit 1; }
-          # 注意: dotnet 变体为框架依赖发布, 此处仅做打包链路校验
           chmod +x "$BIN"
           BINDIR=$(dirname "$BIN")
-          # 原生共享库 (libSkiaSharp/libHarfBuzzSharp 等) 必须与可执行文件同目录:
-          # 运行时 dlopen 动态引用按 应用目录 -> 系统库路径 探测, AOT /
-          # framework-dependent 发布不会内嵌这些 .so; selfcontained 因
-          # IncludeNativeLibrariesForSelfExtract 已内嵌, glob 为空自动跳过
 
           # ---------- Debian (.deb) ----------
           DEBROOT="$RUNNER_TEMP/debroot_$VARIANT"
-          install -Dm755 "$BIN" "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
-          for _so in "$BINDIR"/*.so; do
-            [ -e "$_so" ] || continue
-            install -Dm755 "$_so" "$DEBROOT/usr/lib/$PKG/"
-          done
+          install_app_tree "$DEBROOT" "$BINDIR"
           mkdir -p "$DEBROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
@@ -239,6 +256,7 @@ jobs:
               -e "s|@DESC@|$DESC|g" \
               -e "s|@BIN@|$BIN|g" \
               -e "s|@BINDIR@|$BINDIR|g" \
+              -e "s|@VARIANT@|$VARIANT|g" \
               -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
@@ -256,11 +274,7 @@ jobs:
 
           # ---------- Arch Linux (.pkg.tar.zst) ----------
           PKGROOT="$RUNNER_TEMP/pkgroot_$VARIANT"
-          install -Dm755 "$BIN" "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
-          for _so in "$BINDIR"/*.so; do
-            [ -e "$_so" ] || continue
-            install -Dm755 "$_so" "$PKGROOT/usr/lib/$PKG/"
-          done
+          install_app_tree "$PKGROOT" "$BINDIR"
           mkdir -p "$PKGROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
@@ -282,6 +296,11 @@ jobs:
           depend = libxcursor
           depend = libxrandr
           depend = libxrender
+          depend = libxext
+          depend = libxfixes
+          depend = libxi
+          depend = libice
+          depend = libsm
           depend = libglvnd
           depend = mesa
           depend = fontconfig
@@ -304,10 +323,11 @@ jobs:
         run: |
           mkdir -p dist
           chmod +x stage/*/AIShikikan.Gui 2>/dev/null || true
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz -C stage/dotnet .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz -C stage/selfcontained .
+          # 排除调试符号 (*.pdb / *.dbg), AOT 变体的 .dbg 体积可与主程序相当
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/dotnet .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/selfcontained .
           if [ "${{ inputs.aot }}" = "true" ]; then
-            tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz -C stage/aot .
+            tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/aot .
           fi
 
       - name: Package artifacts (Windows)

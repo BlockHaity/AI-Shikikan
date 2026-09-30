@@ -16,7 +16,10 @@ pkgdesc="AI Agent commander desktop app"
 arch=('x86_64' 'aarch64')
 url="https://github.com/BlockHaity/AI-Shikikan"
 license=('MIT')
-depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libglvnd' 'mesa' 'fontconfig' 'glib2' 'icu')
+# 依赖取自 Avalonia 12 X11 后端实际 dlopen 的系统库 (libX11/libXcursor/libXrandr/
+# libXrender/libXext/libXfixes/libXi/libICE/libSM) + GL/GLib/fontconfig/ICU。
+# libice/libsm 是输入法 (fcitx/ibus, XIM) 的硬依赖, 缺失会导致 X11 平台起不来。
+depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libxext' 'libxfixes' 'libxi' 'libice' 'libsm' 'libglvnd' 'mesa' 'fontconfig' 'glib2' 'icu')
 makedepends=('tar' 'imagemagick')
 
 source=("../ai-shikikan.desktop" "../../Assets/logo.jpg" "../../LICENSE")

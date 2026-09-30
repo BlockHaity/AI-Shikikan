@@ -3,7 +3,10 @@ Version: @VERSION@
 Architecture: @ARCH@
 Maintainer: @MAINTAINER@
 Installed-Size: @SIZE@
-Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libgl1, libglib2.0-0t64 | libglib2.0-0, libfontconfig1, libfreetype6
+# 依赖取自 Avalonia 12 X11 后端实际 dlopen 的系统库 (libX11/libXcursor/libXrandr/
+# libXrender/libXext/libXfixes/libXi/libICE/libSM) + GL/GLib/fontconfig/freetype。
+# libice6/libsm6 是输入法 (fcitx/ibus, XIM) 的硬依赖, 缺失会导致 X11 平台起不来。
+Depends: libx11-6, libxcursor1, libxrandr2, libxrender1, libxext6, libxfixes3, libxi6, libice6, libsm6, libgl1, libglib2.0-0t64 | libglib2.0-0, libfontconfig1, libfreetype6
 Recommends: libicu78 | libicu76 | libicu75 | libicu74 | libicu73 | libicu72 | libicu71 | libicu70 | libicu69 | libicu68 | libicu67 | libicu66 | libicu65 | libicu64 | libicu63
 Section: utils
 Priority: optional

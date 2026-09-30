@@ -186,6 +186,35 @@ jobs:
 
           # 变体集合: 发布流程恒构建全部三种变体
           VARIANTS="dotnet selfcontained aot"
+          # 三种变体的发布布局不同, 必须分支安装到 <root>/usr/lib/$PKG:
+          #   dotnet         框架依赖「多文件」布局 —— apphost + AIShikikan.Gui.dll
+          #                  + 69 个依赖 DLL + .deps.json + .runtimeconfig.json
+          #                  + 卫星资源目录 en/。只拷 apphost 与 *.so 会装出
+          #                  根本无法启动的包 (实测 77 个文件只装进 3 个, 运行报
+          #                  "The application to execute does not exist:
+          #                  .../AIShikikan.Gui.dll"), 故整目录安装。
+          #   aot / selfcontained
+          #                  单文件布局, 卫星资源已内嵌进单文件 (en/ 为发布残留),
+          #                  只需 apphost + 同目录原生共享库。
+          # 两种布局都排除 *.pdb 调试符号。
+          install_app_tree() {
+            _tree_root="$1" _tree_src="$2"
+            mkdir -p "$_tree_root/usr/lib/$PKG"
+            if [ "$VARIANT" = "dotnet" ]; then
+              cp -a "$_tree_src/." "$_tree_root/usr/lib/$PKG/"
+              find "$_tree_root/usr/lib/$PKG" -name '*.pdb' -delete
+            else
+              install -m 755 "$_tree_src/AIShikikan.Gui" "$_tree_root/usr/lib/$PKG/AIShikikan.Gui"
+              # 原生共享库 (libSkiaSharp/libHarfBuzzSharp 等) 必须与可执行文件同目录:
+              # 运行时 dlopen 动态引用按 应用目录 -> 系统库路径 探测; selfcontained 因
+              # IncludeNativeLibrariesForSelfExtract 已内嵌, glob 为空自动跳过
+              for _so in "$_tree_src"/*.so; do
+                [ -e "$_so" ] || continue
+                install -m 755 "$_so" "$_tree_root/usr/lib/$PKG/"
+              done
+            fi
+          }
+
           for VARIANT in $VARIANTS; do
           echo "== 打包变体 $VARIANT =="
           case "$VARIANT" in
@@ -196,18 +225,10 @@ jobs:
           [ -f "$BIN" ] || { echo "缺少二进制 $BIN"; exit 1; }
           chmod +x "$BIN"
           BINDIR=$(dirname "$BIN")
-          # 原生共享库 (libSkiaSharp/libHarfBuzzSharp 等) 必须与可执行文件同目录:
-          # 运行时 dlopen 动态引用按 应用目录 -> 系统库路径 探测, AOT /
-          # framework-dependent 发布不会内嵌这些 .so; selfcontained 因
-          # IncludeNativeLibrariesForSelfExtract 已内嵌, glob 为空自动跳过
 
           # ---------- Debian (.deb) ----------
           DEBROOT="$RUNNER_TEMP/debroot_$VARIANT"
-          install -Dm755 "$BIN" "$DEBROOT/usr/lib/$PKG/AIShikikan.Gui"
-          for _so in "$BINDIR"/*.so; do
-            [ -e "$_so" ] || continue
-            install -Dm755 "$_so" "$DEBROOT/usr/lib/$PKG/"
-          done
+          install_app_tree "$DEBROOT" "$BINDIR"
           mkdir -p "$DEBROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$DEBROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$DEBROOT/usr/share/applications/$PKG.desktop"
@@ -243,6 +264,7 @@ jobs:
               -e "s|@DESC@|$DESC|g" \
               -e "s|@BIN@|$BIN|g" \
               -e "s|@BINDIR@|$BINDIR|g" \
+              -e "s|@VARIANT@|$VARIANT|g" \
               -e "s|@DESKTOP@|$RUNNER_TEMP/$PKG.desktop|g" \
               -e "s|@ICON@|$RUNNER_TEMP/ai-shikikan.png|g" \
               -e "s|@LICENSE@|$ROOT/LICENSE|g" \
@@ -260,11 +282,7 @@ jobs:
 
           # ---------- Arch Linux (.pkg.tar.zst) ----------
           PKGROOT="$RUNNER_TEMP/pkgroot_$VARIANT"
-          install -Dm755 "$BIN" "$PKGROOT/usr/lib/$PKG/AIShikikan.Gui"
-          for _so in "$BINDIR"/*.so; do
-            [ -e "$_so" ] || continue
-            install -Dm755 "$_so" "$PKGROOT/usr/lib/$PKG/"
-          done
+          install_app_tree "$PKGROOT" "$BINDIR"
           mkdir -p "$PKGROOT/usr/bin"
           ln -sf "/usr/lib/$PKG/AIShikikan.Gui" "$PKGROOT/usr/bin/$PKG"
           install -Dm644 "$RUNNER_TEMP/$PKG.desktop" "$PKGROOT/usr/share/applications/$PKG.desktop"
@@ -286,6 +304,11 @@ jobs:
           depend = libxcursor
           depend = libxrandr
           depend = libxrender
+          depend = libxext
+          depend = libxfixes
+          depend = libxi
+          depend = libice
+          depend = libsm
           depend = libglvnd
           depend = mesa
           depend = fontconfig
@@ -308,9 +331,11 @@ jobs:
         run: |
           mkdir -p dist
           chmod +x stage/*/AIShikikan.Gui 2>/dev/null || true
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz -C stage/aot .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz -C stage/dotnet .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz -C stage/selfcontained .
+          # 排除调试符号: AOT 变体的 AIShikikan.Gui.dbg 约占目录 62%,
+          # 不排除会让 AOT 归档体积翻倍 (实测 73.4MB -> 47.5MB)
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/aot .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/dotnet .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/selfcontained .
 
       - name: Package artifacts (Windows)
         if: runner.os == 'Windows'
@@ -372,6 +397,18 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${{ needs.check.outputs.version }}"
+          # force 重推保护: 改写一个「已发布」(非草稿) Release 的 tag 是对外可见且
+          # 不可逆的破坏性操作, 这里显式失败而不是静默 git tag -f + push --force。
+          # 注意检查放在草稿清理之前 —— 草稿经 getReleaseByTag 查询不可见, 故
+          # 仅被草稿占用的 tag 仍可正常 force 重试。
+          if [ "${{ inputs.force }}" = "true" ]; then
+            EXISTING_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.id' 2>/dev/null || true)"
+            if [ -n "${EXISTING_ID:-}" ]; then
+              echo "::error::已存在已发布的 Release (id=${EXISTING_ID}, tag=${TAG}); 拒绝在 force 模式下改写已发布版本的 tag。请先递增根目录 VERSION 后重试, 或手动删除该 Release 后再 force。"
+              exit 1
+            fi
+            echo "force 模式: 未发现已发布的 Release (tag=${TAG}), 允许创建"
+          fi
           # 清理历史失败运行残留的草稿 Release, 保证流程幂等 (草稿经 getReleaseByTag 不可见,
           # 只会在兜底扫描中出现, 干扰重试更新)
           gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq '.[] | [.tag_name,.draft,.id] | @tsv' \
@@ -394,6 +431,16 @@ jobs:
       - name: List downloaded files
         run: find artifacts -type f | sort
 
+      # 产物完整性校验: 一次性列出本次 Release 全部资产 (归档 + 系统包) 的
+      # sha256, 供下游分发方校验, 也便于事后核对某次发布的文件是否被改动。
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          ( cd artifacts && find . -type f ! -name SHA256SUMS -printf '%P\n' \
+              | sort | xargs -r sha256sum > SHA256SUMS )
+          echo "--- SHA256SUMS ($(wc -l < artifacts/SHA256SUMS) 项) ---"
+          head -5 artifacts/SHA256SUMS
+
       - name: Prepare release body from CHANGELOG
         run: |
           if [ -s CHANGELOG ]; then
@@ -413,7 +460,7 @@ jobs:
           body_path: release_body.md
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
-          fail_on_unmatched_files: false
+          fail_on_unmatched_files: true
           files: |
             artifacts/*
         env:
