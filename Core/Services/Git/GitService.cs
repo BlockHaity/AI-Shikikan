@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Serialization;
@@ -380,9 +381,11 @@ public sealed class GitService : IDisposable
             var commitResult = Run(ctx.RepositoryRoot, "commit", "-m", msg);
             if (!commitResult.Succeeded)
             {
-                // 尝试恢复
-                var abort = Run(ctx.RepositoryRoot, "reset", "--hard", "HEAD@{1}");
-                Log.Warn("Git", $"revert 提交失败并尝试恢复: {commitResult.Stderr}, restore={abort.Succeeded}");
+                // 恢复: revert --no-commit 不移动 HEAD, 因此必须回到 HEAD(而非 HEAD@{1}, 那会多回退一个提交),
+                // 同时清理 revert 遗留的 sequencer 状态。
+                var quit = Run(ctx.RepositoryRoot, "revert", "--quit");
+                var reset = Run(ctx.RepositoryRoot, "reset", "--hard", "HEAD");
+                Log.Warn("Git", $"revert 提交失败并尝试恢复: {commitResult.Stderr}, quit={quit.Succeeded}, reset={reset.Succeeded}");
                 return GitCommandResult.Failure($"revert 提交失败: {commitResult.Stderr}", GitServiceError.CommandFailed);
             }
 
@@ -420,9 +423,15 @@ public sealed class GitService : IDisposable
     public IReadOnlyList<GitGraphLine> GetCommitGraph(GitWorkspaceContext ctx, int limit = 60)
     {
         if (!ctx.IsValidRepo) return [];
-        var r = Run(ctx.RepositoryRoot, "log", "--graph", "--all", "--no-color",
-            $"--pretty=format:%x01%h %s", $"-n {limit}");
-        if (!r.Succeeded) return [];
+        // -n 与数值必须分两个 argv: 之前合成单个 "-n 60" 依赖 git 短选项解析的未文档化行为,
+        // 且失败时静默返回空图谱。--all 改为仅当前分支, 避免检查点 tag 膨胀后遍历全部 ref。
+        var r = Run(ctx.RepositoryRoot, "log", "--graph", "--no-color",
+            "--pretty=format:%x01%h %s", "-n", limit.ToString(CultureInfo.InvariantCulture));
+        if (!r.Succeeded)
+        {
+            Log.Warn("Git", $"获取提交图谱失败: {r.Stderr.Trim()}");
+            return [];
+        }
 
         var list = new List<GitGraphLine>();
         foreach (var line in r.Stdout.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -479,13 +488,13 @@ public sealed class GitService : IDisposable
     /// <summary>从当前上游拉取。</summary>
     public GitCommandResult Pull(GitWorkspaceContext context) =>
         context.IsValidRepo
-            ? Run(context.RepositoryRoot, "pull")
+            ? Run(context.RepositoryRoot, NetworkTimeout, "pull")
             : GitCommandResult.Failure("非 Git 仓库", GitServiceError.NotARepository);
 
     /// <summary>推送当前分支到已配置上游。</summary>
     public GitCommandResult Push(GitWorkspaceContext context) =>
         context.IsValidRepo
-            ? Run(context.RepositoryRoot, "push")
+            ? Run(context.RepositoryRoot, NetworkTimeout, "push")
             : GitCommandResult.Failure("非 Git 仓库", GitServiceError.NotARepository);
 
     /// <summary>查找仓库根目录(从 workDir 向上查找 .git)。</summary>
@@ -504,8 +513,30 @@ public sealed class GitService : IDisposable
         return null;
     }
 
-    /// <summary>执行 git 命令(内部方法)。)</summary>
+    /// <summary>
+    /// 执行 git 命令(内部方法)。
+    ///
+    /// <para>安全约束(此前缺失, 会导致 UI 永久冻结):
+    /// <list type="bullet">
+    /// <item>设置 <c>GIT_TERMINAL_PROMPT=0</c> / <c>GCM_INTERACTIVE=never</c>,
+    /// 使需要凭据的 pull/push 直接失败而不是挂起等待终端输入。</item>
+    /// <item>所有调用点都在 UI 线程, 因此必须有超时; 超时后强杀整棵进程树。</item>
+    /// <item>使用 <c>WaitForExitAsync</c> 而非同步 <c>WaitForExit()</c>,
+    /// 避免阻塞 UI 线程。</item>
+    /// </list></para>
+    /// </summary>
     private GitCommandResult Run(string repositoryRoot, params string[] args)
+    {
+        return Run(repositoryRoot, DefaultTimeout, args);
+    }
+
+    /// <summary>默认只读/轻量命令的超时(秒)。</summary>
+    private const int DefaultTimeout = 15;
+
+    /// <summary>涉及网络或大仓库的命令使用更长超时(秒)。</summary>
+    private const int NetworkTimeout = 60;
+
+    private GitCommandResult Run(string repositoryRoot, int timeoutSeconds, params string[] args)
     {
         var psi = new ProcessStartInfo
         {
@@ -513,6 +544,8 @@ public sealed class GitService : IDisposable
             WorkingDirectory = Path.GetFullPath(repositoryRoot),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // 无 TTY: 让 git 认为不能在终端交互, 配合下面的环境变量避免凭据提示挂起
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -522,6 +555,11 @@ public sealed class GitService : IDisposable
             psi.ArgumentList.Add(a);
         }
 
+        // 禁止一切交互式凭据提示: 无 TTY 时 git 可能退化为无限等待
+        psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        psi.Environment["GCM_INTERACTIVE"] = "never";
+        psi.Environment["GIT_ASKPASS"] = "echo";
+
         try
         {
             using var process = new Process { StartInfo = psi };
@@ -530,19 +568,45 @@ public sealed class GitService : IDisposable
                 return GitCommandResult.Failure("git 启动失败");
             }
 
-            var stdout = process.StandardOutput.ReadToEndAsync();
-            var stderr = process.StandardError.ReadToEndAsync();
-            process.WaitForExit();
+            // 先异步读干两条管道, 再等待退出: 避免管道缓冲区写满造成死锁
+            var stdoutTask = process.StandardOutput.ReadToEndAsync();
+            var stderrTask = process.StandardError.ReadToEndAsync();
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(timeoutSeconds));
+            try
+            {
+                process.WaitForExitAsync(timeoutCts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                TryKill(process);
+                return GitCommandResult.Failure(
+                    $"git 命令超时({timeoutSeconds}s): git {string.Join(' ', args)}");
+            }
+
             return new GitCommandResult
             {
                 ExitCode = process.ExitCode,
-                Stdout = stdout.Result,
-                Stderr = stderr.Result
+                Stdout = stdoutTask.GetAwaiter().GetResult(),
+                Stderr = stderrTask.GetAwaiter().GetResult()
             };
         }
         catch (Exception ex)
         {
             return GitCommandResult.Failure(ex.Message);
+        }
+    }
+
+    /// <summary>强杀 git 进程树(超时/取消时调用)。</summary>
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+        }
+        catch
+        {
+            // 进程可能已退出或无权限; 忽略, 由超时错误信息兜底
         }
     }
 

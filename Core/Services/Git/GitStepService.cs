@@ -375,6 +375,10 @@ public sealed class GitStepService
         return revert;
     }
 
+    /// <summary>
+    /// 执行 git 命令。所有调用点都可能发生在 UI 线程,
+    /// 因此必须设超时并禁止交互式凭据提示(否则 pull/push/hook 挂起会冻结整个界面)。
+    /// </summary>
     public GitCommandResult Run(params string[] args)
     {
         var psi = new ProcessStartInfo
@@ -383,6 +387,8 @@ public sealed class GitStepService
             WorkingDirectory = Path.GetFullPath(RepositoryRoot),
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // 无 TTY: 让 git 不尝试终端交互
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -392,6 +398,10 @@ public sealed class GitStepService
             psi.ArgumentList.Add(a);
         }
 
+        psi.Environment["GIT_TERMINAL_PROMPT"] = "0";
+        psi.Environment["GCM_INTERACTIVE"] = "never";
+        psi.Environment["GIT_ASKPASS"] = "echo";
+
         try
         {
             using var process = new Process { StartInfo = psi };
@@ -400,14 +410,38 @@ public sealed class GitStepService
                 return new GitCommandResult { ExitCode = -1, Stderr = "git 启动失败" };
             }
 
+            // 先异步读干两条管道再等待退出, 避免管道写满死锁
             var stdout = process.StandardOutput.ReadToEndAsync();
             var stderr = process.StandardError.ReadToEndAsync();
-            process.WaitForExit();
+
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(GitCommandTimeoutSeconds));
+            try
+            {
+                process.WaitForExitAsync(timeoutCts.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                try
+                {
+                    if (!process.HasExited) process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                    // 进程可能已退出; 忽略
+                }
+
+                return new GitCommandResult
+                {
+                    ExitCode = -1,
+                    Stderr = $"git 命令超时({GitCommandTimeoutSeconds}s): git {string.Join(' ', args)}"
+                };
+            }
+
             return new GitCommandResult
             {
                 ExitCode = process.ExitCode,
-                Stdout = stdout.Result,
-                Stderr = stderr.Result
+                Stdout = stdout.GetAwaiter().GetResult(),
+                Stderr = stderr.GetAwaiter().GetResult()
             };
         }
         catch (Exception ex)
@@ -415,6 +449,9 @@ public sealed class GitStepService
             return new GitCommandResult { ExitCode = -1, Stderr = ex.Message };
         }
     }
+
+    /// <summary>git 命令超时(秒)。与 <see cref="GitService"/> 保持一致。</summary>
+    private const int GitCommandTimeoutSeconds = 15;
 
     private GitStepRecord GetRecord(string stepId) =>
         GetStep(stepId) ?? throw new ArgumentException($"步骤不存在: {stepId}");
