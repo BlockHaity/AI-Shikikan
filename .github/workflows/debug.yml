@@ -301,6 +301,7 @@ jobs:
           depend = libxi
           depend = libice
           depend = libsm
+          depend = libxkbcommon
           depend = libglvnd
           depend = mesa
           depend = fontconfig
@@ -335,6 +336,11 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
+          # 排除调试符号 (*.pdb / *.dbg), 与 build.sh 打包口径一致。
+          # Compress-Archive 不支持 -Exclude, 这里先把 stage 里的符号文件清掉
+          Get-ChildItem -Path stage -Recurse -File |
+            Where-Object { $_.Name -like '*.pdb' -or $_.Name -like '*.dbg' } |
+            Remove-Item -Force
           Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.zip
           Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.zip
           if ('${{ inputs.aot }}' -eq 'true') {

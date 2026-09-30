@@ -10,7 +10,8 @@ URL:      @HOMEPAGE@
 # 依赖取自 Avalonia 12 X11 后端实际 dlopen 的系统库 (libX11/libXcursor/libXrandr/
 # libXrender/libXext/libXfixes/libXi/libICE/libSM) + GL/GLib/fontconfig/freetype/ICU。
 # libICE/libSM 是输入法 (fcitx/ibus, XIM) 的硬依赖, 缺失会导致 X11 平台起不来。
-Requires: libX11, libXcursor, libXrandr, libXrender, libXext, libXfixes, libXi, libICE, libSM, mesa-libGL, glib2, fontconfig, freetype, libicu
+# libxkbcommon 为 X11/XKB 键盘布局通用运行库 (产物未直接 dlopen, 属防御性声明)。
+Requires: libX11, libXcursor, libXrandr, libXrender, libxkbcommon, libXext, libXfixes, libXi, libICE, libSM, mesa-libGL, glib2, fontconfig, freetype, libicu
 AutoReqProv: no
 
 %description

@@ -90,6 +90,8 @@ Windows 对应 `.\build.ps1 [all|aot|selfcontained|dotnet|clean|help] -Configura
 |------|------|
 | `providers.toml` | LLM Provider 配置（API Key、模型、端点） |
 | `agents.toml` | Agent 定义（可执行文件、参数、专长） |
+| `mcp-servers.toml` | MCP 服务器定义（stdio / http / sse，默认不内置任何服务器） |
+| `models.toml` | 模型上下文窗口与价格（可选，缺失时从 Provider API 获取） |
 | `personas/` | 人格/专家 Markdown(YAML frontmatter) 文件目录 |
 | `templates/` | 任务模板 TOML 文件目录 |
 | `roster.prompt` | Roster 注入模板 |
@@ -178,7 +180,10 @@ AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
 - [AvaloniaUI.DiagnosticsSupport](https://www.nuget.org/packages/AvaloniaUI.DiagnosticsSupport/)
 - [CCSWE.Avalonia.Material](https://www.nuget.org/packages/CCSWE.Avalonia.Material/)
 - [CommunityToolkit.Mvvm](https://www.nuget.org/packages/CommunityToolkit.Mvvm/)
+- [Markdown.Avalonia](https://www.nuget.org/packages/Markdown.Avalonia/)
 - [Material.Icons.Avalonia](https://www.nuget.org/packages/Material.Icons.Avalonia/)
+- [MaterialColorUtilities](https://www.nuget.org/packages/MaterialColorUtilities/)
+- [OpenAI](https://www.nuget.org/packages/OpenAI/)
 - [ScottPlot.Avalonia](https://www.nuget.org/packages/ScottPlot.Avalonia/)
 - [Tomlyn](https://www.nuget.org/packages/Tomlyn/)
 - [YamlDotNet](https://www.nuget.org/packages/YamlDotNet/)
@@ -188,7 +193,7 @@ AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
 - [HarmonyOS Sans SC](https://developer.huawei.com/consumer/cn/design/resource/) — 华为, 依据 *HarmonyOS Sans 字体许可协议* 使用(默认标准字体)
 - [CaskaydiaCove Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts) — Nerd Fonts 项目, 依据 *SIL Open Font License 1.1* 使用(默认等宽字体)
 
-字体文件与许可文本位于 `src/AIShikikan.Gui/Assets/Fonts/`。
+字体文件与许可文本位于 `Assets/Fonts/`。
 
 ## 贡献者
 

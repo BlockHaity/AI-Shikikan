@@ -17,7 +17,7 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
   Program.cs / App.axaml(.cs) / ViewLocator.cs
   Core/                    - 核心逻辑（AOT 兼容）
   ViewModels/ Views/       - Avalonia MVVM
-  Services/                - GUI 层服务 (DynamicThemeService)
+  Services/                - GUI 层服务 (DynamicThemeService, ImageAttachmentService)
   Resources/               - 双语字符串 + Markdown 主题
   Assets/                  - 字体、logo
   templates/               - 配置/人格 example 文件
@@ -58,6 +58,7 @@ Session/     - 会话运行时: SessionRuntimeRegistry(会话引擎注册表),
                GitWorkspaceResolver(目录 → worktree+当前分支), EngineEventHub(事件总线)
 Usage/       - 用量统计持久化 (UsageStatsService) + 模型档案 (ModelProfileService, 可选 models.toml)
 ChatService.cs - 会话与消息持久化 (ChatSession/ChatMessage 读写)
+ColorExtractionService.cs - 背景图主色提取(动态主题取色)
 ```
 
 启动外观：`CommanderRuntime.Boot()`（`Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、全部服务与工具集，并注册到静态 `Instance`。GUI 外壳单例 `AppShell`（ViewModels/AppShell.cs）持有 Runtime。
