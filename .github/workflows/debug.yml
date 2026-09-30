@@ -185,8 +185,8 @@ jobs:
           #                  + 依赖 DLL + .deps.json + .runtimeconfig.json +
           #                  卫星资源目录 en/, 整目录安装。
           #   aot / selfcontained
-          #                  单文件布局, 卫星资源已内嵌进单文件, 只需 apphost +
-          #                  同目录原生共享库。
+          #                  单文件布局, 只需 apphost + 同目录原生共享库, 但仍须带
+          #                  卫星资源目录 (en/ 是英文语言包, 并未内嵌)。
           # 两种布局都排除 *.pdb 调试符号。
           install_app_tree() {
             _tree_root="$1" _tree_src="$2"
@@ -202,6 +202,13 @@ jobs:
               for _so in "$_tree_src"/*.so; do
                 [ -e "$_so" ] || continue
                 install -m 755 "$_so" "$_tree_root/usr/lib/$PKG/"
+              done
+              # 卫星资源目录必须随包分发: en/AIShikikan.Gui.resources.dll 是英文
+              # 语言包(Strings.en.resx), 并未内嵌进单文件。缺失不崩溃, 但界面会
+              # 静默回退为中文。目录名以实际产物为准, 不硬编码。
+              for _dir in "$_tree_src"/*/; do
+                [ -d "$_dir" ] || continue
+                cp -a "$_dir" "$_tree_root/usr/lib/$PKG/"
               done
             fi
           }
