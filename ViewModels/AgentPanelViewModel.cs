@@ -19,7 +19,7 @@ public sealed record PersonaOption(Persona? Value, string Label);
 /// <summary>子 Agent 列表项: 全局定义(agents.toml)为基准, 会话覆盖(roster.json)优先。</summary>
 public partial class SubAgentItemViewModel : ViewModelBase
 {
-    public CliAgentDefinition Agent { get; }
+    public CliAgentDefinition Agent { get; private set; }
     public string AgentId => Agent.Id;
     public string Display => Agent.Display;
     public bool IsBuiltIn { get; }
@@ -51,6 +51,19 @@ public partial class SubAgentItemViewModel : ViewModelBase
         IsBuiltIn = isBuiltIn;
         _enabled = true;
         _description = agent.Description;
+    }
+
+    /// <summary>配置重载后替换定义引用, 保留当前行控件与展开状态。</summary>
+    internal void UpdateAgent(CliAgentDefinition agent)
+    {
+        if (ReferenceEquals(Agent, agent)) return;
+
+        Agent = agent;
+        OnPropertyChanged(nameof(Agent));
+        OnPropertyChanged(nameof(AgentId));
+        OnPropertyChanged(nameof(Display));
+        OnPropertyChanged(nameof(HasPlanArgs));
+        OnPropertyChanged(nameof(CanUseInPlanMode));
     }
 
     /// <summary>该 Agent 是否配置了 plan_args(决定"在 Plan 模式中使用"开关是否可用)。</summary>
@@ -147,7 +160,7 @@ public partial class AgentPanelViewModel : ViewModelBase
     /// <summary>延迟到调度器下一轮再重建子 Agent 列表, 避免在输入事件级联中同步增删
     /// ItemsControl 项: Material 主题模板内部的 Transitions(如 Button 的 Opacity 过渡,
     /// Easing 绑 DynamicResource)在控件移除触发的主题变体级联中会把 Easing 置 null,
-    /// 导致 Avalonia 内部 NRE(12.0.4 未修复)。多次调用会合并为一次刷新。</summary>
+    /// 导致 Avalonia 内部 NRE(旧版主题切换/回收边界缺陷)。多次调用会合并为一次刷新。</summary>
     private void QueueRefreshSubAgents()
     {
         if (_subAgentsRefreshQueued) return;
@@ -170,15 +183,20 @@ public partial class AgentPanelViewModel : ViewModelBase
     [RelayCommand]
     public void RefreshAll()
     {
+        // 先保存旧 Id: ItemsSource 变更时 ComboBox 可能通过 TwoWay 绑定把 SelectedAgent 清空。
+        var selectedAgentId = SelectedAgent?.Id;
         Personas = _shell.Personas.ToList();
         PersonaOptions = new[] { new PersonaOption(null, "(无)") }
             .Concat(Personas.Select(p => new PersonaOption(p, p.Display)))
             .ToList();
-        Agents = _shell.Agents.ToList();
-        if (SelectedAgent is null && Agents.Count > 0)
-        {
-            SelectedAgent = Agents[0];
-        }
+        // CliAgentDefinition 每次 reload 都会产生新实例(record 的 List/Dictionary 成员按引用比较),
+        // 因此必须按 Id 重新绑定, 不能用对象 Equals 判断 ComboBox 的选中项是否仍存在。
+        var newAgents = _shell.Agents.ToList();
+        var selectedAgent = selectedAgentId is null
+            ? newAgents.FirstOrDefault()
+            : newAgents.FirstOrDefault(a => string.Equals(a.Id, selectedAgentId, StringComparison.OrdinalIgnoreCase));
+        Agents = newAgents;
+        SelectedAgent = selectedAgent ?? newAgents.FirstOrDefault();
 
         QueueRefreshSubAgents();
         RefreshAssignments();
@@ -211,6 +229,7 @@ public partial class AgentPanelViewModel : ViewModelBase
             var item = remaining.Remove(agent.Id, out var existing)
                 ? existing
                 : new SubAgentItemViewModel(agent, !userIds.Contains(agent.Id));
+            item.UpdateAgent(agent);
             ApplySessionOverride(item, sessionConfig);
             desired.Add(item);
         }

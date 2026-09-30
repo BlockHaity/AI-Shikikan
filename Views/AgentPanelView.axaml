@@ -82,7 +82,27 @@
                 </StackPanel>
 
                 <!-- 列表 -->
-                <ItemsControl ItemsSource="{Binding SubAgents}">
+                <ItemsControl x:Name="SubAgentsList" ItemsSource="{Binding SubAgents}">
+                    <!--
+                         Avalonia 12.x + Material 主题的逻辑树回收边界问题: ItemsControl 移除项时，
+                         逻辑树清理会触发模板内 DynamicResource(过渡 easing) 重新求值，
+                         TransitionInstance.Subscribed 可能抛 NullReferenceException。
+                         子代理列表不需要动画, 局部关闭控件及其模板部件的过渡, 避免删除时回收崩溃。
+                    -->
+                    <ItemsControl.Styles>
+                        <Style Selector="Button, ToggleSwitch, TextBox, ComboBox">
+                            <Setter Property="Transitions">
+                                <Transitions />
+                            </Setter>
+                        </Style>
+                        <Style Selector="Button /template/ Border#PART_StateLayer,
+                                         ToggleSwitch /template/ Border#Track,
+                                         ToggleSwitch /template/ Border#Thumb">
+                            <Setter Property="Transitions">
+                                <Transitions />
+                            </Setter>
+                        </Style>
+                    </ItemsControl.Styles>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:SubAgentItemViewModel">
                             <Border Classes="agentEntry">

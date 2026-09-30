@@ -29,9 +29,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.0.4" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.0.4" />
-    <PackageReference Include="Avalonia.Win32" Version="12.0.4" />
+    <PackageReference Include="Avalonia" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
+    <PackageReference Include="Avalonia.Win32" Version="12.1.3" />
     <PackageReference Include="CCSWE.Avalonia.Material" Version="12.*" />
     <PackageReference Include="Markdown.Avalonia" Version="12.0.0-a3" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.*" />

@@ -788,7 +788,7 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshModels();
         RefreshThinkingOptions();
         RefreshContextUsage(); // 模型设置里的上下文窗口大小可能已变化
-        AgentPanel.RefreshAll();
+        // AgentPanel 自己订阅 DataChanged 并合并刷新, 避免同一次 reload 重复重建列表。
         GitPanel.Refresh();
         StatusPanel.Refresh();
     }
