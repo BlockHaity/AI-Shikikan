@@ -117,7 +117,7 @@
   <data name="SubAgent_AddName" xml:space="preserve"><value>Name</value></data>
   <data name="SubAgent_AddExec" xml:space="preserve"><value>Executable</value></data>
   <data name="SubAgent_AddDesc" xml:space="preserve"><value>Description (optional)</value></data>
-  <data name="SubAgent_AddHint" xml:space="preserve"><value>Built-ins: claude / codex / gemini / opencode / dsh</value></data>
+  <data name="SubAgent_AddHint" xml:space="preserve"><value>Added agents show up in the list below and become available for dispatch. Built-ins: claude / codex / gemini / opencode / dsh</value></data>
   <data name="SubAgent_DescPlaceholder" xml:space="preserve"><value>Describe this sub-agent's purpose to guide the commander AI...</value></data>
   <data name="SubAgent_Expert" xml:space="preserve"><value>Persona</value></data>
   <data name="SubAgent_None" xml:space="preserve"><value>(none)</value></data>
@@ -241,6 +241,8 @@
   <data name="Session_WorkDirSwitchBlocked" xml:space="preserve"><value>Session “{0}” is running in working directory “{1}”. You cannot switch to a session in “{2}” until it finishes.</value></data>
   <data name="Chat_BranchOccupied" xml:space="preserve"><value>Session “{0}” is running on branch “{1}”. Same-branch work can run concurrently; wait for a different branch to finish.</value></data>
   <data name="Settings_ProviderModelCustom" xml:space="preserve"><value>Custom Model ID</value></data>
+  <data name="Settings_AgentArgs" xml:space="preserve"><value>Argument template</value></data>
+  <data name="Settings_AgentArgsPlaceholder" xml:space="preserve"><value>Space-separated arguments, {prompt} stands for the prompt (e.g. -p {prompt})</value></data>
   <data name="Settings_AgentPlanArgs" xml:space="preserve"><value>Plan-mode arguments (space-separated, e.g. --permission-mode plan)</value></data>
   <data name="Settings_AgentExtraArgs" xml:space="preserve"><value>Extra arguments (space-separated, always appended to the command, {prompt} supported)</value></data>
   <data name="Settings_AgentAllowPlanNoArgs" xml:space="preserve"><value>Available in Plan mode even without plan-mode arguments</value></data>

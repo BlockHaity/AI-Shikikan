@@ -342,4 +342,45 @@ public static class Strings
     public static string Chat_MsgDeleteConfirm => Get(nameof(Chat_MsgDeleteConfirm));
     public static string Chat_MsgResend => Get(nameof(Chat_MsgResend));
     public static string Chat_MsgCancel => Get(nameof(Chat_MsgCancel));
+
+#if DEBUG
+    private static readonly CultureInfo EnglishCulture = new("en");
+
+    /// <summary>
+    /// 英文资源集是否真的加载成功。英文资源会编成卫星程序集, 一旦缺失,
+    /// ResourceManager 会静默回退到中性(中文)资源集, 此时
+    /// <see cref="FindMissingEnglishKeys"/> 会误报"零缺失", 因此调用方需一并检查本标志。
+    /// </summary>
+    public static bool EnglishResourceSetLoaded =>
+        typeof(Strings).Assembly.GetSatelliteAssembly(EnglishCulture) is not null;
+
+    /// <summary>
+    /// 资源键一致性自检: 返回只在中文 resx 存在、英文缺失的键列表
+    /// (缺失时界面会显示字面量 key 名, 因此需要拦截)。
+    /// </summary>
+    public static IReadOnlyList<string> FindMissingEnglishKeys()
+    {
+        var zh = ReadKeys(CultureInfo.InvariantCulture);
+        var en = ReadKeys(EnglishCulture);
+        return zh.Where(k => !en.Contains(k)).ToList();
+    }
+
+    /// <summary>
+    /// 读取指定 UI 语言资源集的全部键名; 资源集不存在时返回空集合。
+    /// </summary>
+    private static HashSet<string> ReadKeys(CultureInfo culture)
+    {
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var set = _rm.GetResourceSet(culture, createIfNotExists: true, tryParents: true);
+        if (set is null) return keys;
+
+        var enumerator = set.GetEnumerator();
+        while (enumerator.MoveNext())
+        {
+            if (enumerator.Entry.Key is string key) keys.Add(key);
+        }
+
+        return keys;
+    }
+#endif
 }

@@ -117,7 +117,7 @@
   <data name="SubAgent_AddName" xml:space="preserve"><value>名称</value></data>
   <data name="SubAgent_AddExec" xml:space="preserve"><value>可执行文件</value></data>
   <data name="SubAgent_AddDesc" xml:space="preserve"><value>描述</value></data>
-  <data name="SubAgent_AddHint" xml:space="preserve"><value>创建后将在左侧聊天栏的"子代理分派"中可见</value></data>
+  <data name="SubAgent_AddHint" xml:space="preserve"><value>创建后会出现在下方子 Agent 列表中并可用于分派, 内置: claude / codex / gemini / opencode / dsh</value></data>
   <data name="SubAgent_DescPlaceholder" xml:space="preserve"><value>描述此 Agent 的用途...</value></data>
   <data name="SubAgent_Expert" xml:space="preserve"><value>绑定专家</value></data>
   <data name="SubAgent_None" xml:space="preserve"><value>无专家</value></data>
