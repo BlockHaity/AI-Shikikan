@@ -48,9 +48,14 @@ public sealed class McpProxyTool : ITool
         var sw = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            var arguments = args.ValueKind is JsonValueKind.Object && args.GetRawText().Length > 2
-                ? JsonNode.Parse(args.GetRawText()) as JsonObject ?? []
-                : [];
+            // 参数缺省/非对象时传空对象; 只有真正带成员的对象才算有参数。
+            // 这里按 ValueKind + 是否含成员判定, 不用 GetRawText().Length > 2 那类近似写法:
+            // 后者分不清 {} / [] / null / 空字符串, 也会被带空白或换行的 "{}" 骗过。
+            JsonObject arguments = [];
+            if (args.ValueKind == JsonValueKind.Object && args.EnumerateObject().MoveNext())
+            {
+                arguments = JsonNode.Parse(args.GetRawText()) as JsonObject ?? [];
+            }
             var (text, isError) = await _service.CallBridgeToolAsync(Name, arguments, ct).ConfigureAwait(false);
             Log.Info("MCP", $"工具 {Name} 完成 ({sw.ElapsedMilliseconds}ms){(isError ? " [isError]" : "")}");
             return isError ? ToolResult.Error(text) : ToolResult.Ok(text);

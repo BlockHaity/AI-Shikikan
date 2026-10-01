@@ -10,7 +10,11 @@ namespace AIShikikan.Core.Services.Mcp;
 /// 手写实现(零第三方依赖), Native AOT 兼容(JsonNode/JsonElement 由 STJ 内置转换器处理)。</summary>
 public abstract class McpClientBase : IAsyncDisposable
 {
-    public const string ProtocolVersion = "2025-06-18";
+    /// <summary>握手时上报的 MCP 协议版本。
+    /// 刻意放在客户端而非配置文件: 客户端并不与服务器协商版本(initialize 用固定值),
+    /// 做成用户可配置项只会多一个"改坏了就连不上"的旋钮。
+    /// 用 static readonly 而非 const, 避免协议升级时改动散落到编译期常量引用上。</summary>
+    public static readonly string ProtocolVersion = "2025-06-18";
 
     /// <summary>工具调用等长耗时请求的默认超时(秒)。</summary>
     protected static readonly TimeSpan DefaultCallTimeout = TimeSpan.FromSeconds(300);
@@ -18,7 +22,7 @@ public abstract class McpClientBase : IAsyncDisposable
     /// <summary>握手与枚举类请求的默认超时(秒)。首次 npx 下载可能较慢, 留足余量。</summary>
     protected static readonly TimeSpan DefaultSetupTimeout = TimeSpan.FromSeconds(30);
 
-    protected readonly Dictionary<long, TaskCompletionSource<JsonNode?>> Pending = [];
+    protected readonly Dictionary<string, TaskCompletionSource<JsonNode?>> Pending = [];
     private long _nextId;
     private volatile bool _disposed;
 
@@ -58,7 +62,8 @@ public abstract class McpClientBase : IAsyncDisposable
         {
             id = ++_nextId;
             msg["id"] = id;
-            Pending[id] = tcs;
+            // 键必须与 DispatchMessage 侧用同一个归一化函数, 否则字符串 id 回显就配不上对
+            Pending[NormalizeRpcId(msg["id"])!] = tcs;
         }
 
         // 超时与外部取消合并到同一 token: 既能兜住服务器不响应, 又能响应用户停止;
@@ -91,7 +96,7 @@ public abstract class McpClientBase : IAsyncDisposable
         {
             lock (Pending)
             {
-                Pending.Remove(id);
+                Pending.Remove(NormalizeRpcId(msg["id"])!);
             }
 
             // 超时/取消时把 tcs 也终结掉, 避免任何潜在等待者永久挂起
@@ -99,12 +104,46 @@ public abstract class McpClientBase : IAsyncDisposable
         }
     }
 
-    /// <summary>传输层收到消息时调用: 按 id 配对响应/错误给等待方; 通知与 server→client 请求(sampling 等)忽略。</summary>
+    /// <summary>JSON-RPC 2.0 的 id 允许是数字或字符串, 且部分实现会用与请求不同的 JSON 类型回显
+    /// (请求发数字、响应回字符串)。因此 Pending 的键一律用本函数归一化为字符串, 两侧共用同一个实现。</summary>
+    protected static string? NormalizeRpcId(JsonNode? idNode)
+    {
+        if (idNode is not JsonValue v)
+        {
+            return null;
+        }
+
+        if (v.TryGetValue<long>(out var num))
+        {
+            return num.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        if (v.TryGetValue<string>(out var s) && s.Length > 0)
+        {
+            return s;
+        }
+
+        // 兜底: 少数实现会把 id 写成别的标量类型, 用其字面文本当键至少不会漏配对
+        var raw = v.ToString();
+        return string.IsNullOrEmpty(raw) ? null : raw;
+    }
+
+    /// <summary>传输层收到消息时调用: 按 id 配对响应/错误给等待方。
+    /// 通知(无 id)与 server→client 请求(sampling / roots / elicitation)不参与配对:
+    /// 本客户端未声明这些能力, 收到只能记日志并放弃, 服务器侧会等到它自己的超时。</summary>
     protected void DispatchMessage(JsonObject msg)
     {
-        if (!msg.TryGetPropertyValue("id", out var idNode) || idNode is not JsonValue iv ||
-            !iv.TryGetValue<long>(out var rid))
+        msg.TryGetPropertyValue("id", out var idNode);
+        var rid = NormalizeRpcId(idNode);
+        if (rid is null)
         {
+            // 通知: 当前不消费任何 notifications/*, 仅 Debug 记录以免静默丢消息无从排查
+            if (msg.TryGetPropertyValue("method", out var nNode) && nNode is JsonValue nv &&
+                nv.TryGetValue<string>(out var name))
+            {
+                Log.Debug("Mcp", $"MCP 通知(未处理): {ServerName} {name}");
+            }
+
             return;
         }
 
@@ -116,6 +155,16 @@ public abstract class McpClientBase : IAsyncDisposable
 
         if (tcs is null)
         {
+            // 无对应等待者: 要么是对已超时/已取消请求的迟到响应(正常丢弃), 要么是 server→client 请求。
+            // 后者(如 sampling/createMessage、roots/list、elicitation)若静默忽略, 依赖 roots 的服务器会
+            // 永久挂起到它自己的超时, 且界面上毫无线索 —— 记 Warn 让排障可见是诚实的降级做法。
+            if (msg.TryGetPropertyValue("method", out var mNode) && mNode is JsonValue mv &&
+                mv.TryGetValue<string>(out var method))
+            {
+                Log.Warn("Mcp",
+                    $"不支持的 server→client 请求, 已忽略(服务器侧将超时): {ServerName} {method} (id={rid})");
+            }
+
             return;
         }
 
@@ -137,8 +186,9 @@ public abstract class McpClientBase : IAsyncDisposable
         }
     }
 
-    /// <summary>请求是否仍在等待响应(供流式传输判断何时可停止读取)。</summary>
-    protected bool IsPending(long id)
+    /// <summary>请求是否仍在等待响应(供流式传输判断何时可停止读取)。
+    /// 参数须为 <see cref="NormalizeRpcId"/> 归一化后的键。</summary>
+    protected bool IsPending(string id)
     {
         lock (Pending)
         {
@@ -232,7 +282,11 @@ public abstract class McpClientBase : IAsyncDisposable
                 }
             }
 
-            cursor = root.TryGetPropertyValue("nextCursor", out var nc) ? nc : null;
+            // nextCursor 缺失 / null / 空串都必须视为"没有下一页": 若把空串当有效游标带上,
+            // 服务器会反复回同一页, 每轮各耗一次超时 → 分页循环永不退出。
+            cursor = root.TryGetPropertyValue("nextCursor", out var nc) && IsUsableCursor(nc)
+                ? nc
+                : null;
             if (cursor is null)
             {
                 break;
@@ -240,6 +294,18 @@ public abstract class McpClientBase : IAsyncDisposable
         }
 
         return tools;
+    }
+
+    /// <summary>分页游标是否可用: 必须是 JSON 字符串且非空白(MCP 规定 nextCursor 为字符串)。</summary>
+    private static bool IsUsableCursor(JsonNode? node)
+    {
+        if (node is not JsonValue v)
+        {
+            return false;
+        }
+
+        var s = v.TryGetValue<string>(out var str) ? str : v.ToString();
+        return !string.IsNullOrWhiteSpace(s);
     }
 
     /// <summary>调用工具并把 content 块文本化(文本原样; 图片/链接以占位标注);

@@ -1,5 +1,6 @@
 namespace AIShikikan.Core.Services.Mcp;
 
+using System.Text.Json.Serialization;
 using AIShikikan.Core.Serialization;
 
 /// <summary>单个 MCP 服务器定义(stdio / http / sse 传输)。</summary>
@@ -26,8 +27,39 @@ public class McpServerDefinition
     /// <summary>额外环境变量(与父进程环境合并后传给子进程, 仅 stdio 传输)。</summary>
     public Dictionary<string, string> Env { get; set; } = [];
 
+    /// <summary>额外 HTTP 请求头(仅 http/sse 传输, TOML 里是内联表)。
+    /// 会原样附加到每次 HTTP 请求; 需要 Bearer 时也可直接写 "Authorization" = "Bearer ..."。
+    /// 注: <see cref="ResolveHttpHeaders"/> 是给传输层(McpHttpClient)准备的统一取值入口,
+    /// 在它接入之前本字段只落盘、不生效。</summary>
+    [JsonPropertyName("headers")]
+    public Dictionary<string, string> Headers { get; set; } = [];
+
+    /// <summary>Bearer Token 便捷字段(仅 http/sse, stdio 忽略)。非空时等价于
+    /// "Authorization: Bearer &lt;token&gt;"; 若 <see cref="Headers"/> 里已显式给出 Authorization 则不覆盖。</summary>
+    [JsonPropertyName("token")]
+    public string Token { get; set; } = string.Empty;
+
     /// <summary>是否启用。</summary>
     public bool Enabled { get; set; } = true;
+
+    /// <summary>合并出本次 HTTP 请求应携带的请求头: <see cref="Headers"/> 原样,
+    /// 再按 <see cref="Token"/> 补 Authorization(仅在未显式指定时)。
+    /// 传输层统一从这里取值, 免得各处各写一套拼装逻辑。Token 为空时直接返回原字典(零拷贝)。</summary>
+    public IReadOnlyDictionary<string, string> ResolveHttpHeaders()
+    {
+        if (string.IsNullOrWhiteSpace(Token))
+        {
+            return Headers;
+        }
+
+        var merged = new Dictionary<string, string>(Headers, StringComparer.OrdinalIgnoreCase);
+        if (!merged.ContainsKey("Authorization"))
+        {
+            merged["Authorization"] = $"Bearer {Token.Trim()}";
+        }
+
+        return merged;
+    }
 }
 
 /// <summary>mcp-servers.toml 文件模型。</summary>

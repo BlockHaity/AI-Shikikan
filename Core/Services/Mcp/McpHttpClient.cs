@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Logging;
 
 namespace AIShikikan.Core.Services.Mcp;
 
@@ -40,6 +41,24 @@ public sealed class McpHttpClient : McpClientBase
     {
         var t = (transport ?? "stdio").Trim().ToLowerInvariant().Replace('_', '-');
         return t is "http" or "streamable-http" or "sse";
+    }
+
+    /// <summary>把 <see cref="McpServerDefinition.ResolveHttpHeaders"/> 解析出的请求头套到请求上。
+    /// 走统一入口而不是各处拼装, 否则某个出口很容易漏掉认证头(该字段是"只落盘不生效"的常见来源)。</summary>
+    private void ApplyHeaders(HttpRequestMessage request)
+    {
+        var headers = _def.ResolveHttpHeaders();
+        if (headers.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var (name, value) in headers)
+        {
+            // TryAddWithoutValidation: MCP 服务器的自定义头名不保证是标准头, 值也可能含非 ASCII;
+            // 走严格校验会把合法配置直接拒掉, 那比"多传一个头"更糟
+            request.Headers.TryAddWithoutValidation(name, value);
+        }
     }
 
     /// <summary>建立连接并完成 initialize 握手。</summary>
@@ -86,9 +105,15 @@ public sealed class McpHttpClient : McpClientBase
     }
 
     /// <summary>Streamable HTTP: POST 单一端点; 响应可为 202(通知回执)/JSON 单条/SSE 流。</summary>
+    /// <remarks>协议缺口(已知未实现): Streamable HTTP 允许服务器把后续消息放在一条服务端主动推送的
+    /// 独立 GET SSE 流上(POST 的响应仅回 202)。本客户端没有开启这条 GET 流, 因此若服务器选择
+    /// 把响应放在推送流上, 响应永不到达, 调用方只能等 <see cref="McpClientBase.DefaultCallTimeout"/>
+    /// (300s)超时兜底。补这条流需要处理 GET 的 Mcp-Notification-Id 回执、断线重连与多流去重,
+    /// 协议交互复杂且改错会让所有 HTTP MCP 服务器连不上, 故暂不实现, 以超时兜底。</remarks>
     private async Task PostStreamableAsync(JsonObject msg, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, _def.Url);
+        ApplyHeaders(req);
         req.Content = new StringContent(msg.ToJsonString(), Encoding.UTF8, "application/json");
         req.Headers.Accept.ParseAdd("application/json");
         req.Headers.Accept.ParseAdd("text/event-stream");
@@ -129,7 +154,7 @@ public sealed class McpHttpClient : McpClientBase
                 if (line.Length == 0)
                 {
                     DispatchSseData(data);
-                    if (expectId is long id && !IsPending(id))
+                    if (expectId is { } id && !IsPending(id))
                     {
                         break; // 响应已到达
                     }
@@ -177,6 +202,7 @@ public sealed class McpHttpClient : McpClientBase
         }
 
         using var req = new HttpRequestMessage(HttpMethod.Post, url);
+        ApplyHeaders(req);
         req.Content = new StringContent(msg.ToJsonString(), Encoding.UTF8, "application/json");
         using var resp = await _http.SendAsync(req, ct).ConfigureAwait(false);
         if (!resp.IsSuccessStatusCode)
@@ -193,6 +219,7 @@ public sealed class McpHttpClient : McpClientBase
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(30));
 
         var req = new HttpRequestMessage(HttpMethod.Get, _def.Url);
+        ApplyHeaders(req);
         req.Headers.Accept.ParseAdd("text/event-stream");
         var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, timeoutCts.Token)
             .ConfigureAwait(false);
@@ -231,9 +258,12 @@ public sealed class McpHttpClient : McpClientBase
         }
         catch (OperationCanceledException)
         {
+            // DisposeAsync 取消 _disposedCts 后的正常退出路径
         }
-        catch
+        catch (Exception ex)
         {
+            // 同 stdio: 断流属预期, 但静默吞掉会让"事件流早就断了"无从排查
+            Log.Debug("Mcp", $"MCP SSE 读循环结束({ServerName}): {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
@@ -275,17 +305,58 @@ public sealed class McpHttpClient : McpClientBase
                 ? data
                 : new Uri(new Uri(_def.Url), data).ToString();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Mcp", $"MCP SSE endpoint 事件地址无法解析, 已忽略({ServerName}): {ex.Message}");
             return;
         }
 
+        // endpoint 事件的内容完全由对端控制: 不校验就直接 POST, 等于把客户端变成对方的
+        // 任意地址请求器(SSRF, 例如 http://169.254.169.254/ 这类云元数据端点)。
+        // 要求 scheme 为 http/https 且 host 与配置的 url 同主机。
+        // 端口刻意放宽: 容器内网端口映射、反向代理、内网穿透都会让实现给出与配置不同的端口,
+        // 端口不同不等于被劫持, 而误杀合法 endpoint 会直接让 SSE 服务器不可用。
+        if (!IsSameHostEndpoint(url))
+        {
+            Log.Warn("Mcp", $"MCP SSE endpoint 事件地址与配置不同主机, 已忽略({ServerName}): {url}");
+            return;
+        }
+
+        var ignored = false;
         lock (_endpointLock)
         {
-            _postUrl ??= url;
+            if (_postUrl is not null)
+            {
+                // 传统 SSE 规范只认首个 endpoint 事件: 显式忽略后续并记录, 避免
+                // "被静默采用的到底哪个地址"这类无从排查的行为。
+                ignored = true;
+            }
+            else
+            {
+                _postUrl = url;
+            }
+        }
+
+        if (ignored)
+        {
+            Log.Debug("Mcp", $"MCP SSE endpoint 事件重复, 忽略({ServerName}): {url}");
+            return;
         }
 
         _endpointTcs.TrySetResult(url);
+    }
+
+    /// <summary>endpoint 事件解析出的绝对地址是否与配置 url 同主机(端口不比较, 见调用处说明)。</summary>
+    private bool IsSameHostEndpoint(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) ||
+            (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            return false;
+        }
+
+        return Uri.TryCreate(_def.Url, UriKind.Absolute, out var configured) &&
+               string.Equals(uri.Host, configured.Host, StringComparison.OrdinalIgnoreCase);
     }
 
     public override async ValueTask DisposeAsync()
@@ -305,6 +376,7 @@ public sealed class McpHttpClient : McpClientBase
             try
             {
                 using var req = new HttpRequestMessage(HttpMethod.Delete, _def.Url);
+                ApplyHeaders(req);
                 req.Headers.Add("Mcp-Session-Id", _sessionId);
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(3));
                 await _http.SendAsync(req, cts.Token).ConfigureAwait(false);
@@ -323,15 +395,17 @@ public sealed class McpHttpClient : McpClientBase
         }
 
         _http.Dispose();
-        _disposedCts.Dispose();
+
+        // 与 stdio 客户端同样处理: SseReadLoopAsync 可能仍持有 _disposedCts.Token 在读流,
+        // 此时 Dispose 会让它抛 ObjectDisposedException(已被读循环的 Debug 日志吞掉,
+        // 但纯属噪声)。Cancel 已保证 token 不会再被放行, 不 Dispose 只延后其被 GC 回收。
         await Task.CompletedTask.ConfigureAwait(false);
     }
 
     private static string? GetHeader(HttpResponseMessage resp, string name)
         => resp.Headers.TryGetValues(name, out var values) ? values.FirstOrDefault() : null;
 
-    private static long? GetMsgId(JsonObject msg)
-        => msg.TryGetPropertyValue("id", out var idNode) && idNode is JsonValue iv && iv.TryGetValue<long>(out var id)
-            ? id
-            : null;
+    /// <summary>取本条待发消息的 id(归一化后), 供流式读取判断响应是否已到达。</summary>
+    private static string? GetMsgId(JsonObject msg)
+        => msg.TryGetPropertyValue("id", out var idNode) ? NormalizeRpcId(idNode) : null;
 }
