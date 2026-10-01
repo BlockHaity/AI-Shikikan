@@ -17,13 +17,20 @@ public class ProviderConfig
     /// <summary>启用的模型列表; 为空表示全部允许。</summary>
     public List<string> EnabledModels { get; set; } = [];
 
-    /// <summary>各模型可用的最大思考等级(键为模型 ID, 值为 low/medium/high/xhigh/max); 未配置表示不限。</summary>
+    /// <summary>各模型可用的最大思考等级(键为模型 ID, 值为 low/medium/high/xhigh/max); 未配置表示交回模型自身决定。</summary>
     public Dictionary<string, string> ModelMaxThinking { get; set; } = [];
 
     /// <summary>各模型手动配置的上下文窗口大小(token); 未配置时回退模型档案/默认值。</summary>
     public Dictionary<string, long> ModelContextTokens { get; set; } = [];
 
-    /// <summary>返回指定模型的最大思考等级; 未配置时默认允许全部等级(Max)。</summary>
+    /// <summary>
+    /// 返回指定模型的最大思考等级; 未配置(或显式配成 auto)时回退 <see cref="ThinkingLevel.Auto"/>,
+    /// 即"不覆盖模型能力"。
+    /// 这里原本回退 Max, 而 AgentEngine.ResolveThinking 会把 Auto 解析成本方法的结果,
+    /// 于是全新配置(providers.toml 里 model_max_thinking 是注释掉的)的推理模型一律被拉到最高档:
+    /// 下发 reasoning_effort=high、丢弃 temperature, 用户没配任何东西就付出成倍 token 成本与延迟。
+    /// 保守默认应交回模型自己决定, 用户想要高思考档就在设置页显式配。
+    /// </summary>
     public ThinkingLevel GetMaxThinking(string? modelId)
     {
         if (modelId is not null && ModelMaxThinking.TryGetValue(modelId, out var s)
@@ -32,7 +39,7 @@ public class ProviderConfig
             return level;
         }
 
-        return ThinkingLevel.Max;
+        return ThinkingLevel.Auto;
     }
 
     /// <summary>返回指定模型手动配置的上下文窗口 token 数; 未配置或非法时返回 null。</summary>
@@ -59,11 +66,9 @@ public class LlmSettings
 
     [JsonIgnore]
     public ProviderConfig? ActiveProvider =>
-        Providers.FirstOrDefault(p => p.Id == ActiveProviderId);
-
-    [JsonIgnore]
-    public string ResolvedModel =>
-        !string.IsNullOrEmpty(ActiveModel) ? ActiveModel : ActiveProvider?.DefaultModel ?? string.Empty;
+        // 大小写不敏感: providers.toml 的 id 由手写, 与 active_provider_id 大小写不一致时
+        // 用 == 比较会静默拿不到 provider(GetProvider 随即抛"未找到 Provider")。
+        Providers.FirstOrDefault(p => string.Equals(p.Id, ActiveProviderId, StringComparison.OrdinalIgnoreCase));
 }
 
 public static class ProviderSettingsService

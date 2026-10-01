@@ -20,6 +20,12 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         Timeout = TimeSpan.FromMinutes(30)
     };
 
+    /// <summary>流空闲阈值: 两次 <c>data:</c> 之间超过该时长仍无新数据即判定为挂死。
+    /// ⚠ 与上面的总请求超时语义不同(那个管"整个请求最多多久", 这个管"两次事件之间隔多久"):
+    /// 深度思考 + 工具调用的长回答总时长可能远超该阈值, 但只要还在持续吐数据就不该中断;
+    /// 反之上游断流/代理挂起时总超时迟迟不到, 只能干等 —— 空闲检测补的就是这一段。</summary>
+    private static readonly TimeSpan StreamIdleTimeout = TimeSpan.FromSeconds(120);
+
     /// <summary>
     /// 已知不接受 <c>stream_options.include_usage</c> 的端点(键为 base_url 规范化后的绝对地址)。
     /// 老版 vLLM / 严格网关会因未知字段直接 400, 命中后本进程内不再附带该字段, 避免每次请求都吃一次重试。
@@ -172,7 +178,10 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         ? new AzureOpenAIClient(_baseUrl, _credential).GetChatClient(model)
         : new OpenAIClient(_credential, new OpenAIClientOptions { Endpoint = _baseUrl }).GetChatClient(model);
 
-    /// <summary>把思考等级映射为 OpenAI reasoning_effort; Off/Auto 或非推理模型返回 null(不下发参数)。</summary>
+    /// <summary>把思考等级映射为 OpenAI reasoning_effort; Off/Auto 或非推理模型返回 null(不下发参数)。
+    /// ⚠ High/XHigh/Max 三档都塌缩为 High: OpenAI 公开的 reasoning_effort 取值只有 low/medium/high,
+    /// SDK 的 ChatReasoningEffortLevel 枚举里也没有 xhigh 成员, 而把 XHigh/Max 近似映射成别的值
+    /// 会让不支持的模型直接 400 —— 代价远大于"这几档在网络层区分不出来"本身, 因此保持塌缩。</summary>
     private static ChatReasoningEffortLevel? ToReasoningEffort(ChatRequest request)
     {
         if (request.Thinking is ThinkingLevel.Off or ThinkingLevel.Auto ||
@@ -194,6 +203,10 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         => request.Thinking is not (ThinkingLevel.Off or ThinkingLevel.Auto)
            && ThinkingLevels.IsReasoningModel(request.Model);
 
+    /// <summary>原生 SSE 路径下发的 reasoning_effort 取值。
+    /// ⚠ 与 <see cref="ToReasoningEffort"/> 同一个 API 能力边界: 只认 low/medium/high,
+    /// High/XHigh/Max 都下发 "high", 所以 GUI 选"极高/满"与选"高"的网络行为完全一致。
+    /// 差异只体现在注入系统提示词的思考深度指令上(见 ThinkingLevels.Directive)。</summary>
     private static string EffortString(ChatRequest request) => request.Thinking switch
     {
         ThinkingLevel.Low => "low",
@@ -208,35 +221,24 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
     private async IAsyncEnumerable<ChatStreamEvent> EmitViaHttp(
         ChatRequest request, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
     {
-        using var resp = await SendStreamingAsync(request, ct).ConfigureAwait(false);
+        // 空闲超时需要主动掐断底层读取(StreamReader 的异步读无法从外部取消),
+        // 而用户取消必须原样透传给上层, 因此用内部可取消 CTS 把两者分开:
+        // 超时 → streamCts.Cancel() 让卡在 ReadLineAsync 的那次读立刻以取消收场;
+        // 用户取消 → ct.ThrowIfCancellationRequested() 抛 OperationCanceledException 走正常取消路径。
+        using var streamCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+
+        using var resp = await SendStreamingAsync(request, streamCts.Token).ConfigureAwait(false);
 
         var text = new StringBuilder();
         var toolCalls = new Dictionary<int, ToolCallData>();
         var usage = new ChatUsage();
         string finishReason = string.Empty;
 
-        using var stream = await resp.Content.ReadAsStreamAsync(ct);
+        using var stream = await resp.Content.ReadAsStreamAsync(streamCts.Token);
         using var reader = new StreamReader(stream);
 
-        while (await reader.ReadLineAsync(ct) is { } line)
+        await foreach (var json in ReadSseEventsAsync(reader, streamCts, ct).ConfigureAwait(false))
         {
-            if (line.Length == 0) continue;
-
-            if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-            var payload = line[5..].Trim();
-            if (payload.Length == 0) continue;
-            if (payload is "[DONE]") break;
-
-            JsonElement json;
-            try
-            {
-                json = JsonDocument.Parse(payload).RootElement.Clone();
-            }
-            catch (JsonException)
-            {
-                continue;
-            }
-
             if (json.TryGetProperty("error", out var errEl))
             {
                 throw new HttpRequestException(
@@ -292,7 +294,11 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
             {
                 foreach (var tc in tcs.EnumerateArray())
                 {
-                    var idx = tc.TryGetProperty("index", out var iEl) ? iEl.GetInt32() : toolCalls.Count;
+                    // 少数端点不下发 index: 不能一律用 toolCalls.Count 兜底, 同一 chunk 内多个无 index 的
+                    // tool_call 会取到同一个 Count → 挤进同一条记录, 参数互相串接, 最终只发得出一个工具调用
+                    var idx = tc.TryGetProperty("index", out var iEl) && iEl.TryGetInt32(out var explicitIdx)
+                        ? explicitIdx
+                        : NextFreeToolSlot(toolCalls);
                     if (!toolCalls.TryGetValue(idx, out var existing))
                     {
                         existing = new ToolCallData();
@@ -323,6 +329,124 @@ public class OpenAiChatCompletionsClient : ChatCompletionsClientBase
         }
 
         yield return FinalEvent(text, toolCalls.Values.Where(t => t.Name.Length > 0).ToList(), usage, finishReason);
+    }
+
+    /// <summary>为缺 index 的 tool_call 找一个还没被占用的槽位: 从当前条数起步递增, 保证同一 chunk 内互不撞键。</summary>
+    private static int NextFreeToolSlot(Dictionary<int, ToolCallData> toolCalls)
+    {
+        var slot = toolCalls.Count;
+        while (toolCalls.ContainsKey(slot)) slot++;
+        return slot;
+    }
+
+    /// <summary>
+    /// 把 SSE 行流归一化为「一个事件 = 一个已解析的 JSON」。两个现实约束决定了实现方式:
+    /// 1) SSE 规范允许一个事件由多行 <c>data:</c> 拼成(用 <c>\n</c> 连接), 逐行独立解析会直接 JsonException,
+    ///    整段内容被静默丢弃(旧实现就是这个行为);
+    /// 2) 但也有端点不插空行分隔事件, 若无条件"攒到空行再拼", 整条流会黏成一大坨解析失败。
+    /// 因此这里采用"能独立解析就立刻产出, 否则先缓存等下一行拼接"——两种流都覆盖, 代价只是每行多一次解析尝试。
+    /// <c>[DONE]</c> 不是 JSON, 单独逐行识别(它不会被拆行)。
+    /// </summary>
+    private static async IAsyncEnumerable<JsonElement> ReadSseEventsAsync(
+        TextReader reader,
+        CancellationTokenSource streamCts,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+    {
+        var pending = new StringBuilder();
+
+        while (await ReadLineWithIdleTimeoutAsync(reader, streamCts, ct).ConfigureAwait(false) is { } line)
+        {
+            // 空行 = 事件边界: 冲刷仍然拼不完整的残片
+            if (line.Length == 0)
+            {
+                if (pending.Length > 0 && TryParseJson(pending.ToString(), out var atBoundary))
+                {
+                    yield return atBoundary;
+                }
+
+                pending.Clear();
+                continue;
+            }
+
+            // 注释行(以 ':' 开头)与 event:/id:/retry: 等字段本项目不使用
+            if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
+
+            var part = line[5..].Trim();
+            if (part.Length == 0) continue;
+            if (part is "[DONE]") yield break;
+
+            if (pending.Length == 0)
+            {
+                if (TryParseJson(part, out var single))
+                {
+                    yield return single;
+                }
+                else
+                {
+                    pending.Append(part);
+                }
+
+                continue;
+            }
+
+            // 有残片: 先按"规范式多行"试着拼接, 再退一步假设残片本身是解析不出来的坏行
+            if (TryParseJson(pending + "\n" + part, out var merged))
+            {
+                pending.Clear();
+                yield return merged;
+            }
+            else if (TryParseJson(part, out var solo))
+            {
+                pending.Clear();
+                yield return solo;
+            }
+            else
+            {
+                pending.Append('\n').Append(part);
+            }
+        }
+
+        // 末尾没有空行收尾(部分端点直接 EOF)时冲刷残片
+        if (pending.Length > 0 && TryParseJson(pending.ToString(), out var tail))
+        {
+            yield return tail;
+        }
+    }
+
+    /// <summary>读一行, 超过 <see cref="StreamIdleTimeout"/> 没有任何新数据就抛 TimeoutException(由基类转成 Error 事件)。
+    /// ⚠ 与总请求超时(HttpClient.Timeout = 30 分钟)语义不同: 那个管"整个请求最多多久",
+    /// 长任务/深度思考下总时长本就可以很长; 这里管"两次事件之间隔多久", 用来兜住上游断流、
+    /// 代理挂起这类会让读取永久悬挂的场景(技术债: 无首 token 超时 / 无流空闲超时)。
+    /// 代价: 每行一个 Task.Delay(共享计时器队列, 与一次 JSON 解析同量级的开销)。</summary>
+    private static async Task<string?> ReadLineWithIdleTimeoutAsync(
+        TextReader reader, CancellationTokenSource streamCts, CancellationToken ct)
+    {
+        var pending = reader.ReadLineAsync(streamCts.Token).AsTask();
+        var finished = await Task.WhenAny(pending, Task.Delay(StreamIdleTimeout, streamCts.Token)).ConfigureAwait(false);
+        if (!ReferenceEquals(finished, pending))
+        {
+            // 掐断底层读取, 让这次 ReadLineAsync 立刻以取消收场(否则只能干等 30 分钟总超时);
+            // 该读取的 Task 结束时状态是"已取消"而非"异常", 不会变成 UnobservedTaskException
+            streamCts.Cancel();
+            ct.ThrowIfCancellationRequested();
+            throw new TimeoutException($"LLM 流空闲超过 {StreamIdleTimeout.TotalSeconds:0} 秒未返回数据, 已中断");
+        }
+
+        return await pending.ConfigureAwait(false);
+    }
+
+    private static bool TryParseJson(string text, out JsonElement json)
+    {
+        try
+        {
+            json = JsonDocument.Parse(text).RootElement.Clone();
+            return true;
+        }
+        catch (JsonException)
+        {
+            json = default;
+            return false;
+        }
     }
 
     /// <summary>发起流式请求并返回已成功的响应(失败抛 HttpRequestException)。

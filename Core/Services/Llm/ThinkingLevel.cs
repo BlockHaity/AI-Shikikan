@@ -56,15 +56,21 @@ public static class ThinkingLevels
         }
     }
 
+    /// <summary>
+    /// 思考档位的稳定语义标识(off/auto/low/medium/high/xhigh/max), 与 <see cref="ToConfigString"/> 取值一致。
+    /// 刻意不返回展示文案: Core 不能反向引用 GUI 的 Strings, 而在这里硬编码中文会让英文界面
+    /// 的思考档位菜单直接显示中文。GUI 侧应拿这个标识去映射本地化文案
+    /// (调用点: Views/Converters.cs 的 ThinkingLevelToTextConverter、ViewModels/ChatPageViewModel.SelectedThinkingText)。
+    /// </summary>
     public static string DisplayName(ThinkingLevel level) => level switch
     {
-        ThinkingLevel.Off => "关闭",
-        ThinkingLevel.Auto => "自动",
-        ThinkingLevel.Low => "低",
-        ThinkingLevel.Medium => "中",
-        ThinkingLevel.High => "高",
-        ThinkingLevel.XHigh => "极高",
-        _ => "满"
+        ThinkingLevel.Off => "off",
+        ThinkingLevel.Auto => "auto",
+        ThinkingLevel.Low => "low",
+        ThinkingLevel.Medium => "medium",
+        ThinkingLevel.High => "high",
+        ThinkingLevel.XHigh => "xhigh",
+        _ => "max"
     };
 
     /// <summary>注入系统提示词的思考深度指令。</summary>
@@ -100,8 +106,4 @@ public static class ThinkingLevels
 
         return false;
     }
-
-    /// <summary>启发式探测模型可支持的最大思考等级(在通过 API 获取模型列表时自动调用)。</summary>
-    public static ThinkingLevel DetectMaxLevel(string modelId) =>
-        IsReasoningModel(modelId) ? ThinkingLevel.High : ThinkingLevel.Medium;
 }
