@@ -313,10 +313,6 @@
                                                                     <Button Classes="Text" Padding="8,2" FontSize="11"
                                                                             Content="{Binding CopyButtonText}"
                                                                             Command="{Binding CopyResultCommand}"/>
-                                                                    <Button Classes="Outlined" Padding="8,2" FontSize="11"
-                                                                            Content="{Binding RollbackText}"
-                                                                            Command="{Binding RollbackCommand}"
-                                                                            IsVisible="{Binding CanRollback}"/>
                                                                 </StackPanel>
                                                             </Grid>
                                                         </Expander.Header>
@@ -629,11 +625,6 @@
                                                                         </md:MarkdownScrollViewer>
                                                                     </StackPanel>
                                                                 </StackPanel>
-
-                                                                <!-- 回滚结果提示(所有卡体共用) -->
-                                                                <TextBlock Classes="BodySmall" Text="{Binding RollbackNote}"
-                                                                           IsVisible="{Binding HasRollbackNote}"
-                                                                           Foreground="{DynamicResource Primary}"/>
                                                             </StackPanel>
                                                         </Border>
                                                     </Expander>

@@ -1,8 +1,10 @@
 using AIShikikan.Core;
 using AIShikikan.Core.Services;
+using AIShikikan.Core.Services.Session;
 using Avalonia;
 using System;
 using System.IO;
+using System.Linq;
 
 namespace AIShikikan.Gui;
 
@@ -174,14 +176,61 @@ sealed class Program
             checks.Add(("专家/模板", runtime.Personas.Count > 0, $"{runtime.Personas.Count} 个专家, {runtime.Templates.Count} 个模板"));
             checks.Add(("工具装载", runtime.Registry.All.Count > 0, $"{runtime.Registry.All.Count} 个工具"));
 
-            var gitOk = runtime.Git.IsRepoAvailable;
+            var repoRoot = runtime.GitService.FindRepositoryRoot(Environment.CurrentDirectory);
+            var gitOk = !string.IsNullOrEmpty(repoRoot);
             var gitWarn = !gitOk;
-            checks.Add(("Git 仓库", !gitWarn, gitOk ? "仓库可用" : "当前目录不是 git 仓库, 聊天可用, 检查点/Git写工具不可用"));
+            checks.Add(("Git 仓库", !gitWarn, gitOk ? $"仓库可用 ({repoRoot})" : "当前目录不是 git 仓库, 聊天可用, 检查点/Git写工具不可用"));
+
+            // 并发协调规则的单元级自检(项目内唯一自检, 纯内存, 无副作用)
+            var selfCheckFailures = WorkspaceExecutionCoordinator.SelfCheck();
+            checks.Add(("并发协调规则", selfCheckFailures.Count == 0,
+                selfCheckFailures.Count == 0
+                    ? "9 组场景全部通过"
+                    : string.Join("; ", selfCheckFailures)));
 
             foreach (var (name, ok, detail) in checks)
             {
                 var status = ok ? "✔" : (name == "Git 仓库" ? "⚠" : "✘");
                 Console.WriteLine($"  {status} {name}  {detail}");
+            }
+
+            // 废弃机制残留提示: 只提示不自动删, 由用户判断
+            // 放在失败早退之前, 保证任何退出路径下用户都能看到清理线索
+            if (!string.IsNullOrEmpty(repoRoot))
+            {
+                var legacy = runtime.GitService.ScanLegacyArtifacts(repoRoot);
+                if (legacy.HasAny)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("⚠ 检测到已废弃的 Git 步骤机制残留（旧版本子代理自动分支功能）:");
+                    if (legacy.StaleBranches.Count > 0)
+                    {
+                        var shown = legacy.StaleBranches.Take(5);
+                        Console.WriteLine($"  · ac/* 分支 {legacy.StaleBranches.Count} 个: {string.Join(", ", shown)}{(legacy.StaleBranches.Count > 5 ? " ..." : "")}");
+                    }
+                    if (legacy.StepsFileCount > 0)
+                    {
+                        Console.WriteLine($"  · steps/*.json {legacy.StepsFileCount} 个文件");
+                    }
+                    if (legacy.CheckpointTagCount > 0)
+                    {
+                        Console.WriteLine($"  · ai-shikikan/checkpoint/* tag {legacy.CheckpointTagCount} 个（仍在使用的检查点 tag，是 Reset/Revert/Fork 的回滚依据；" +
+                                          "若其中已无需要保留的历史检查点，可手动删除）");
+                    }
+                    Console.WriteLine("  当前版本不再读取上述 ac/* 分支与 steps 数据, 可手动清理(仅供参考, 请自行确认后再执行):");
+                    if (legacy.StaleBranches.Count > 0)
+                    {
+                        Console.WriteLine("    git branch -D $(git branch --list 'ac/*' | tr -d ' ' | tr '\\n' ' ')");
+                    }
+                    if (legacy.StepsFileCount > 0)
+                    {
+                        Console.WriteLine("    rm -rf <数据目录>/steps");
+                    }
+                    if (legacy.CheckpointTagCount > 0)
+                    {
+                        Console.WriteLine("    git tag -d $(git tag --list 'ai-shikikan/checkpoint/*' | tr '\\n' ' ')   # 会失去对应检查点的回滚能力");
+                    }
+                }
             }
 
             var failed = checks.Count(c => !c.Ok && c.Name != "Git 仓库");

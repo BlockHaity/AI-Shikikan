@@ -13,7 +13,7 @@ public interface IWorkspaceResolver
     string? ResolveBranch(string dir);
 }
 
-/// <summary>基于 git CLI 的工作区解析(与 GitStepService 同为进程外调用, AOT 安全)。</summary>
+/// <summary>基于 git CLI 的工作区解析(与 GitService 同为进程外调用, AOT 安全)。</summary>
 public sealed class GitWorkspaceResolver : IWorkspaceResolver
 {
     private readonly string _defaultRoot;

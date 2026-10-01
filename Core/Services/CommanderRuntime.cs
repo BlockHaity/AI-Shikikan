@@ -1,5 +1,6 @@
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
+using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Agents;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Git;
@@ -21,9 +22,6 @@ public sealed class CommanderRuntime
 
     public required string WorkspaceRoot { get; init; }
     public required LlmService Llm { get; init; }
-
-    /// <summary>旧步骤服务，仅保留给待迁移的兼容工具和旧数据读取。</summary>
-    public required GitStepService Git { get; init; }
 
     /// <summary>显式工作区上下文的 Commit/tag 检查点服务。</summary>
     public required GitService GitService { get; init; }
@@ -89,10 +87,9 @@ public sealed class CommanderRuntime
         var agentsList = agents.ToList();
 
         var llm = new LlmService();
-        var git = new GitStepService(root);
         var checkpoints = new GitCheckpointStore();
         var gitService = new GitService(checkpoints);
-        var assignments = new AssignmentManager(git);
+        var assignments = new AssignmentManager();
         var mcp = new McpService();
 
         // 工作区执行协调器 + 会话事件 Hub: 同 worktree 同分支多会话并发, 跨分支互斥
@@ -116,12 +113,12 @@ public sealed class CommanderRuntime
         };
 
         var registry = new ToolRegistry();
-        foreach (var tool in AgentToolFactory.CreateCoreTools(git))
+        foreach (var tool in AgentToolFactory.CreateCoreTools(gitService))
         {
             registry.Register(tool);
         }
 
-        foreach (var tool in AgentToolFactory.CreateSubagentTools(agentsList, personasList, templatesList, git, assignments, llm))
+        foreach (var tool in AgentToolFactory.CreateSubagentTools(agentsList, personasList, templatesList, gitService, assignments, llm))
         {
             registry.Register(tool);
         }
@@ -139,7 +136,6 @@ public sealed class CommanderRuntime
         {
             WorkspaceRoot = root,
             Llm = llm,
-            Git = git,
             GitService = gitService,
             Checkpoints = checkpoints,
             Assignments = assignments,
@@ -175,7 +171,7 @@ public sealed class CommanderRuntime
         => new AgentEngine(
             llm: Llm,
             registry: Registry,
-            git: Git,
+            git: GitService,
             assignments: Assignments,
             personas: Personas,
             templates: Templates,
@@ -287,7 +283,7 @@ public sealed class CommanderRuntime
         }
 
         foreach (var tool in AgentToolFactory.CreateSubagentTools(
-                     agents, personas, templates, Git, Assignments, Llm))
+                     agents, personas, templates, GitService, Assignments, Llm))
         {
             Registry.Register(tool);
         }
@@ -353,10 +349,11 @@ public sealed class CommanderRuntime
     {
         try
         {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
+            // 用 AtomicFile.Delete 而非 File.Delete: 必须连带清掉 .bak/.tmp。
+            // 否则"还原默认设置"删掉 providers.toml 后, 旧 providers.toml.bak 仍留在磁盘上
+            // 保存着旧 API Key; 且重建后的默认文件一旦解析异常, TryReadText 会回退到那个
+            // 陈旧备份, 把用户刚清掉的 Provider/Agent 配置复活。
+            AtomicFile.Delete(path);
         }
         catch (Exception ex)
         {

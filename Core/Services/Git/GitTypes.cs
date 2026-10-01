@@ -59,26 +59,3 @@ public record GitGraphLine
     public string GraphPart { get; init; } = string.Empty;
     public string CommitPart { get; init; } = string.Empty;
 }
-
-public enum GitStepStatus
-{
-    Created,
-    Running,
-    Completed,
-    Merged,
-    Dropped,
-    Reverted
-}
-
-public class GitStepRecord
-{
-    public string StepId { get; set; } = Guid.NewGuid().ToString("N")[..8];
-    public string Label { get; set; } = string.Empty;
-    public string BaseBranch { get; set; } = string.Empty;
-    public string StepBranch { get; set; } = string.Empty;
-    public GitStepStatus Status { get; set; } = GitStepStatus.Created;
-    public string RollbackMode { get; set; } = "drop";
-    public string? MergeCommit { get; set; }
-    public DateTime CreatedAt { get; set; } = DateTime.Now;
-    public DateTime? CompletedAt { get; set; }
-}

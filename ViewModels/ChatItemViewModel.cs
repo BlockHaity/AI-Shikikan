@@ -418,96 +418,17 @@ public partial class SegmentItemViewModel : ViewModelBase
     [ObservableProperty]
     private string? _checkpointId;
 
-    /// <summary>兼容旧步骤检查点的关联 ID。</summary>
+    /// <summary>兼容旧步骤检查点的关联 ID(仅用于历史消息回填, 回滚入口已由检查点卡片承担)。</summary>
     [ObservableProperty]
     private string? _stepId;
 
-    /// <summary>回滚二次确认状态。</summary>
-    [ObservableProperty]
-    private bool _isRollbackConfirming;
-
-    /// <summary>已成功回滚(按钮隐藏, 显示状态)。</summary>
-    [ObservableProperty]
-    private bool _isRolledBack;
-
-    partial void OnStepIdChanged(string? value) => OnPropertyChanged(nameof(CanRollback));
-
     partial void OnIsToolDoneChanged(bool value)
     {
-        OnPropertyChanged(nameof(CanRollback));
         OnPropertyChanged(nameof(CanUseCheckpoint));
         OnPropertyChanged(nameof(IsStatusRunning));
         OnPropertyChanged(nameof(IsStatusSuccess));
         OnPropertyChanged(nameof(IsStatusError));
         OnPropertyChanged(nameof(StatusText));
-    }
-
-    /// <summary>回滚失败信息(空表示无错误)。</summary>
-    [ObservableProperty]
-    private string? _rollbackError;
-
-    /// <summary>是否显示回滚按钮: 有关联检查点、未回滚过、工具已完成。</summary>
-    public bool CanRollback => !string.IsNullOrEmpty(StepId) && !IsRolledBack && IsToolDone;
-
-    /// <summary>回滚按钮文案: 二次确认阶段变为"确认回滚?"。</summary>
-    public string RollbackText => IsRollbackConfirming ? Strings.ToolCard_RollbackConfirm : Strings.ToolCard_Rollback;
-
-    /// <summary>回滚区提示文本: 已回滚 / 错误信息。</summary>
-    public string? RollbackNote => IsRolledBack ? Strings.ToolCard_RolledBack : RollbackError;
-
-    public bool HasRollbackNote => !string.IsNullOrEmpty(RollbackNote);
-
-    /// <summary>回滚动作: 第一次点击进入确认态, 再次点击执行。</summary>
-    [RelayCommand]
-    private void Rollback()
-    {
-        if (!IsRollbackConfirming)
-        {
-            IsRollbackConfirming = true;
-            return;
-        }
-
-        IsRollbackConfirming = false;
-        if (string.IsNullOrEmpty(StepId))
-        {
-            return;
-        }
-
-        try
-        {
-            var git = AppShell.Instance.Runtime.Git;
-            var result = git.RollbackStep(StepId);
-            if (result.Succeeded)
-            {
-                IsRolledBack = true;
-                AppShell.Instance.NotifyDataChanged(); // Git 面板等刷新
-            }
-            else
-            {
-                RollbackError = string.Format(Strings.ToolCard_RollbackFailed, result.Stderr.Trim());
-            }
-        }
-        catch (Exception ex)
-        {
-            // 常见: 工作区有未提交变更 / 步骤已回滚(消息已带前缀时避免重复)
-            var prefix = Strings.ToolCard_RollbackFailed.Replace("{0}", string.Empty).TrimEnd();
-            RollbackError = ex.Message.StartsWith(prefix, StringComparison.Ordinal)
-                ? ex.Message
-                : string.Format(Strings.ToolCard_RollbackFailed, ex.Message);
-        }
-    }
-
-    partial void OnIsRollbackConfirmingChanged(bool value) => OnPropertyChanged(nameof(RollbackText));
-    partial void OnIsRolledBackChanged(bool value)
-    {
-        OnPropertyChanged(nameof(CanRollback));
-        OnPropertyChanged(nameof(RollbackNote));
-        OnPropertyChanged(nameof(HasRollbackNote));
-    }
-    partial void OnRollbackErrorChanged(string? value)
-    {
-        OnPropertyChanged(nameof(RollbackNote));
-        OnPropertyChanged(nameof(HasRollbackNote));
     }
 
     public string CardTitle => Kind == MessageSegmentKind.Thinking

@@ -3,7 +3,6 @@ using System.Text.Json.Serialization;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Agents;
-using AIShikikan.Core.Services.Git;
 
 namespace AIShikikan.Core.Services.Engine;
 
@@ -44,21 +43,25 @@ public class Assignment
     public string ShortTask => Task.Length <= 40 ? Task : Task[..40] + "...";
 }
 
-/// <summary>分派管理: 记录、异步后台执行、与 Git 步骤生命周期绑定、持久化。</summary>
+/// <summary>分派管理: 记录、后台执行、状态跟踪与持久化。Git 检查点由外层会话/工作区服务负责。</summary>
 public sealed class AssignmentManager
 {
     private readonly Dictionary<string, Assignment> _assignments = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
 
-    public AssignmentManager(GitStepService git)
+    public AssignmentManager()
     {
-        Git = git;
         Directory.CreateDirectory(AppPaths.AssignmentsDir);
         foreach (var file in Directory.GetFiles(AppPaths.AssignmentsDir, "*.json"))
         {
             try
             {
-                var a = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.Assignment);
+                if (!AtomicFile.TryReadRaw(file, out var raw))
+                {
+                    continue;
+                }
+
+                var a = JsonSerializer.Deserialize(raw, AppJsonContext.Default.Assignment);
                 if (a is not null)
                 {
                     _assignments[a.AssignmentId] = a;
@@ -69,8 +72,6 @@ public sealed class AssignmentManager
             }
         }
     }
-
-    public GitStepService Git { get; }
 
     public event Action<Assignment>? AssignmentChanged;
 
@@ -115,7 +116,7 @@ public sealed class AssignmentManager
         return assignment;
     }
 
-    /// <summary>常规(同步)模式: 创建 git 步骤→运行→完成并返回完整结果。</summary>
+    /// <summary>常规(同步)模式: 运行子 Agent → 落终态并返回完整结果。</summary>
     public async Task<(Assignment Assignment, CliAgentRunResult Run)> RunSyncAsync(
         Assignment assignment, string finalPrompt,
         IProgress<string>? progressOutput, CancellationToken ct = default)
@@ -123,40 +124,17 @@ public sealed class AssignmentManager
         UpdateStatus(assignment, SubagentStatus.Running);
         Log.Info("Agent", $"子Agent 启动: {assignment.AgentName} (assignment={assignment.AssignmentId}) 任务: {assignment.ShortTask}");
 
-        GitStepRecord step;
-        try
-        {
-            step = Git.BeginStep($"agent-{assignment.AgentId}");
-            Log.Info("Git", $"检查点已创建: {step.StepId} (分支 {step.StepBranch}, 基于 {step.BaseBranch})");
-            assignment.StepId = step.StepId;
-            Git.MarkRunning(step.StepId);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn("Git", ex, "创建检查点失败(继续执行但不提供回滚保护)");
-            assignment.Status = SubagentStatus.Failed;
-            assignment.Error = ex.Message;
-            assignment.FinishedAt = DateTime.Now;
-            Save(assignment);
-            AssignmentChanged?.Invoke(assignment);
-            throw;
-        }
-
         var result = await RunCliAsync(assignment, finalPrompt, progressOutput, ct);
-
-        if (assignment.Status != SubagentStatus.Cancelled)
-        {
-            Git.MarkCompleted(step.StepId);
-        }
 
         assignment.ExitCode = result.ExitCode;
         assignment.OutputTail = TailOf(result.Output);
-        assignment.Error = result.TimedOut ? "超时被强制终止" : result.Succeeded ? null : "非零退出码";
-        assignment.Status = result.TimedOut
-            ? SubagentStatus.TimedOut
-            : result.Succeeded
-                ? SubagentStatus.Completed
-                : SubagentStatus.Failed;
+        assignment.Status = result.Cancelled ? SubagentStatus.Cancelled
+            : result.TimedOut ? SubagentStatus.TimedOut
+            : result.Succeeded ? SubagentStatus.Completed
+            : SubagentStatus.Failed;
+        assignment.Error = result.Cancelled ? "用户取消"
+            : result.TimedOut ? "超时被强制终止"
+            : result.Succeeded ? null : "非零退出码";
         assignment.FinishedAt = DateTime.Now;
         Save(assignment);
         AssignmentChanged?.Invoke(assignment);
@@ -196,9 +174,10 @@ public sealed class AssignmentManager
 
     private void Save(Assignment assignment)
     {
-        Directory.CreateDirectory(AppPaths.AssignmentsDir);
-        File.WriteAllText(
+        // 原子写: 写失败只记日志, 不打断子 Agent 主流程(写坏的分派记录不应让整轮执行失败)
+        AtomicFile.TryWriteAllText(
             Path.Combine(AppPaths.AssignmentsDir, $"{assignment.AssignmentId}.json"),
-            JsonSerializer.Serialize(assignment, AppJsonContext.Default.Assignment));
+            JsonSerializer.Serialize(assignment, AppJsonContext.Default.Assignment),
+            $"assignment {assignment.AssignmentId}");
     }
 }

@@ -610,6 +610,101 @@ public sealed class GitService : IDisposable
         }
     }
 
+    /// <summary>
+    /// 扫描已废弃的 Git 步骤机制残留(旧版本子代理自动建分支功能产生的数据)。
+    /// 子代理现已统一在当前分支工作, 这些数据不再被任何代码读取, 仅供用户判断是否手动清理。
+    /// </summary>
+    /// <remarks>
+    /// 只读诊断: 任何 git 调用失败都退化为空结果, 绝不抛出。
+    /// 注意 <c>ai-shikikan/checkpoint/*</c> tag 是<b>当前</b>检查点系统(Reset/Revert/Fork)的正常工作产物,
+    /// 只是历史累积, 报告方需提示用户自行判断, 不可自动删除。
+    /// </remarks>
+    /// <param name="workDir">工作目录(内部会向上解析仓库根)。</param>
+    public LegacyArtifactScanResult ScanLegacyArtifacts(string workDir)
+    {
+        try
+        {
+            var staleBranches = new List<string>();
+            var stepsFileCount = 0;
+            var checkpointTagCount = 0;
+
+            // steps/*.json: 旧步骤状态文件目录(AppPaths.StepsDir 已随机制移除, 此处自行拼接)
+            try
+            {
+                var stepsDir = Path.Combine(AppPaths.DataDir, "steps");
+                if (Directory.Exists(stepsDir))
+                {
+                    stepsFileCount = Directory.EnumerateFiles(stepsDir, "*.json", SearchOption.AllDirectories).Count();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Git", ex, "统计遗留 steps/*.json 失败, 按 0 处理");
+            }
+
+            var repoRoot = FindRepositoryRoot(workDir);
+            if (string.IsNullOrEmpty(repoRoot))
+            {
+                // 非 git 目录: 只能统计数据目录, git 相关项留空
+                return new LegacyArtifactScanResult { StepsFileCount = stepsFileCount };
+            }
+
+            // ac/* 分支: for-each-ref 比 branch --list 更稳(不依赖通配匹配/当前分支状态)
+            try
+            {
+                var branchResult = Run(repoRoot, "for-each-ref", "--format=%(refname:short)", "refs/heads/ac/");
+                if (branchResult.Succeeded)
+                {
+                    staleBranches.AddRange(branchResult.Stdout
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Select(s => s.Trim())
+                        .Where(s => s.Length > 0));
+                }
+                else
+                {
+                    Log.Warn("Git", $"扫描遗留 ac/* 分支失败, 按空处理: {branchResult.Stderr.Trim()}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Git", ex, "扫描遗留 ac/* 分支失败, 按空处理");
+            }
+
+            // 检查点 tag: 当前检查点系统的正常产物, 仅统计数量供用户判断
+            try
+            {
+                var tagResult = Run(repoRoot, "tag", "--list", "ai-shikikan/checkpoint/*");
+                if (tagResult.Succeeded)
+                {
+                    checkpointTagCount = tagResult.Stdout
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                        .Count(s => s.Trim().Length > 0);
+                }
+                else
+                {
+                    Log.Warn("Git", $"统计检查点 tag 失败, 按 0 处理: {tagResult.Stderr.Trim()}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("Git", ex, "统计检查点 tag 失败, 按 0 处理");
+            }
+
+            return new LegacyArtifactScanResult
+            {
+                StaleBranches = staleBranches,
+                StepsFileCount = stepsFileCount,
+                CheckpointTagCount = checkpointTagCount
+            };
+        }
+        catch (Exception ex)
+        {
+            // doctor 诊断不应因残留扫描异常而中断
+            Log.Warn("Git", ex, "扫描废弃 Git 步骤机制残留失败, 返回空结果");
+            return new LegacyArtifactScanResult();
+        }
+    }
+
     public void Dispose()
     {
         lock (_lockDict)
@@ -621,4 +716,20 @@ public sealed class GitService : IDisposable
             _repoLocks.Clear();
         }
     }
+}
+
+/// <summary>废弃 Git 步骤机制(旧版本子代理自动建分支)的残留统计。</summary>
+public sealed class LegacyArtifactScanResult
+{
+    /// <summary>是否检测到任何残留。</summary>
+    public bool HasAny => StaleBranches.Count > 0 || StepsFileCount > 0 || CheckpointTagCount > 0;
+
+    /// <summary>遗留的 ac/* 分支名。</summary>
+    public List<string> StaleBranches { get; init; } = [];
+
+    /// <summary>遗留的 steps/*.json 文件数。</summary>
+    public int StepsFileCount { get; init; }
+
+    /// <summary>遗留的 ai-shikikan/checkpoint/* tag 数量(当前检查点系统的正常产物, 非废弃数据)。</summary>
+    public int CheckpointTagCount { get; init; }
 }

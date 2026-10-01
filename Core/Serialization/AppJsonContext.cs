@@ -12,7 +12,7 @@ using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Serialization;
 
-/// <summary>源生成 JSON 上下文: 用于数据文件(会话/步骤/分派/roster)与旧 JSON 配置兼容读取。</summary>
+/// <summary>源生成 JSON 上下文: 用于数据文件(会话/分派/roster/检查点)与旧 JSON 配置兼容读取。</summary>
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = true,
@@ -24,7 +24,6 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(Persona))]
 [JsonSerializable(typeof(AgentTemplate))]
 [JsonSerializable(typeof(ThemeService.Preferences))]
-[JsonSerializable(typeof(GitStepRecord))]
 [JsonSerializable(typeof(Assignment))]
 [JsonSerializable(typeof(ChatSession))]
 [JsonSerializable(typeof(ChatMessage))]

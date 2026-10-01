@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services.Agents;
@@ -84,9 +85,17 @@ public sealed class EngineOptions
 /// <summary>对话引擎: 组装 system(人格 + Roster) → LLM → 工具(批准/只读/子代理) → 循环至完成。</summary>
 public sealed class AgentEngine
 {
+    /// <summary>等待用户响应(工具审批 / ask_user 提问)的最长时间: 超过则按无响应处理,
+    /// 避免 GUI 无订阅者或用户离开时引擎永久挂起。</summary>
+    private static readonly TimeSpan ApprovalTimeout = TimeSpan.FromMinutes(5);
+
+    /// <summary>本回合实际生效的模型名(回合开始时解析并缓存)。
+    /// 工具上下文(子代理输出压缩)需与主对话同模型, 避免逐次工具调用重复推导。</summary>
+    private string? _currentModel;
+
     private readonly LlmService _llm;
     private readonly ToolRegistry _registry;
-    private readonly GitStepService _git;
+    private readonly GitService _git;
     private readonly AssignmentManager _assignments;
     private readonly IReadOnlyList<Persona> _personas;
     private readonly IReadOnlyList<AgentTemplate> _templates;
@@ -124,7 +133,7 @@ public sealed class AgentEngine
     public AgentEngine(
         LlmService llm,
         ToolRegistry registry,
-        GitStepService git,
+        GitService git,
         AssignmentManager assignments,
         IReadOnlyList<Persona> personas,
         IReadOnlyList<AgentTemplate> templates,
@@ -210,8 +219,6 @@ public sealed class AgentEngine
     public EngineOptions Options => _options;
 
     public AssignmentManager Assignments => _assignments;
-
-    public GitStepService Git => _git;
 
     public string? PersonaText => _personaText;
 
@@ -476,6 +483,8 @@ public sealed class AgentEngine
             }
 
             var model = _llm.ResolveModel(_options.Model, _options.ProviderId);
+            // 缓存本回合实际生效的模型: 工具上下文(子代理输出压缩)需要同模型, 避免逐次工具调用重复解析
+            _currentModel = model;
             var thinking = ResolveThinking(model, _options.ProviderId);
             var system = BuildSystemPrompt(thinking);
 
@@ -633,7 +642,20 @@ public sealed class AgentEngine
         {
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             Raise(new EngineApprovalRequested(call.Id, call.Name, call.Arguments, tcs));
-            var approved = await tcs.Task.WaitAsync(ct);
+            bool approved;
+            try
+            {
+                // 超时兜底: GUI 无订阅者(如后台会话)时不会有人回填决策, 必须自行兜底避免永久挂起
+                approved = await tcs.Task.WaitAsync(ApprovalTimeout, ct).ConfigureAwait(false);
+            }
+            catch (TimeoutException)
+            {
+                var timedOut = $"工具 {call.Name} 的审批等待超时({ApprovalTimeout.TotalMinutes:0} 分钟无响应), 已按拒绝处理。请向用户说明并询问替代方案。";
+                Log.Warn("Engine", timedOut);
+                Raise(new EngineToolFinished(call.Id, call.Name, ToolResult.Error(timedOut)));
+                return timedOut;
+            }
+
             if (!approved)
             {
                 var declined = $"用户拒绝了工具调用 {call.Name}。请向用户说明并询问替代方案。";
@@ -659,13 +681,17 @@ public sealed class AgentEngine
             {
                 WorkspaceRoot = _workspaceRoot,
                 IsPlanMode = _options.IsPlanMode,
+                // 子代理输出压缩要与本回合同 provider/model, 否则用户切了非默认模型时压缩会走另一个模型
+                ProviderId = _options.ProviderId,
+                Model = _currentModel,
                 OnToolOutput = line => Raise(new EngineToolOutput(call.Id, call.Name, line)),
                 // ask_user 工具经此回调触达 GUI: 发事件 → 弹输入框 → 等待用户回答(取消随回合中断)
+                // 同样加超时兜底: 无订阅者时不至于永久挂起(TimeoutException 由外层转成 ToolResult.Error)
                 AskUser = async (question, askCt) =>
                 {
                     var answerTcs = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
                     Raise(new EngineQuestionRequested(call.Id, question, answerTcs));
-                    return await answerTcs.Task.WaitAsync(askCt);
+                    return await answerTcs.Task.WaitAsync(ApprovalTimeout, askCt);
                 }
             };
 
@@ -721,8 +747,11 @@ public sealed class AgentEngine
             parts.Add(_personaText);
         }
 
+        // git 段落用会话工作目录解析(未指定时回退到全局工作区根): 让子代理看到自己实际所在的分支与脏状态
         var roster = RosterBuilder.Build(_agents, _personas, _templates,
-            AgentConfigService.LoadUserFile().Rules, _git,
+            AgentConfigService.LoadUserFile().Rules,
+            git: _git,
+            workDir: string.IsNullOrWhiteSpace(_options.WorkDir) ? _workspaceRoot : _options.WorkDir,
             rosterEntries: _rosterEntries,
             enabled: true,
             planMode: _options.IsPlanMode);

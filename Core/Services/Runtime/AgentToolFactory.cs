@@ -17,8 +17,8 @@ namespace AIShikikan.Core.Services.Runtime;
 /// <summary>构建 LLM 可见工具集: 基础只读/git 工具 + 子代理工具(run_&lt;agent&gt; / assign_task / run_subagents)。</summary>
 public static class AgentToolFactory
 {
-    /// <summary>固定基础工具: 只读文件工具 + git 步骤工具(始终注册)。</summary>
-    public static IReadOnlyList<ITool> CreateCoreTools(GitStepService git)
+    /// <summary>固定基础工具: 只读文件工具 + git 工具(始终注册)。</summary>
+    public static IReadOnlyList<ITool> CreateCoreTools(GitService git)
     {
         return new List<ITool>
         {
@@ -27,10 +27,10 @@ public static class AgentToolFactory
             new GrepTool(),
             new ListDirectoryTool(),
             new GitStatusTool(git),
-            new GitCheckpointTool(git),
-            new GitMergeStepTool(git),
-            new GitDropStepTool(git),
-            new GitRevertStepTool(git),
+            new GitAddTool(git),
+            new GitCommitTool(git),
+            new GitCreateCheckpointTool(git),
+            new GitDiffTool(git),
             new AskUserTool()
         };
     }
@@ -40,10 +40,12 @@ public static class AgentToolFactory
         IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas,
         IReadOnlyList<AgentTemplate> templates,
-        GitStepService git,
+        GitService git,
         AssignmentManager assignments,
         LlmService? llm = null)
     {
+        // 注: 子代理工具本身不直接操作 git(只经 AssignmentManager 派发), 保留 git 参数以维持调用方签名。
+        _ = git;
         var list = new List<ITool>();
         foreach (var agent in agents)
         {
@@ -197,6 +199,12 @@ public static class AgentExecutor
             };
             return new ToolResult { Content = $"{header}\n\n{body}", StepId = completed.StepId, Detail = detail };
         }
+        catch (OperationCanceledException)
+        {
+            // 取消必须上抛: 被下面 catch(Exception) 吞掉会让"停止"按钮只停住主循环,
+            // 子代理进程仍在后台跑, 用户以为停了实际没停。
+            throw;
+        }
         catch (Exception ex)
         {
             // 执行失败但检查点分支可能已建立(含部分变更), 保留回滚入口
@@ -261,12 +269,12 @@ public class AgentExecutionTool : ITool
     private readonly CliAgentDefinition _agent;
     private readonly IReadOnlyList<Persona> _personas;
     private readonly IReadOnlyList<AgentTemplate> _templates;
-    protected readonly GitStepService _git;
+    protected readonly GitService _git;
     private readonly AssignmentManager _assignments;
     private readonly LlmService? _llm;
 
     public AgentExecutionTool(CliAgentDefinition agent, IReadOnlyList<Persona> personas,
-        IReadOnlyList<AgentTemplate> templates, GitStepService git, AssignmentManager assignments,
+        IReadOnlyList<AgentTemplate> templates, GitService git, AssignmentManager assignments,
         LlmService? llm = null)
     {
         _agent = agent;
@@ -324,13 +332,13 @@ public class AssignTaskTool : ITool
     private readonly IReadOnlyList<CliAgentDefinition> _agents;
     private readonly IReadOnlyList<Persona> _personas;
     private readonly IReadOnlyList<AgentTemplate> _templates;
-    protected readonly GitStepService _git;
+    protected readonly GitService _git;
     private readonly AssignmentManager _assignments;
     private readonly LlmService? _llm;
 
     public AssignTaskTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitStepService git, AssignmentManager assignments, LlmService? llm = null)
+        GitService git, AssignmentManager assignments, LlmService? llm = null)
     {
         _agents = agents;
         _personas = personas;
@@ -405,13 +413,13 @@ public class SubagentGroupTool : ITool
     private readonly IReadOnlyList<CliAgentDefinition> _agents;
     private readonly IReadOnlyList<Persona> _personas;
     private readonly IReadOnlyList<AgentTemplate> _templates;
-    private readonly GitStepService _git;
+    private readonly GitService _git;
     private readonly AssignmentManager _assignments;
     private readonly LlmService? _llm;
 
     public SubagentGroupTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitStepService git, AssignmentManager assignments, LlmService? llm = null)
+        GitService git, AssignmentManager assignments, LlmService? llm = null)
     {
         _agents = agents;
         _personas = personas;
@@ -424,7 +432,8 @@ public class SubagentGroupTool : ITool
     public string Name => "run_subagents";
 
     public string Description => "并发调用多个子Agent, 各自执行指定的子任务, 等全部完成后统一返回每个子Agent的结果。" +
-        "适合把一个大任务拆成多个相互独立的子任务并行处理。建议每个子任务只分配给一个 Agent。";
+        "适合把一个大任务拆成多个相互独立的子任务并行处理。建议每个子任务只分配给一个 Agent。" +
+        "会同时启动多个子 Agent 并改动工作区, 需批准。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
@@ -447,7 +456,7 @@ public class SubagentGroupTool : ITool
         }
         """);
 
-    public bool RequiresApproval => false;
+    public bool RequiresApproval => true;
 
     public async Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
@@ -522,8 +531,16 @@ public class SubagentGroupTool : ITool
                 };
             return new SubRunResult(result, entry);
         }
+        catch (OperationCanceledException)
+        {
+            // 取消必须上抛: 用户停止 / 回合取消时要让 Task.WhenAll 整体中断,
+            // 否则被下面 catch(Exception) 吞成单条失败, 其余子代理仍在跑, 停止按钮失灵。
+            throw;
+        }
         catch (Exception ex)
         {
+            // 含 MCP tools/call 超时(TimeoutException): 单个子代理超时不应拖垮整批,
+            // 转成该条目的失败结果, 其余子代理正常返回。
             return new SubRunResult(
                 ToolResult.Error($"[agent:{agent.Id}] 执行失败: {ex.Message}"),
                 new SubagentResultEntry
@@ -555,15 +572,16 @@ public class SubagentGroupTool : ITool
             : null;
 }
 
+/// <summary>git_status: 只读查看仓库状态(分支 / 脏标记 / 变更文件列表)。</summary>
 public class GitStatusTool : ITool
 {
-    protected readonly GitStepService _git;
+    private readonly GitService _git;
 
-    public GitStatusTool(GitStepService git) => _git = git;
+    public GitStatusTool(GitService git) => _git = git;
 
     public string Name => "git_status";
 
-    public string Description => "查看 git 仓库状态: 分支/脏状态/最近提交/待合并步骤。只读。";
+    public string Description => "查看当前工作区所在 git 仓库的状态: 仓库根目录 / 当前分支 / 最近提交 / 工作区是否干净 / 变更文件列表。只读, 不改动任何内容。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         { "type": "object", "properties": {} }
@@ -573,44 +591,191 @@ public class GitStatusTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        if (!_git.IsRepoAvailable)
+        try
         {
-            return Task.FromResult(ToolResult.Ok("当前目录不是 git 仓库。"));
-        }
-
-        var sb = new StringBuilder();
-        sb.AppendLine($"分支: {_git.CurrentBranch() ?? "?"}");
-        sb.AppendLine($"工作区: {(_git.HasUncommittedChanges() ? "有未提交变更" : "干净")}");
-        var last = _git.LastCommitShort();
-        if (last is not null) sb.AppendLine($"最近提交: {last}");
-
-        var pending = _git.PendingReview();
-        if (pending.Count > 0)
-        {
-            sb.AppendLine("待处理步骤(可 merge/drop):");
-            foreach (var step in pending)
+            var gctx = _git.ResolveContext(ctx.WorkspaceRoot);
+            if (!gctx.IsValidRepo)
             {
-                sb.AppendLine($"- {step.StepId} [{step.Label}] 分支 {step.StepBranch}");
+                return Task.FromResult(ToolResult.Ok("当前目录不是 git 仓库。"));
             }
-        }
 
-        return Task.FromResult(ToolResult.Ok(sb.ToString()));
+            var sb = new StringBuilder();
+            sb.AppendLine($"仓库: {gctx.RepositoryRoot}");
+            sb.AppendLine($"分支: {(gctx.IsDetachedHead ? "(detached HEAD)" : gctx.BranchName)}");
+            if (gctx.IsEmptyRepo)
+            {
+                sb.AppendLine("仓库尚无任何提交。");
+            }
+            else
+            {
+                var head = _git.GetHeadSha(gctx.RepositoryRoot);
+                if (!string.IsNullOrWhiteSpace(head))
+                {
+                    sb.AppendLine($"最近提交: {head[..Math.Min(8, head.Length)]}");
+                }
+            }
+
+            var clean = _git.IsClean(gctx).Succeeded;
+            sb.AppendLine($"工作区: {(clean ? "干净" : "有未提交变更")}");
+
+            var files = _git.GetStatusFiles(gctx);
+            if (files.Count > 0)
+            {
+                sb.AppendLine($"变更文件 ({files.Count}):");
+                foreach (var f in files)
+                {
+                    sb.AppendLine($"- [{f.StatusLabel}] {f.Path}");
+                }
+            }
+
+            return Task.FromResult(ToolResult.Ok(sb.ToString().TrimEnd()));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(ToolResult.Error(ex.Message));
+        }
     }
 }
 
-/// <summary>git_create_checkpoint: AI 主动打检查点(创建步骤分支), 后续可合并/丢弃/回滚。</summary>
-public class GitCheckpointTool : ITool
+/// <summary>git_add: 把指定文件或全部改动加入暂存区。影响后续提交内容, 需批准。</summary>
+public class GitAddTool : ITool
 {
-    private readonly GitStepService _git;
+    private readonly GitService _git;
 
-    public GitCheckpointTool(GitStepService git) => _git = git;
+    public GitAddTool(GitService git) => _git = git;
+
+    public string Name => "git_add";
+
+    public string Description => "暂存文件到 git 暂存区。all=true 暂存全部改动, 否则暂存 path 指定的文件(相对仓库根)。需批准。";
+
+    public JsonElement Parameters { get; } = ToolSchema.Json("""
+        {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "相对仓库根的文件路径" },
+            "all": { "type": "boolean", "description": "是否暂存全部改动(与 path 二选一)" }
+          }
+        }
+        """);
+
+    public bool RequiresApproval => true;
+
+    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    {
+        try
+        {
+            var gctx = _git.ResolveContext(ctx.WorkspaceRoot);
+            if (!gctx.IsValidRepo) return Task.FromResult(ToolResult.Error("当前目录不是 git 仓库。"));
+
+            var all = args.TryGetProperty("all", out var a) && a.ValueKind == JsonValueKind.True;
+            var path = args.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String ? p.GetString() : null;
+
+            GitCommandResult? r = all
+                ? _git.StageAll(gctx)
+                : !string.IsNullOrWhiteSpace(path) ? _git.StageFile(gctx, path!)
+                : null;
+            if (r is null) return Task.FromResult(ToolResult.Error("需要参数: path 或 all=true"));
+
+            return Task.FromResult(r.Succeeded
+                ? ToolResult.Ok(r.Stdout.Trim().Length > 0 ? r.Stdout.Trim() : "已暂存。")
+                : ToolResult.Error($"git add 失败: {r.Stderr.Trim()}"));
+        }
+        catch (Exception ex) { return Task.FromResult(ToolResult.Error(ex.Message)); }
+    }
+}
+
+/// <summary>git_commit: 提交暂存区内容(或指定文件)。写入仓库历史, 需批准。</summary>
+public class GitCommitTool : ITool
+{
+    private readonly GitService _git;
+
+    public GitCommitTool(GitService git) => _git = git;
+
+    public string Name => "git_commit";
+
+    public string Description =>
+        "提交 git 变更。提供 files 时只提交这些文件(自动暂存), 否则提交当前暂存区的全部内容。" +
+        "message 为提交说明。会写入仓库历史, 需批准。";
+
+    public JsonElement Parameters { get; } = ToolSchema.Json("""
+        {
+          "type": "object",
+          "properties": {
+            "message": { "type": "string", "description": "提交说明" },
+            "files": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "可选: 只提交这些文件(相对仓库根), 不填则提交暂存区全部内容"
+            }
+          },
+          "required": ["message"]
+        }
+        """);
+
+    public bool RequiresApproval => true;
+
+    public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
+    {
+        try
+        {
+            var gctx = _git.ResolveContext(ctx.WorkspaceRoot);
+            if (!gctx.IsValidRepo) return Task.FromResult(ToolResult.Error("当前目录不是 git 仓库。"));
+            if (gctx.IsDetachedHead) return Task.FromResult(ToolResult.Error("HEAD 处于 detached 状态, 无法提交。"));
+
+            var message = args.TryGetProperty("message", out var m) && m.ValueKind == JsonValueKind.String
+                ? m.GetString()
+                : null;
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return Task.FromResult(ToolResult.Error("缺少参数: message"));
+            }
+
+            var files = new List<string>();
+            if (args.TryGetProperty("files", out var f) && f.ValueKind == JsonValueKind.Array)
+            {
+                files.AddRange(f.EnumerateArray()
+                    .Where(x => x.ValueKind == JsonValueKind.String)
+                    .Select(x => x.GetString()!)
+                    .Where(x => !string.IsNullOrWhiteSpace(x)));
+            }
+
+            var r = files.Count > 0
+                ? _git.CommitFiles(gctx, files, message)
+                : _git.Commit(gctx, message);
+            if (!r.Succeeded)
+            {
+                return Task.FromResult(ToolResult.Error($"git commit 失败: {r.Stderr.Trim()}"));
+            }
+
+            var sha = _git.GetHeadSha(gctx.RepositoryRoot);
+            var shortSha = string.IsNullOrWhiteSpace(sha) ? "" : sha[..Math.Min(8, sha.Length)];
+            var scope = files.Count > 0 ? $"{files.Count} 个指定文件" : "暂存区全部内容";
+            var extra = r.Stdout.Trim();
+            return Task.FromResult(ToolResult.Ok(
+                $"已提交({scope}){(shortSha.Length > 0 ? $", commit {shortSha}" : "")}。" +
+                (extra.Length > 0 ? $"\n{extra}" : "")));
+        }
+        catch (Exception ex) { return Task.FromResult(ToolResult.Error(ex.Message)); }
+    }
+}
+
+/// <summary>git_create_checkpoint: 把当前 HEAD 标记为检查点(轻量标签 + 持久化记录), 供 UI 回滚/分叉使用。</summary>
+public class GitCreateCheckpointTool : ITool
+{
+    /// <summary>AI 工具无法读取持久化消息总数, 用极大值表示"保留全部对话":
+    /// UI 侧 Truncate/Fork 都先做 cutoff &lt; Messages.Count 判定, 不会越界也不会截断。</summary>
+    private const int KeepAllConversationCutoff = int.MaxValue;
+
+    private readonly GitService _git;
+
+    public GitCreateCheckpointTool(GitService git) => _git = git;
 
     public string Name => "git_create_checkpoint";
 
     public string Description =>
-        "在当前仓库打一个 git 检查点: 创建并切换到步骤分支, 用于在执行有风险改动前留存可回滚快照。" +
-        "参数: label(可选, 检查点用途描述)。返回检查点 ID 与分支信息; " +
-        "之后可用 git_merge_step 合并 / git_drop_step 丢弃, 也可对返回的检查点 ID 调用 git_revert_step。不改动工作区文件。";
+        "把当前 HEAD 提交标记为一个检查点, 用于留存可回滚的快照(在本地创建轻量标签并记录元数据, 不改动工作区文件)。" +
+        "参数: label(可选, 检查点用途描述)。返回检查点 ID 与标签名;" +
+        "之后可在 UI 的检查点卡片上一键回滚或派生分支。需批准。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
         {
@@ -621,24 +786,67 @@ public class GitCheckpointTool : ITool
         }
         """);
 
-    public bool RequiresApproval => false;
+    public bool RequiresApproval => true;
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var label = args.TryGetProperty("label", out var l) && l.ValueKind == JsonValueKind.String
-            ? l.GetString()?.Trim()
-            : null;
-
         try
         {
-            var step = _git.BeginStep(string.IsNullOrWhiteSpace(label) ? "ai-checkpoint" : label);
-            Log.Info("Git", $"AI 创建检查点: {step.StepId} (分支 {step.StepBranch}, 基于 {step.BaseBranch}, 标签 {step.Label})");
+            var gctx = _git.ResolveContext(ctx.WorkspaceRoot);
+            if (!gctx.IsValidRepo) return Task.FromResult(ToolResult.Error("当前目录不是 git 仓库。"));
+
+            var head = _git.GetHeadSha(gctx.RepositoryRoot);
+            if (string.IsNullOrWhiteSpace(head))
+            {
+                return Task.FromResult(ToolResult.Error("仓库尚无任何提交, 无法创建检查点。"));
+            }
+
+            var label = args.TryGetProperty("label", out var l) && l.ValueKind == JsonValueKind.String
+                ? l.GetString()?.Trim()
+                : null;
+            var id = Guid.NewGuid().ToString("N")[..8];
+            var record = new GitCheckpointRecord
+            {
+                Id = id,
+                RepositoryRoot = gctx.RepositoryRoot,
+                WorkDir = gctx.WorkDir,
+                BranchName = gctx.BranchName,
+                CommitSha = head,
+                TagName = $"ai-shikikan/checkpoint/{id}",
+                SessionId = CommanderRuntime.Instance?.Sessions.ActiveSessionId ?? string.Empty,
+                ConversationCutoff = KeepAllConversationCutoff,
+                Source = GitCheckpointSource.AiTool,
+                Label = string.IsNullOrWhiteSpace(label) ? "AI 检查点" : label,
+                CreatedAt = DateTime.Now
+            };
+
+            var r = _git.MarkCheckpoint(gctx, record);
+            if (!r.Succeeded)
+            {
+                return Task.FromResult(ToolResult.Error($"创建检查点失败: {r.Stderr.Trim()}"));
+            }
+
+            Log.Info("Git", $"AI 创建检查点: {record.Id} (分支 {record.BranchName}, 标签 {record.TagName})");
             return Task.FromResult(new ToolResult
             {
-                Content = $"检查点已创建: {step.StepId} [{step.Label}]\n" +
-                          $"分支: {step.StepBranch} (基于 {step.BaseBranch})\n" +
-                          "后续可用 git_merge_step 合并 / git_drop_step 丢弃 / git_revert_step 反做; UI 卡片支持一键回滚。",
-                StepId = step.StepId
+                Content = $"检查点已创建: {record.Id} [{record.Label}]\n" +
+                          $"标签: {record.TagName}\n" +
+                          $"提交: {head[..Math.Min(8, head.Length)]} @ 分支 {record.BranchName}\n" +
+                          "可在 UI 的检查点卡片上一键回滚或派生分支。",
+                StepId = record.Id,
+                Detail = new CheckpointDetail
+                {
+                    CheckpointId = record.Id,
+                    Label = record.Label,
+                    ShortSha = head[..Math.Min(8, head.Length)],
+                    FullSha = head,
+                    BranchName = record.BranchName,
+                    WorkDir = record.WorkDir,
+                    Source = GitCheckpointSource.AiTool,
+                    CreatedAt = record.CreatedAt,
+                    SessionId = record.SessionId,
+                    ConversationCutoff = record.ConversationCutoff
+                }
             });
         }
         catch (Exception ex)
@@ -648,79 +856,99 @@ public class GitCheckpointTool : ITool
     }
 }
 
-public abstract class GitStepTool : ITool
+/// <summary>git_diff: 只读查看两个提交之间的差异(可选仅看统计)。</summary>
+public class GitDiffTool : ITool
 {
-    protected readonly GitStepService _git;
+    private const int MaxDiffChars = 26000;
 
-    protected GitStepTool(GitStepService git, string name, string description, bool requiresApproval)
-    {
-        _git = git;
-        Name = name;
-        Description = description;
-        RequiresApproval = requiresApproval;
-    }
+    private readonly GitService _git;
 
-    public string Name { get; }
+    public GitDiffTool(GitService git) => _git = git;
 
-    public string Description { get; }
+    public string Name => "git_diff";
 
-    public bool RequiresApproval { get; }
+    public string Description =>
+        "查看两个提交之间的差异。参数: from(必填, 起点 sha/ref)、to(可选, 终点 sha/ref, 默认 HEAD)、" +
+        "stat(可选, 只看统计)。只读, 不改动任何内容。";
 
     public JsonElement Parameters { get; } = ToolSchema.Json("""
-        { "type": "object", "properties": { "stepId": { "type": "string" } }, "required": ["stepId"] }
+        {
+          "type": "object",
+          "properties": {
+            "from": { "type": "string", "description": "起点 sha 或 ref" },
+            "to": { "type": "string", "description": "终点 sha 或 ref(默认 HEAD)" },
+            "stat": { "type": "boolean", "description": "是否只输出 --stat 统计(默认 false)" }
+          },
+          "required": ["from"]
+        }
         """);
 
-    protected abstract GitCommandResult ExecuteAction(string stepId);
+    public bool RequiresApproval => false;
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var stepId = args.TryGetProperty("stepId", out var s) && s.ValueKind == JsonValueKind.String
-            ? s.GetString() : null;
-        if (string.IsNullOrWhiteSpace(stepId))
-        {
-            return Task.FromResult(ToolResult.Error("缺少参数: stepId"));
-        }
-
         try
         {
-            var result = ExecuteAction(stepId);
-            return Task.FromResult(result.Succeeded
-                ? ToolResult.Ok(result.Stdout.Trim())
-                : ToolResult.Error($"git 命令失败: {result.Stderr.Trim()}"));
+            var gctx = _git.ResolveContext(ctx.WorkspaceRoot);
+            if (!gctx.IsValidRepo) return Task.FromResult(ToolResult.Error("当前目录不是 git 仓库。"));
+
+            var from = Get(args, "from");
+            if (string.IsNullOrWhiteSpace(from))
+            {
+                return Task.FromResult(ToolResult.Error("缺少参数: from"));
+            }
+
+            var to = Get(args, "to");
+            if (string.IsNullOrWhiteSpace(to))
+            {
+                to = "HEAD";
+            }
+
+            var statOnly = args.TryGetProperty("stat", out var s) && s.ValueKind == JsonValueKind.True;
+
+            var statResult = _git.GetDiffStat(gctx, from!, to!);
+            if (!statResult.Succeeded)
+            {
+                return Task.FromResult(ToolResult.Error($"git diff --stat 失败: {statResult.Stderr.Trim()}"));
+            }
+
+            if (statOnly)
+            {
+                var statText = statResult.Stdout.Trim();
+                return Task.FromResult(ToolResult.Ok(statText.Length > 0
+                    ? statText
+                    : $"{from}..{to} 之间没有差异。"));
+            }
+
+            var diffResult = _git.GetDiff(gctx, from!, to!);
+            if (!diffResult.Succeeded)
+            {
+                return Task.FromResult(ToolResult.Error($"git diff 失败: {diffResult.Stderr.Trim()}"));
+            }
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"范围: {from}..{to}");
+            var statLine = statResult.Stdout.Trim();
+            if (statLine.Length > 0) sb.AppendLine(statLine);
+            var patch = diffResult.Stdout.Trim();
+            sb.AppendLine(patch.Length > 0 ? patch : "(无内容差异)");
+
+            var text = sb.ToString();
+            if (text.Length > MaxDiffChars)
+            {
+                text = text[..MaxDiffChars] + "\n...(diff 过长已截断, 建议加 stat=true 只看统计)";
+            }
+
+            return Task.FromResult(ToolResult.Ok(text));
         }
         catch (Exception ex)
         {
             return Task.FromResult(ToolResult.Error(ex.Message));
         }
     }
-}
 
-public class GitMergeStepTool : GitStepTool
-{
-    public GitMergeStepTool(GitStepService git)
-        : base(git, "git_merge_step", "把已完成步骤分支合并进主分支(--no-ff, 保留历史)。需批准。", true)
-    {
-    }
-
-    protected override GitCommandResult ExecuteAction(string stepId) => _git.MergeStep(stepId);
-}
-
-public class GitDropStepTool : GitStepTool
-{
-    public GitDropStepTool(GitStepService git)
-        : base(git, "git_drop_step", "删除步骤分支并整体丢弃该步骤(工作区需干净)。需批准。", true)
-    {
-    }
-
-    protected override GitCommandResult ExecuteAction(string stepId) => _git.DropStep(stepId);
-}
-
-public class GitRevertStepTool : GitStepTool
-{
-    public GitRevertStepTool(GitStepService git)
-        : base(git, "git_revert_step", "对已合并步骤生成反向提交, 保留历史。需批准。", true)
-    {
-    }
-
-    protected override GitCommandResult ExecuteAction(string stepId) => _git.RevertStep(stepId);
+    private static string? Get(JsonElement args, string name)
+        => args.TryGetProperty(name, out var el) && el.ValueKind == JsonValueKind.String
+            ? el.GetString()
+            : null;
 }
