@@ -26,9 +26,11 @@ public partial class ModelItem : ObservableObject
     private readonly ProviderConfig _provider;
     private readonly Action _onChanged;
 
-    /// <summary>模型管理里可选的思考等级档位(不含"自动", 自动仅在聊天菜单)。</summary>
+    /// <summary>模型管理里可选的思考等级档位。必须包含 <see cref="ThinkingLevel.Auto"/>:
+    /// <c>ProviderConfig.GetMaxThinking</c> 在模型未配置 <c>model_max_thinking</c> 时返回 Auto,
+    /// 若列表里没有它, ComboBox 的 SelectedItem 找不到匹配项, 该行会显示空白。</summary>
     public static IReadOnlyList<ThinkingLevel> LevelOptions { get; } =
-        [ThinkingLevel.Low, ThinkingLevel.Medium, ThinkingLevel.High, ThinkingLevel.XHigh, ThinkingLevel.Max];
+        [ThinkingLevel.Auto, ThinkingLevel.Low, ThinkingLevel.Medium, ThinkingLevel.High, ThinkingLevel.XHigh, ThinkingLevel.Max];
 
     public ModelItem(LlmSettings settings, ProviderConfig provider, string id, Action onChanged)
     {
@@ -39,7 +41,9 @@ public partial class ModelItem : ObservableObject
         _isEnabled = provider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase);
         // 直接写 backing field, 避免构造时触发持久化
         _maxThinking = provider.GetMaxThinking(id);
-        _contextTokensText = provider.GetContextTokens(id)?.ToString() ?? string.Empty;
+        var contextTokens = provider.GetContextTokens(id);
+        _appliedContextTokens = contextTokens;
+        _contextTokensText = contextTokens?.ToString() ?? string.Empty;
     }
 
     public string Id { get; }
@@ -59,22 +63,56 @@ public partial class ModelItem : ObservableObject
     [ObservableProperty]
     private string _contextTokensText = string.Empty;
 
+    /// <summary>已落盘的上下文窗口值(null = 跟随模型档案); 非法输入时据此回滚输入框显示。</summary>
+    private long? _appliedContextTokens;
+
+    /// <summary>程序化回滚输入框时抑制二次落盘。</summary>
+    private bool _revertingContextTokens;
+
     partial void OnContextTokensTextChanged(string value)
     {
         var text = value.Trim();
         if (text.Length == 0)
         {
             _provider.ModelContextTokens.Remove(Id);
+            _appliedContextTokens = null;
+        }
+        else if (!long.TryParse(text, out var tokens) || tokens <= 0)
+        {
+            // 仅接受正整数。原先非法输入直接 return, 输入框会留下未落盘的文本 ——
+            // 界面显示与实际配置不一致, 用户无从得知改动被丢弃。
+            // 改为回滚到上一个合法值: 不必新增提示文案, 看到的仍是生效中的那份值。
+            RevertContextTokensText();
+            return;
         }
         else
         {
-            // 仅接受正整数, 非法输入不落盘
-            if (!long.TryParse(text, out var tokens) || tokens <= 0) return;
             _provider.ModelContextTokens[Id] = tokens;
+            _appliedContextTokens = tokens;
         }
+
+        if (_revertingContextTokens) return;
 
         ProviderSettingsService.Save(_settings);
         _onChanged();
+    }
+
+    /// <summary>把输入框回滚到上一个已落盘的合法值(空 = 跟随模型档案)。</summary>
+    private void RevertContextTokensText()
+    {
+        var last = _appliedContextTokens?.ToString() ?? string.Empty;
+        if (string.Equals(ContextTokensText, last, StringComparison.Ordinal)) return;
+
+        _revertingContextTokens = true;
+        try
+        {
+            // 双向绑定把新值推回 TextBox; 该赋值本身合法, 不会再次触发回滚
+            ContextTokensText = last;
+        }
+        finally
+        {
+            _revertingContextTokens = false;
+        }
     }
 
     [ObservableProperty]
@@ -173,6 +211,25 @@ public partial class SettingsPageViewModel : ViewModelBase
     [ObservableProperty]
     private Bitmap? _backgroundPreview;
 
+    // 预览位图由本类持有: 换绑时归还上一实例, 否则每次换背景/清除都泄漏一张整图(4K 几十 MB)。
+    // 独立于生成属性的后备字段, 便于在同一处做所有权交接与换绑解绑。
+    private Bitmap? _ownedPreview;
+
+    partial void OnBackgroundPreviewChanged(Bitmap? value)
+    {
+        // 同一实例被重复赋值: 不是替换, 不动所有权
+        if (ReferenceEquals(_ownedPreview, value)) return;
+
+        var old = _ownedPreview;
+        _ownedPreview = value;
+        // 先换绑(上面已置新值)再延后一帧释放, 避免当前合成帧仍引用旧位图
+        if (old is not null)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(
+                old.Dispose, Avalonia.Threading.DispatcherPriority.Background);
+        }
+    }
+
     [ObservableProperty]
     private bool _hasBackground;
 
@@ -220,11 +277,39 @@ public partial class SettingsPageViewModel : ViewModelBase
     // 模型管理
     public ObservableCollection<ModelItem> ModelItems { get; } = [];
 
+    /// <summary>从 API 拉取到的候选模型, 尚未加入该 Provider 的配置。
+    /// 拉取只填这里, 由用户挑选后再 <see cref="AddDetectedModelCommand"/>。</summary>
+    public ObservableCollection<string> DetectedModels { get; } = [];
+
+    /// <summary>候选列表中当前选中的模型。</summary>
+    [ObservableProperty]
+    private string? _selectedDetectedModel;
+
+    /// <summary>手动添加模型时输入的模型 id。</summary>
+    [ObservableProperty]
+    private string _newModelId = string.Empty;
+
     [ObservableProperty]
     private bool _isFetchingModels;
 
     [ObservableProperty]
     private string _modelFetchError = string.Empty;
+
+    /// <summary>候选模型是否可添加(已选且未被当前 Provider 配置过)。</summary>
+    public bool CanAddDetectedModel =>
+        SelectedProvider is not null
+        && !string.IsNullOrWhiteSpace(SelectedDetectedModel)
+        && !SelectedProvider.EnabledModels.Contains(SelectedDetectedModel, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>手动添加按钮是否可用。</summary>
+    public bool CanAddManualModel =>
+        SelectedProvider is not null && !string.IsNullOrWhiteSpace(NewModelId);
+
+    partial void OnSelectedDetectedModelChanged(string? value) =>
+        OnPropertyChanged(nameof(CanAddDetectedModel));
+
+    partial void OnNewModelIdChanged(string value) =>
+        OnPropertyChanged(nameof(CanAddManualModel));
 
     [ObservableProperty]
     private ModelItem? _selectedDefaultModelItem;
@@ -655,10 +740,15 @@ public partial class SettingsPageViewModel : ViewModelBase
     {
         ModelItems.Clear();
         ModelFetchError = string.Empty;
+        // 候选列表属于上一个 Provider, 换 Provider 必须清掉, 否则会出现"把 A 的模型加进 B"
+        DetectedModels.Clear();
+        SelectedDetectedModel = null;
+        OnPropertyChanged(nameof(CanAddDetectedModel));
 
         if (value is null)
         {
             SelectedDefaultModelItem = null;
+            OnPropertyChanged(nameof(CanAddManualModel));
             return;
         }
 
@@ -667,6 +757,7 @@ public partial class SettingsPageViewModel : ViewModelBase
             ModelItems.Add(new ModelItem(LlmSettings, value, id, OnModelConfigChanged));
         }
 
+        OnPropertyChanged(nameof(CanAddManualModel));
         SyncDefaultModelSelection();
     }
 
@@ -703,7 +794,7 @@ public partial class SettingsPageViewModel : ViewModelBase
 
         var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "选择背景图片",
+            Title = Strings.Settings_SelectBg,
             AllowMultiple = false,
             FileTypeFilter =
             [
@@ -853,20 +944,17 @@ public partial class SettingsPageViewModel : ViewModelBase
         ModelFetchError = string.Empty;
         try
         {
+            // 只拉取候选列表, 不直接改 EnabledModels —— 让用户逐个挑选要添加的模型。
+            // 原实现在这里直接把 API 返回的全部模型写进 EnabledModels, 用户既无法选择,
+            // 也会把与本项目无关的模型(嵌入/重排/过期型号)一并带进配置。
+            DetectedModels.Clear();
             var models = await ModelListService.FetchModelsAsync(SelectedProvider);
-            SelectedProvider.EnabledModels = models.ToList();
-
-            // 通过 API 拉取模型列表时, 对尚未配置过的模型自动探测其最大思考等级
-            foreach (var m in SelectedProvider.EnabledModels)
+            foreach (var m in models)
             {
-                if (!SelectedProvider.ModelMaxThinking.ContainsKey(m))
-                {
-                    SelectedProvider.ModelMaxThinking[m] =
-                        ThinkingLevels.ToConfigString(ThinkingLevels.DetectMaxLevel(m));
-                }
+                DetectedModels.Add(m);
             }
 
-            if (SelectedProvider.EnabledModels.Count == 0)
+            if (DetectedModels.Count == 0)
             {
                 ModelFetchError = "未获取到任何模型";
             }
@@ -912,21 +1000,87 @@ public partial class SettingsPageViewModel : ViewModelBase
         }
     }
 
-    /// <summary>自动为选中的 Provider 各模型探测并写入最大思考等级。</summary>
+    /// <summary>把选中的候选模型加入该 Provider 的已配置列表。</summary>
     [RelayCommand]
-    private void DetectThinkingLevels()
+    private void AddDetectedModel(string? modelId)
     {
-        if (SelectedProvider is null) return;
+        if (SelectedProvider is null || string.IsNullOrWhiteSpace(modelId)) return;
 
-        foreach (var m in SelectedProvider.EnabledModels)
+        var id = modelId.Trim();
+        if (SelectedProvider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase))
         {
-            SelectedProvider.ModelMaxThinking[m] =
-                ThinkingLevels.ToConfigString(ThinkingLevels.DetectMaxLevel(m));
+            return; // 已添加过, 不重复
+        }
+
+        SelectedProvider.EnabledModels.Add(id);
+        ProviderSettingsService.Save(LlmSettings);
+        AppShell.Instance.NotifyDataChanged();
+        OnSelectedProviderChanged(SelectedProvider);
+        SelectedDetectedModel = null;
+    }
+
+    /// <summary>把全部候选模型一次性加入(不想逐个挑时的快捷方式)。</summary>
+    [RelayCommand]
+    private void AddAllDetectedModels()
+    {
+        if (SelectedProvider is null || DetectedModels.Count == 0) return;
+
+        foreach (var id in DetectedModels.ToList())
+        {
+            if (!SelectedProvider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase))
+            {
+                SelectedProvider.EnabledModels.Add(id);
+            }
         }
 
         ProviderSettingsService.Save(LlmSettings);
         AppShell.Instance.NotifyDataChanged();
-        OnSelectedProviderChanged(SelectedProvider); // 重建 ModelItems, 读取新上限
+        OnSelectedProviderChanged(SelectedProvider);
+    }
+
+    /// <summary>手动添加一个模型(API 列表里没有的型号)。</summary>
+    [RelayCommand]
+    private void AddManualModel()
+    {
+        if (SelectedProvider is null || string.IsNullOrWhiteSpace(NewModelId)) return;
+
+        var id = NewModelId.Trim();
+        if (SelectedProvider.EnabledModels.Contains(id, StringComparer.OrdinalIgnoreCase))
+        {
+            ModelFetchError = $"模型已存在: {id}";
+            return;
+        }
+
+        SelectedProvider.EnabledModels.Add(id);
+        NewModelId = string.Empty;
+        ModelFetchError = string.Empty;
+        ProviderSettingsService.Save(LlmSettings);
+        AppShell.Instance.NotifyDataChanged();
+        OnSelectedProviderChanged(SelectedProvider);
+    }
+
+    /// <summary>从该 Provider 移除一个已配置模型(同时清掉它的上下文窗口/思考等级配置)。</summary>
+    [RelayCommand]
+    private void RemoveModel(ModelItem? item)
+    {
+        if (SelectedProvider is null || item is null) return;
+
+        SelectedProvider.EnabledModels.RemoveAll(
+            m => string.Equals(m, item.Id, StringComparison.OrdinalIgnoreCase));
+        // 连带清理该模型的专属配置, 否则 ModelMaxThinking/ModelContextTokens 会变成
+        // 永远读不到的死条目, 之后重新添加同名模型还会继承到已被用户遗忘的旧值
+        SelectedProvider.ModelMaxThinking.Remove(item.Id);
+        SelectedProvider.ModelContextTokens.Remove(item.Id);
+
+        // 默认模型指向被删模型时, 顺延到剩下的第一个
+        if (string.Equals(SelectedProvider.DefaultModel, item.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedProvider.DefaultModel = SelectedProvider.EnabledModels.FirstOrDefault() ?? string.Empty;
+        }
+
+        ProviderSettingsService.Save(LlmSettings);
+        AppShell.Instance.NotifyDataChanged();
+        OnSelectedProviderChanged(SelectedProvider);
     }
 
     // Agent 管理

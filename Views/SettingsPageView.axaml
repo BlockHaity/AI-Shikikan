@@ -16,6 +16,7 @@
         <local:NotEmptyToVisibilityConverter x:Key="NotEmptyToVisibilityConverter"/>
         <local:FetchingToTextConverter x:Key="FetchingToTextConverter"/>
         <local:IntEqualsConverter x:Key="IntEqualsConverter"/>
+        <local:ModelListVisibilityConverter x:Key="CountToVisibilityConverter"/>
         <local:ThinkingLevelToTextConverter x:Key="ThinkingLevelToTextConverter"/>
     </UserControl.Resources>
 
@@ -122,15 +123,37 @@
                                             Command="{Binding EnableAllModelsCommand}" />
                                     <Button Classes="Text" Content="{x:Static res:Strings.Settings_DisableAll}"
                                             Command="{Binding DisableAllModelsCommand}" />
-                                    <Button Classes="Text" Content="{x:Static res:Strings.Settings_DetectThinking}"
-                                            Command="{Binding DetectThinkingLevelsCommand}" />
                                 </StackPanel>
                             </Grid>
                             <TextBlock Classes="BodySmall" Text="{Binding ModelFetchError}"
                                        Foreground="{DynamicResource Error}"
                                        IsVisible="{Binding ModelFetchError, Converter={StaticResource NotEmptyToVisibilityConverter}}"
                                        TextWrapping="Wrap" />
-                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4">
+                            <!-- 从 API 检出的候选模型: 逐个挑选添加, 不自动写入配置 -->
+                            <Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding DetectedModels, Converter={StaticResource CountToVisibilityConverter}}">
+                                <ComboBox ItemsSource="{Binding DetectedModels}"
+                                          SelectedItem="{Binding SelectedDetectedModel}"
+                                          PlaceholderText="{x:Static res:Strings.Settings_DetectedModels}"
+                                          HorizontalAlignment="Stretch" Margin="0,4,8,0"/>
+                                <Button Grid.Column="1" Classes="FilledTonal" Margin="0,4,6,0"
+                                        Content="{x:Static res:Strings.Settings_AddDetected}"
+                                        Command="{Binding AddDetectedModelCommand}"
+                                        CommandParameter="{Binding SelectedDetectedModel}"
+                                        IsEnabled="{Binding CanAddDetectedModel}" />
+                                <Button Grid.Column="2" Classes="Text" Margin="0,4,0,0"
+                                        Content="{x:Static res:Strings.Settings_AddAllDetected}"
+                                        Command="{Binding AddAllDetectedModelsCommand}" />
+                            </Grid>
+                            <!-- 手动添加: API 列表里没有的型号 -->
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                <TextBox Text="{Binding NewModelId}" FontSize="12"
+                                         PlaceholderText="{x:Static res:Strings.Settings_ManualModelWatermark}" />
+                                <Button Grid.Column="1" Classes="Text" Margin="8,0,0,0"
+                                        Content="{x:Static res:Strings.Settings_AddManual}"
+                                        Command="{Binding AddManualModelCommand}"
+                                        IsEnabled="{Binding CanAddManualModel}" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,4">
                                 <TextBlock Classes="LabelSmall" Text="{x:Static res:Strings.Settings_ModelNameHeader}"
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
                                 <TextBlock Grid.Column="1" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_ContextWindow}"
@@ -138,12 +161,15 @@
                                            ToolTip.Tip="{x:Static res:Strings.Settings_ContextWindowTip}"
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
                                 <TextBlock Grid.Column="2" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_MaxThinking}"
+                                           Margin="0,0,8,0"
+                                           Foreground="{DynamicResource OnSurfaceVariant}"/>
+                                <TextBlock Grid.Column="3" Classes="LabelSmall" Text="{x:Static res:Strings.Settings_Remove}"
                                            Foreground="{DynamicResource OnSurfaceVariant}"/>
                             </Grid>
                             <ListBox ItemsSource="{Binding ModelItems}" MaxHeight="180">
                                 <ListBox.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                                             <CheckBox IsChecked="{Binding IsEnabled}" VerticalAlignment="Center" />
                                             <TextBlock Grid.Column="1" Text="{Binding Id}" Classes="BodyMedium"
                                                        VerticalAlignment="Center" Margin="8,0,8,0"/>
@@ -153,13 +179,18 @@
                                                      Text="{Binding ContextTokensText}"
                                                      ToolTip.Tip="{x:Static res:Strings.Settings_ContextWindowTip}"/>
                                             <ComboBox Grid.Column="3" ItemsSource="{x:Static vm:ModelItem.LevelOptions}"
-                                                      SelectedItem="{Binding MaxThinking}" MinWidth="84">
+                                                      SelectedItem="{Binding MaxThinking}" MinWidth="84" Margin="0,0,8,0">
                                                 <ComboBox.ItemTemplate>
                                                     <DataTemplate x:DataType="llm:ThinkingLevel">
                                                         <TextBlock Text="{Binding, Converter={StaticResource ThinkingLevelToTextConverter}}"/>
                                                     </DataTemplate>
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
+                                            <Button Grid.Column="4" Classes="Text" Padding="6,2"
+                                                    Content="{x:Static res:Strings.Settings_Remove}"
+                                                    VerticalAlignment="Center"
+                                                    Command="{Binding $parent[UserControl].((vm:SettingsPageViewModel)DataContext).RemoveModelCommand}"
+                                                    CommandParameter="{Binding}" />
                                         </Grid>
                                     </DataTemplate>
                                 </ListBox.ItemTemplate>
@@ -183,7 +214,7 @@
                         <StackPanel Spacing="8">
                             <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderName}"
                                      Text="{Binding NewProviderName}" />
-                            <TextBox PlaceholderText="https://api.example.com/v1"
+                            <TextBox PlaceholderText="{x:Static res:Strings.Settings_ProviderBaseUrl}"
                                      Text="{Binding NewProviderBaseUrl}" />
                             <TextBox
                                      Text="{Binding NewProviderApiKey}"
