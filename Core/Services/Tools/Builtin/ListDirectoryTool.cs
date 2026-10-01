@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Models;
 
 namespace AIShikikan.Core.Services.Tools.Builtin;
@@ -37,7 +38,9 @@ public class ListDirectoryTool : ITool
         string full;
         try
         {
-            full = ToolPathSanitizer.Resolve(ctx.WorkspaceRoot, string.IsNullOrWhiteSpace(path) ? "." : path);
+            // followLinks: path 是显式参数(LLM 完全控制), 解析符号链接后再判边界
+            full = ToolPathSanitizer.Resolve(ctx.WorkspaceRoot, string.IsNullOrWhiteSpace(path) ? "." : path,
+                followLinks: !string.IsNullOrWhiteSpace(path));
         }
         catch (UnauthorizedAccessException ex)
         {
@@ -78,42 +81,64 @@ public class ListDirectoryTool : ITool
     {
         if (count >= MaxEntries) return;
 
-        foreach (var sub in Directory.GetDirectories(dir))
+        // GetDirectories/GetFiles 遇到无权限目录会抛, 旧实现没兜 → 整次 list_directory 变成
+        // "工具执行异常" 且已列出的条目全丢。只吞 IO 类异常, 取消异常必须照常上抛。
+        try
         {
-            ct.ThrowIfCancellationRequested();
-            var name = Path.GetFileName(sub);
-            if (SkipDirs.Contains(name)) continue;
+            foreach (var sub in Directory.GetDirectories(dir))
+            {
+                ct.ThrowIfCancellationRequested();
+                var name = Path.GetFileName(sub);
+                if (SkipDirs.Contains(name)) continue;
 
-            var subInfo = new DirectoryInfo(sub);
-            sb.AppendLine($"{new string(' ', depth * 2)}[{name}/]");
-            entries.Add(new DirectoryEntry
+                // 目录软链/联接点: 防 `a -> ..` 递归死循环, 也避免顺着软链读到工作区外
+                if (ToolPathSanitizer.IsReparsePoint(sub)) continue;
+
+                if (count >= MaxEntries) return;
+
+                var subInfo = new DirectoryInfo(sub);
+                sb.AppendLine($"{new string(' ', depth * 2)}[{name}/]");
+                entries.Add(new DirectoryEntry
+                {
+                    Name = name,
+                    IsDirectory = true,
+                    ModifiedAt = subInfo.LastWriteTime,
+                    Depth = depth
+                });
+                count++;
+                if (recursive && depth < MaxDepth)
+                {
+                    Walk(sub, depth + 1, true, sb, ref count, entries, ct);
+                }
+            }
+
+            foreach (var file in Directory.GetFiles(dir))
             {
-                Name = name,
-                IsDirectory = true,
-                ModifiedAt = subInfo.LastWriteTime,
-                Depth = depth
-            });
-            count++;
-            if (recursive && depth < MaxDepth)
-            {
-                Walk(sub, depth + 1, true, sb, ref count, entries, ct);
+                ct.ThrowIfCancellationRequested();
+
+                // 单个目录内的文件同样可能超限: 入口那一处检查只管住了递归层
+                if (count >= MaxEntries) return;
+
+                var info = new FileInfo(file);
+                sb.AppendLine($"{new string(' ', depth * 2)}{info.Name} ({info.Length / 1024}KB)");
+                entries.Add(new DirectoryEntry
+                {
+                    Name = info.Name,
+                    IsDirectory = false,
+                    SizeBytes = info.Length,
+                    ModifiedAt = info.LastWriteTime,
+                    Depth = depth
+                });
+                count++;
             }
         }
-
-        foreach (var file in Directory.GetFiles(dir))
+        catch (OperationCanceledException)
         {
-            ct.ThrowIfCancellationRequested();
-            var info = new FileInfo(file);
-            sb.AppendLine($"{new string(' ', depth * 2)}{info.Name} ({info.Length / 1024}KB)");
-            entries.Add(new DirectoryEntry
-            {
-                Name = info.Name,
-                IsDirectory = false,
-                SizeBytes = info.Length,
-                ModifiedAt = info.LastWriteTime,
-                Depth = depth
-            });
-            count++;
+            throw; // 铁律: 回合被中断必须上抛
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Log.Debug("Tool", $"list_directory 跳过不可读目录: {dir}");
         }
     }
 }

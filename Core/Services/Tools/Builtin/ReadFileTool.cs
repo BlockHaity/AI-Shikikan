@@ -30,20 +30,31 @@ public class ReadFileTool : ITool
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
-        var path = args.TryGetProperty("path", out var p) ? p.GetString() : null;
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            return Task.FromResult(ToolResult.Error("缺少参数: path"));
-        }
-
-        var fullPath = ToolPathSanitizer.Resolve(ctx.WorkspaceRoot, path);
-        if (!File.Exists(fullPath))
-        {
-            return Task.FromResult(ToolResult.Error($"文件不存在: {path}"));
-        }
-
+        // 参数解析与路径解析都放进 try: 两者都会抛(LLM 传错类型 → GetString() 抛 InvalidOperationException;
+        // 路径越界 → Resolve 抛 UnauthorizedAccessException)。抛到工具外会被 AgentEngine 的 catch(Exception)
+        // 兜成"工具执行异常: ...", LLM 拿不到"该改哪个参数"的提示, 只会反复用同样的错误参数重试。
         try
         {
+            ct.ThrowIfCancellationRequested();
+
+            // 必须判 ValueKind: LLM 可能传 "path": 123 / null / [] , 未判时 GetString() 直接抛异常
+            if (!args.TryGetProperty("path", out var p)
+                || p.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(p.GetString()))
+            {
+                return Task.FromResult(
+                    ToolResult.Error("参数 path 必须是非空字符串(如 \"src/Program.cs\"), 请重新给出工作区内的文件路径。"));
+            }
+
+            var path = p.GetString()!;
+
+            // followLinks: path 由 LLM 完全指定, 是符号链接逃逸的入口, 解析链接后再判边界
+            var fullPath = ToolPathSanitizer.Resolve(ctx.WorkspaceRoot, path, followLinks: true);
+            if (!File.Exists(fullPath))
+            {
+                return Task.FromResult(ToolResult.Error($"文件不存在: {path}"));
+            }
+
             var info = new FileInfo(fullPath);
             if (info.Length > MaxBytes)
             {
@@ -82,6 +93,10 @@ public class ReadFileTool : ITool
             };
             return Task.FromResult(new ToolResult { Content = sb.ToString(), Detail = detail });
         }
+        catch (OperationCanceledException)
+        {
+            throw; // 铁律: 回合被中断必须上抛, 否则停止按钮只停住外层循环
+        }
         catch (UnauthorizedAccessException ex)
         {
             return Task.FromResult(ToolResult.Error(ex.Message));
@@ -89,6 +104,11 @@ public class ReadFileTool : ITool
         catch (IOException ex)
         {
             return Task.FromResult(ToolResult.Error($"读取失败: {ex.Message}"));
+        }
+        catch (FormatException ex)
+        {
+            // GetInt32() 在 offset/limit 超出 int 范围(如 1e20)时抛 FormatException
+            return Task.FromResult(ToolResult.Error($"参数 offset/limit 必须是 32 位整数: {ex.Message}"));
         }
     }
 }

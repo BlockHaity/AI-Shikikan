@@ -40,7 +40,27 @@ public class AskUserTool : ITool
             return ToolResult.Error("当前环境不支持向用户提问。");
         }
 
-        var answer = await ctx.AskUser(question, ct);
+        // ToolContext.AskUser 的返回约定(实现在 AgentEngine, 本文件不拥有它):
+        // - 返回 string: 用户给出的原始回答文本;
+        // - 返回 null / 空串: 用户未作答(跳过), 工具以"未作答"文案正常结束, 不是错误;
+        // - 抛 OperationCanceledException: 回合被用户中断, 必须原样上抛(不要转成"未作答");
+        // - 抛 TimeoutException: 实现侧有 ApprovalTimeout(5 分钟)兜底, 无人应答时超时。
+        //   不接住的话会被引擎的 catch(Exception) 兜成"工具执行异常: ...", LLM 拿不到"跳过"语义,
+        //   反而可能反复重问 —— 这里按"未作答"处理。
+        string? answer;
+        try
+        {
+            answer = await ctx.AskUser(question, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (TimeoutException)
+        {
+            answer = null;
+        }
+
         if (string.IsNullOrWhiteSpace(answer))
         {
             return new ToolResult { Content = "用户未作答(已跳过)。请基于现有信息继续, 或说明缺失的假设。" };

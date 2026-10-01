@@ -30,6 +30,20 @@ public static class RosterBuilder
         {git}
         """;
 
+    /// <summary>
+    /// 构建 Roster 注入文本。
+    ///
+    /// <para><paramref name="rosterEntries"/> 的语义(P0-2 修复后显式化, 判据只看 null 与否):
+    /// <list type="bullet">
+    /// <item><c>null</c> = 无会话 Roster 下发(会话从未被 GUI 推送过)→ 按全局配置列出全部
+    /// <c>run_&lt;id&gt;</c>;</item>
+    /// <item>非 null(含<em>空表</em>) = 以该表为准, 空表即"用户已清空全部子代理"→ agents 段落为空。</item>
+    /// </list>
+    /// 历史上用 <c>Count: &gt; 0</c> 同时表达"无限制"与"用户清空", 于是
+    /// <c>SetSubagentToolsVisible(false)</c> 传入空表后反落到"列出全部 Agent"分支:
+    /// 子代理工具已从 <c>ToolRegistry</c> 注销, system prompt 却仍向 AI 广告 run_&lt;id&gt;,
+    /// AI 会持续尝试调用不存在的工具。</para>
+    /// </summary>
     public static string Build(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
         string rules, GitService? git = null, string? workDir = null,
@@ -44,9 +58,17 @@ public static class RosterBuilder
 
         var template = LoadTemplate() ?? DefaultTemplate;
 
-        var agentsText = rosterEntries is { Count: > 0 }
-            ? BuildAgentsSectionFromRoster(rosterEntries, agents, personas, planMode)
-            : BuildAgentsSection(agents);
+        var agentsText = rosterEntries is null
+            ? BuildAgentsSection(agents)
+            : BuildAgentsSectionFromRoster(rosterEntries, agents, personas, planMode);
+
+        // 显式占位: 空 agents 段落会让提示词只剩一个空标题, 且 AI 无从判断"是没配"还是"被禁用",
+        // 仍可能去猜 run_<id> 名字。直接告知"没有可用子代理工具"以压住幻觉调用。
+        if (rosterEntries is not null && agentsText.Length == 0)
+        {
+            agentsText = "(无: 当前会话没有可用的子代理工具, 不要尝试调用 run_*/assign_task/run_subagents)";
+        }
+
         var personasText = personas.Count == 0
             ? "(无)"
             : string.Join("\n", personas.Select(p =>
@@ -98,7 +120,13 @@ public static class RosterBuilder
             {
                 parts.Add(entry.Description);
             }
-            if (agent.Description.Length > 0) parts.Add(agent.Description);
+            // 会话级描述默认就等于 agent.Description(GUI 的 PushRoster 会带上), 无条件再追加一次
+            // 会让同一句话在提示词里出现两遍, 白占上下文。加条件去重。
+            if (agent.Description.Length > 0 &&
+                !string.Equals(agent.Description, entry.Description, StringComparison.Ordinal))
+            {
+                parts.Add(agent.Description);
+            }
             if (entry.PersonaId is { Length: > 0 } && personaMap.TryGetValue(entry.PersonaId, out var persona))
             {
                 parts.Add($"推荐专家: {persona.Display}");
@@ -108,7 +136,9 @@ public static class RosterBuilder
             {
                 parts.Add("Plan 模式可用");
             }
-            parts.Add($"模式: {agent.DefaultMode}");
+            // 不输出"模式: {default_mode}": AssignmentManager 只有 RunSyncAsync,
+            // default_mode 的 async 分支没有任何实现, 写进提示词等于给 AI 一个选不了的选项
+            // (P1-6)。配置项本身保留在 agents.toml, 由后续版本决定是实现还是移除。
 
             sb.AppendLine($"- run_{agent.Id}: {string.Join(" | ", parts)}");
         }
@@ -131,7 +161,7 @@ public static class RosterBuilder
             if (agent.Description.Length > 0) parts.Add(agent.Description);
             if (agent.RecommendedPersonaId is { Length: > 0 }) parts.Add($"推荐专家: {agent.RecommendedPersonaId}");
             if (agent.DefaultTemplateId is { Length: > 0 }) parts.Add($"推荐模板: {agent.DefaultTemplateId}");
-            parts.Add($"模式: {agent.DefaultMode}");
+            // 同 BuildAgentsSectionFromRoster: 省略"模式: {default_mode}"(P1-6, async 无实现)
 
             sb.AppendLine($"- run_{agent.Id}: {string.Join(" | ", parts)}");
         }
@@ -170,12 +200,69 @@ public static class RosterBuilder
         return $"分支: {branch} | {dirty}" + (shortSha.Length > 0 ? $" | 最近提交: {shortSha}" : "");
     }
 
-    /// <summary>读取用户自定义的 roster 模板; 缺失或损坏(可回退 .bak)时返回 null。</summary>
+    /// <summary>
+    /// roster.prompt 的进程内缓存。Build 每回合调用, 原实现每回合一次读盘
+    /// (且 TryReadText 在主文件解析失败时还会额外读 .bak)。roster.prompt 是用户可编辑文件,
+    /// 故以 (mtime, 长度) 作失效判据: 任一变化即重新读盘, 无需调用方显式失效。
+    ///
+    /// <para>失效需外部干预的时机: 目前只有"还原默认设置"会删写 roster.prompt
+    /// (CommanderRuntime.ResetSettingsToDefault → WriteDefaultTemplate), 已在写完后自行 ReloadTemplate。
+    /// 若将来设置页新增"编辑 roster.prompt"的保存入口, 保存成功后必须调用 <see cref="ReloadTemplate"/>。</para>
+    /// </summary>
+    private static readonly object TemplateCacheLock = new();
+    private static string? _cachedTemplate;
+    private static long _cachedWriteTicks = -1;
+    private static long _cachedLength = -1;
+
+    /// <summary>失效 roster.prompt 内存缓存(文件写入方在写完后调用; 下次 Build 时重新读盘)。</summary>
+    public static void ReloadTemplate()
+    {
+        lock (TemplateCacheLock)
+        {
+            _cachedTemplate = null;
+            _cachedWriteTicks = -1;
+            _cachedLength = -1;
+        }
+    }
+
+    /// <summary>读取用户自定义的 roster 模板(带 mtime 缓存); 缺失或损坏(可回退 .bak)时返回 null。</summary>
     private static string? LoadTemplate()
     {
-        return AtomicFile.TryReadText(AppPaths.RosterTemplatePath, out var text)
-            ? text
-            : null;
+        var path = AppPaths.RosterTemplatePath;
+        lock (TemplateCacheLock)
+        {
+            long writeTicks;
+            long length;
+            try
+            {
+                var info = new FileInfo(path);
+                if (!info.Exists)
+                {
+                    _cachedTemplate = null;
+                    _cachedWriteTicks = -1;
+                    _cachedLength = -1;
+                    return null;
+                }
+                writeTicks = info.LastWriteTimeUtc.Ticks;
+                length = info.Length;
+            }
+            catch
+            {
+                // 探测失败(如路径不可访问): 退化为继续用上次缓存, 避免每回合都读盘失败
+                return _cachedTemplate;
+            }
+
+            if (_cachedWriteTicks == writeTicks && _cachedLength == length)
+            {
+                return _cachedTemplate;
+            }
+
+            var text = AtomicFile.TryReadText(path, out var content) ? content : null;
+            _cachedTemplate = text;
+            _cachedWriteTicks = writeTicks;
+            _cachedLength = length;
+            return text;
+        }
     }
 
     /// <summary>首次启动时写入默认 roster 模板(原子写, 不覆盖用户已自定义的模板)。</summary>
@@ -186,5 +273,9 @@ public static class RosterBuilder
             // AtomicFile 会自动创建父目录, 并把上一份内容留作 .bak
             AtomicFile.TryWriteAllText(AppPaths.RosterTemplatePath, DefaultTemplate, "roster.prompt");
         }
+
+        // 本方法是 roster.prompt 唯一的写入口: 无论写没写都要失效缓存,
+        // 否则"还原默认设置"后本回合仍注入旧模板内容
+        ReloadTemplate();
     }
 }

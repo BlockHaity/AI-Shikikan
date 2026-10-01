@@ -39,6 +39,17 @@ public static class AgentConfigService
         }
     }
 
+    /// <summary>读取用户 Agent 配置文件**原样**。
+    ///
+    /// <para>与 <see cref="LoadAll"/> 的区别(这是有意为之, 不要顺手"统一"成同一套缓存):
+    /// <list type="bullet">
+    /// <item><see cref="LoadAll"/> 返回不可变的 Agent 列表快照, 可以缓存, 且只缓存 Agents 段。</item>
+    /// <item>本方法返回**可变的完整配置对象**(含 <see cref="AgentConfigFile.Rules"/>),
+    /// 并被 SaveUserAgent / RemoveUserAgent / SaveRules 当作"读-改-写"的基线使用。
+    /// 一旦缓存, 这些保存路径就会把快照写回文件, 外部改动(用户手改 agents.toml)会被静默吞掉。</item>
+    /// <item>AgentEngine 每回合也只为读 Rules 调用一次本方法——因此这里选择"多读一次盘"
+    /// 换取保存路径的正确性。</item>
+    /// </list></para></summary>
     public static AgentConfigFile LoadUserFile()
     {
         if (File.Exists(AppPaths.AgentsPath))
@@ -92,6 +103,9 @@ public static class AgentConfigService
         }
     }
 
+    /// <summary>按 id 查 Agent 定义(agents 为空时用 LoadAll 的缓存)。
+    /// 有意同时匹配 Id 与 Name: LLM 在 Roster 里看到的往往是 Name("Claude Code")而不是 id("claude"),
+    /// 两者都可直接作为 agentId 传入, 大小写不敏感。调用方应尽量自行传入 agents 快照避免重复查表。</summary>
     public static CliAgentDefinition? Find(string? id, IReadOnlyList<CliAgentDefinition>? agents = null)
     {
         var list = agents ?? LoadAll();
@@ -131,7 +145,15 @@ public static class AgentConfigService
         SaveFile(file);
     }
 
-    public static void Refresh() => _cache = null;
+    /// <summary>丢弃 <see cref="_cache"/>, 下次 <see cref="LoadAll"/> 重新读盘。
+    /// 加锁与 LoadAll/SaveFile 的 Sync 纪律保持一致(单引用下已安全, 此处只求行为统一)。</summary>
+    public static void Refresh()
+    {
+        lock (Sync)
+        {
+            _cache = null;
+        }
+    }
 
     /// <summary>尝试解析 agents.toml 内容; 解析异常视为不可用(触发 .bak 回退)。</summary>
     private static bool TryParse(string content, out AgentConfigFile? file)
@@ -153,6 +175,10 @@ public static class AgentConfigService
         Directory.CreateDirectory(AppPaths.ConfigDir);
         // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 agents.toml
         AtomicFile.TryWriteAllText(AppPaths.AgentsPath, TomlBridge.Serialize(file), "agents.toml");
-        _cache = null;
+        // 失效合并缓存: 写盘是唯一的真相来源, 之后必须重新读而不是继续用旧快照
+        lock (Sync)
+        {
+            _cache = null;
+        }
     }
 }
