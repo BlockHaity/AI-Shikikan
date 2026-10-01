@@ -59,18 +59,30 @@ public sealed class EngineEventHub
         }
     }
 
-    /// <summary>投递判定(静态纯函数, 便于自检): true 表示应送达界面订阅者。</summary>
+    /// <summary>
+    /// 投递判定(静态纯函数, 便于自检): true 表示应送达界面订阅者。
+    /// 四条规则的顺序有意义, <b>改规则前先确认下面每一条的理由都还成立</b>:
+    /// <list type="number">
+    /// <item>Scope 为 null → 全投。历史兼容口径: 早期事件不带归属, 无法判断该给谁, 只能全给。</item>
+    /// <item>审批 / 反问 / 分派状态 → 强制全投。这些是<b>引擎在同步等待</b>的事件,
+    /// 过滤掉会让引擎挂到 5 分钟超时; 分派状态则是全局面板数据, 与当前会话无关。</item>
+    /// <item>活动会话为空 → 一律不投。没有界面在展示任何东西, 投过去只会被 GUI 队列丢弃。</item>
+    /// <item>其余按 SessionId 与活动会话<b>忽略大小写</b>比对(会话 ID 的来源不止一处)。</item>
+    /// </list>
+    /// <para>规则 2 与 SessionRuntimeRegistry.OnSessionRawEvent 的用量落盘构成互斥,
+    /// 那条不变式的说明见该方法注释。</para>
+    /// </summary>
     public static bool ShouldDeliver(AgentEngineEvent e, string? activeSessionId)
     {
-        if (e.Scope is null) return true; // 未标注归属(兼容/全局事件)
+        if (e.Scope is null) return true; // 规则 1: 未标注归属(兼容/全局事件)
 
-        // 审批与 AI 反问必须送达(否则工具永久等待); 分派状态是全局面板数据
+        // 规则 2: 审批与 AI 反问必须送达(否则工具永久等待); 分派状态是全局面板数据
         if (e is EngineApprovalRequested or EngineQuestionRequested or EngineAssignmentChanged)
         {
             return true;
         }
 
-        if (string.IsNullOrEmpty(activeSessionId)) return false;
-        return string.Equals(e.SessionId, activeSessionId, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrEmpty(activeSessionId)) return false; // 规则 3: 无活动会话
+        return string.Equals(e.SessionId, activeSessionId, StringComparison.OrdinalIgnoreCase); // 规则 4
     }
 }

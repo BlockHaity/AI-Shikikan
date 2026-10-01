@@ -125,8 +125,11 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
         bool stateChanged;
         lock (_lock)
         {
-            // 身份校验: 若活动条目已被后续回合接管(旧回合的 finally 晚于新回合的 finally 执行),
-            // 不能再把 _activeActivity / IsRunning / ActiveTurnId 清空, 否则会抹掉新回合的运行状态
+            // 身份校验(务必保留): 旧回合的 finally 完全可能晚于新回合的 TryBeginTurn 执行
+            // (回合被外部取消后引擎仍要走完清理, 而新回合已在队列里取到执行权)。
+            // 若不比对条目身份, 旧回合的收尾会把新回合刚写好的 _activeActivity / IsRunning /
+            // ActiveTurnId 清空 —— UI 立刻显示"空闲"而引擎其实在跑, 停止按钮随之失效。
+            // 协调器侧 End(activity) 同样只移除"这一条", 语义一致: 只有真正的持有者能释放自己的执行权。
             stateChanged = activity is null || ReferenceEquals(_activeActivity, activity);
             if (stateChanged)
             {
@@ -139,8 +142,26 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
         if (stateChanged) StateChanged?.Invoke(this);
     }
 
-    /// <summary>停止该会话进行中/后续回合(每会话独立取消)。</summary>
+    /// <summary>
+    /// <b>停止整个会话</b>(终态取消): 取消引擎的会话级 CTS, 进行中的回合立即中止,
+    /// <b>且该引擎此后无法再执行任何回合</b>(_sessionCts 只建一次、取消后不重置,
+    /// 回合入口 ThrowIfCancellationRequested 直接抛)。恢复的唯一途径是
+    /// <see cref="SessionRuntimeRegistry.RemoveSession"/> 后重新创建运行时。
+    ///
+    /// <para>⚠ 这是<b>终态</b>语义, 只在"会话被终止/移除"时使用。要"只停当前回合、
+    /// 之后还能继续聊"请用 <see cref="StopCurrentTurn"/>。两者语义不同, 不要混用。</para>
+    ///
+    /// <para>⚠ GUI 聊天页的「停止」按钮<b>不应</b>接到这里: 它走 ChatPageViewModel 自己的
+    /// 每会话 _turnCts, 语义是"停本回合"。若将来要统一, 应接 <see cref="StopCurrentTurn"/>。</para>
+    /// </summary>
     public void Stop() => Engine.CancelSession();
+
+    /// <summary>
+    /// <b>只停止当前进行中的回合</b>(非终态): 取消引擎的 per-turn CTS,
+    /// 排队中的下一回合与后续新回合仍可正常执行。
+    /// 这是"停止生成"按钮应当使用的语义, 与 <see cref="Stop"/> 严格区分。
+    /// </summary>
+    public void StopCurrentTurn() => Engine.CancelTurn();
 
     /// <summary>
     /// 排入一个回合并等待其完成。同一会话的多个回合在此串行执行,
@@ -275,11 +296,20 @@ public sealed class SessionRuntimeRegistry : IDisposable
     /// <summary>活动会话引擎(兼容访问: GUI 现有调用点全部指向它)。</summary>
     public AgentEngine ActiveEngine => (Active ?? Fallback).Engine;
 
-    /// <summary>全部会话运行时快照。</summary>
-    public IReadOnlyList<SessionRuntime> All
+    /// <summary>
+    /// 全部会话运行时快照(<b>新代码请用这个名字</b>, 例如 Plan 模式需要同步到所有会话时遍历它)。
+    /// 返回的是 <c>_sessions.Values</c> 的只读拷贝, 遍历期间即使有会话被创建/移除也不会失效。
+    /// <para>注意: 只含"已按需创建"的运行时; GUI 侧的历史会话列表里那些从未打开过的会话不在其中,
+    /// 需要完整集合请走 ChatService.LoadAllSessions / SessionMetadata。</para>
+    /// </summary>
+    public IReadOnlyList<SessionRuntime> AllSessions
     {
         get { lock (_lock) return _sessions.Values.ToList(); }
     }
+
+    /// <summary>全部会话运行时快照。<see cref="AllSessions"/> 的旧别名(CommanderRuntime 等既有调用点),
+    /// 语义完全一致, 仅为不破坏现有调用而保留。</summary>
+    public IReadOnlyList<SessionRuntime> All => AllSessions;
 
     /// <summary>活动会话变化通知。</summary>
     public event Action<SessionRuntime?>? ActiveSessionChanged;
@@ -356,11 +386,25 @@ public sealed class SessionRuntimeRegistry : IDisposable
         return rt;
     }
 
-    /// <summary>后台会话用量落盘: 活动会话的用量交给 GUI 记录, 其余会话在此直接记录(每会话独立用量)。</summary>
+    /// <summary>
+    /// 后台会话用量落盘: 活动会话的用量交给 GUI 记录, 其余会话在此直接记录(每会话独立用量)。
+    ///
+    /// <para><b>不变式(全项目最易被破坏的一条, 改动前务必读完)</b>: 用量落盘由两处互斥负责 ——
+    /// ① 事件属于<b>活动会话</b>时, EngineEventHub 判定投递, 由 GUI(ChatPageViewModel)记录;
+    /// ② 事件属于<b>非活动会话</b>时, Hub 过滤掉不投 GUI, 由本方法落盘。
+    /// 于是任何一条 EngineUsageRecorded 只会有一条落盘路径, 不会重复计费。</para>
+    ///
+    /// <para>该不变式成立的前提是 <see cref="EngineEventHub.ShouldDeliver"/> 里
+    /// "非活动会话事件一律不投递"这条规则。<b>ActiveSessionId 为 null 时 Hub 一律不投</b>,
+    /// 此刻本方法也不会落盘(等值比较不成立) —— 这是刻意的: 没有任何界面在展示用量,
+    /// 不该写入用户看不到的统计。代价是这段窗口内的用量确实会丢, 属于已接受的取舍。
+    /// 若将来要修, 应改成"无活动会话时全部走本方法", 而不是改 Hub 的投递规则。</para>
+    /// </summary>
     private void OnSessionRawEvent(SessionRuntime rt, AgentEngineEvent e)
     {
         if (e is not EngineUsageRecorded usage) return;
 
+        // 与 Hub 的过滤规则严格互补: 这里只处理"Hub 不会投"的那部分(见上方不变式)
         var active = _activeSessionId;
         if (string.Equals(e.SessionId, active, StringComparison.OrdinalIgnoreCase)) return;
 
@@ -369,14 +413,40 @@ public sealed class SessionRuntimeRegistry : IDisposable
             usage.Usage.InputTokens, usage.Usage.OutputTokens, usage.Usage.CachedInputTokens);
     }
 
-    /// <summary>读取会话标题(源生成序列化, Native AOT 安全)。</summary>
+    /// <summary>
+    /// 读取会话标题(源生成序列化, Native AOT 安全)。
+    /// 走 AtomicFile.TryReadText: 主文件损坏时自动回退 .bak(技术债 #17)。
+    /// 裸读一旦遇到半截 JSON 就只会退化出空标题, 而空标题又会被下一次写回覆盖 —— 损坏被放大。
+    /// </summary>
     private static string ReadTitle(string sessionId)
     {
         try
         {
             var path = Path.Combine(AppPaths.SessionsDir, $"{sessionId}.json");
             if (!File.Exists(path)) return string.Empty;
-            var session = JsonSerializer.Deserialize(File.ReadAllText(path), AppJsonContext.Default.ChatSession);
+
+            // validate 用"能反序列化出 ChatSession"作可用性判据, 失败即触发 .bak 回退。
+            // 这里只求标题, 不需要 messages, 因此不额外做 IsLoaded 之类的完整性判断。
+            var ok = AtomicFile.TryReadText(path, out var json, content =>
+            {
+                try
+                {
+                    return JsonSerializer.Deserialize(
+                        content, AppJsonContext.Default.ChatSession) is not null;
+                }
+                catch
+                {
+                    return false;
+                }
+            });
+
+            if (!ok)
+            {
+                Log.Warn("Session", $"会话文件不可读(主文件与备份均失败): {sessionId}");
+                return string.Empty;
+            }
+
+            var session = JsonSerializer.Deserialize(json, AppJsonContext.Default.ChatSession);
             return session?.Title ?? string.Empty;
         }
         catch (Exception ex)

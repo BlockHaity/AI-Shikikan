@@ -1,11 +1,18 @@
 namespace AIShikikan.Core.Services.Git;
 
 /// <summary>Git 服务错误码。</summary>
+/// <remarks>
+/// 该枚举注册在 <c>AppJsonContext</c>(AOT 源生成上下文, A12 维护)里, 因此它的<b>数值编号属于
+/// JSON 契约的一部分</b>。即使某个值当前无使用点(见 <see cref="EmptyRepo"/>), 也<b>不要删除或重排</b> ——
+/// 重排会静默改变已序列化内容的含义。若将来真要移除, 应先把该值标记为弃用并保留一个显式编号。
+/// </remarks>
 public enum GitServiceError
 {
     None,
     NotARepository,
     DetachedHead,
+    /// <summary>预留, 当前无使用点: 空仓库(unborn HEAD)目前只由 <c>GitService.IsEmptyRepository</c>
+    /// 以布尔值表达, 没有对应的失败路径返回这个码。保留是为了不打乱后续枚举值的编号。</summary>
     EmptyRepo,
     DirtyWorkTree,
     NotAncestor,

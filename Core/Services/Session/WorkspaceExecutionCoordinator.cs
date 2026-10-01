@@ -70,7 +70,13 @@ public sealed class WorkspaceExecutionCoordinator
 
     private readonly List<WorkspaceActivity> _activities = [];
     private readonly List<WorkspaceReservation> _reservations = [];
-    private readonly Dictionary<string, SemaphoreSlim> _gitWriteGates = new(RootComparer);
+
+    /// <summary>
+    /// 按 worktree 的 git 写串行门。条目在**没有任何持有者/等待者**时被淘汰(见 ReleaseGateRef),
+    /// 否则长跑进程里每个访问过的 worktree 都会永久留下一条字典项 —— 内存上是小事,
+    /// 语义上不干净(已关掉的 worktree 永远"存在")。
+    /// </summary>
+    private readonly Dictionary<string, GitWriteGate> _gitWriteGates = new(RootComparer);
 
     public WorkspaceExecutionCoordinator(IWorkspaceResolver? resolver = null)
     {
@@ -80,17 +86,21 @@ public sealed class WorkspaceExecutionCoordinator
     /// <summary>活动(回合/分派/保留/git 写)变化通知。</summary>
     public event Action? Changed;
 
+    /// <summary>当前无生产调用方(仅 SelfCheck 覆盖): 供 UI 诊断与将来接线 subagent 面板使用, 不要删。</summary>
     public int ActiveTurnCount
     {
         get { lock (_lock) return _activities.Count(a => a.Kind == WorkspaceActivityKind.Turn); }
     }
 
+    /// <summary>当前无生产调用方(仅 SelfCheck 覆盖): 供 UI 诊断与将来接线 subagent 面板使用, 不要删。</summary>
     public int ActiveAssignmentCount
     {
         get { lock (_lock) return _activities.Count(a => a.Kind == WorkspaceActivityKind.Assignment); }
     }
 
-    /// <summary>解析工作区键(会话回合与分派统一走此入口)。</summary>
+    /// <summary>解析工作区键(会话回合与分派统一走此入口)。
+    /// 生产实现为 GitWorkspaceResolver, 带 2s TTL 缓存: 同一目录的两次 rev-parse 结果会被复用,
+    /// 因此这里可以在锁外调用而不必担心"每次申请起 2 个 git 进程 + 长锁阻塞其它 worktree"。</summary>
     public WorkspaceKey ResolveKey(string workDir)
     {
         var root = _resolver.ResolveWorkTreeRoot(workDir);
@@ -100,28 +110,46 @@ public sealed class WorkspaceExecutionCoordinator
 
     // ---- 回合执行权 ----
 
-    /// <summary>申请回合执行权; 同 worktree 跨分支已有活动、或该 worktree 存在 reservation/git 写时拒绝。</summary>
+    /// <summary>申请回合执行权; 同 worktree 跨分支已有活动、或该 worktree 存在 reservation/git 写时拒绝。
+    /// 已有生产调用方: SessionRuntime 经 ISessionEngineHost.TryBeginTurn 调用, 拒绝会把原因带给 GUI。</summary>
     public bool TryBeginTurn(string ownerSessionId, string workDir,
         out WorkspaceActivity activity, out string? blockedReason)
         => TryBegin(ownerSessionId, workDir, WorkspaceActivityKind.Turn, out activity, out blockedReason);
 
+    /// <summary>已有生产调用方: AgentEngine 回合 finally(经 SessionRuntime.EndTurn 调用)。
+    /// 传 null 是合法输入(回合从未成功申请到执行权时), 此时什么都不做。</summary>
     public void EndTurn(WorkspaceActivity? activity) => End(activity);
 
-    /// <summary>子 Agent 分派执行权(与回合同规则, 活动计入协调器)。</summary>
+    /// <summary>
+    /// 子 Agent 分派执行权(与回合同规则, 活动计入协调器)。
+    ///
+    /// <para><b>当前无生产调用方</b>(仅 SelfCheck 覆盖): run_subagents / assign_task 尚未接入,
+    /// 因此"同 worktree 跨分支并发跑子代理"目前不被本协调器拦。要接线时必须:
+    /// ① 在分派真正开始前调用, 拿到 activity; ② 整个子代理执行体包在 try/finally 里,
+    /// finally 中调用 EndAssignment(activity) —— 与 SessionRuntime 对回角的处理同构;
+    /// ③ 申请失败时把 blockedReason 作为工具结果文本返回给 LLM, 不要静默忽略(否则 LLM 会反复重试)。</para>
+    /// </summary>
     public bool TryBeginAssignment(string assignmentId, string workDir,
         out WorkspaceActivity activity, out string? blockedReason)
         => TryBegin(assignmentId, workDir, WorkspaceActivityKind.Assignment, out activity, out blockedReason);
 
+    /// <summary>配 TryBeginAssignment 的释放口, 必须与申请成对出现在 finally 中(见上)。</summary>
     public void EndAssignment(WorkspaceActivity? activity) => End(activity);
 
     private bool TryBegin(string ownerId, string workDir, WorkspaceActivityKind kind,
         out WorkspaceActivity activity, out string? blockedReason)
     {
         activity = null!;
+
+        // 键必须在锁外算: 解析可能起 git 子进程(非缓存路径), 持锁会长时间阻塞所有 worktree 的申请。
+        // TOCTOU 窗口(算键 → 进锁之间用户切了分支)已由 GitWorkspaceResolver 的 2s TTL 缓存收窄到毫秒级,
+        // 且最坏后果只是"这一回合按切分支前的旧键准入", 不会造成数据损坏 —— 真要收紧就把 TTL 调小。
         var key = ResolveKey(workDir);
 
         lock (_lock)
         {
+            // 锁内不再重算键(那等于持锁跑 git); 只用已解析出的 key 做廉价判据校验:
+            // reservation / 跨分支活动 / git 写占用三项全部只读内存。
             var blocked = BlockedReasonLocked(key);
             if (blocked is not null)
             {
@@ -153,7 +181,18 @@ public sealed class WorkspaceExecutionCoordinator
 
     // ---- 操作保留(回滚 / Fork 确认期) ----
 
-    /// <summary>尝试在工作区上持有操作保留: 持有期间该 worktree 的新回合/分派全部拒绝。</summary>
+    /// <summary>
+    /// 尝试在工作区上持有操作保留: 持有期间该 worktree 的新回合/分派全部拒绝。
+    ///
+    /// <para><b>当前无生产调用方</b>(仅 SelfCheck 覆盖) —— 这正是技术债 #14 的核心: 回滚 / Fork
+    /// 的"确认期"目前只靠会话级守卫(Fork_SessionOccupied: 当前会话在跑就禁用 Fork)，
+    /// 没有 worktree 级保护, 于是别的会话仍可在确认弹窗期间对同一 worktree 起回合并写文件。
+    /// 一旦确认回滚执行了 <c>reset --hard</c>, 对方刚写的改动就没了。</para>
+    ///
+    /// <para>接线要点: 保留句柄是 IDisposable, <b>必须在对话框关闭的所有路径上 Dispose</b> ——
+    /// 确认、取消、窗口关闭、异常, 一个都不能漏, 漏了会永久堵死该 worktree 的新回合。
+    /// 建议用法: 打开确认弹窗<em>前</em> TryReserve, 弹窗返回后立刻 using 包住实际执行。</para>
+    /// </summary>
     public bool TryReserve(string workDir, string owner, string reason,
         out WorkspaceReservation? reservation, out string? blockedReason)
     {
@@ -192,45 +231,98 @@ public sealed class WorkspaceExecutionCoordinator
 
     // ---- Git 写串行 ----
 
-    /// <summary>进入 Git 写临界区(按 worktree 串行); 返回句柄 Dispose 释放。可被取消等待。</summary>
+    /// <summary>
+    /// 进入 Git 写临界区(按 worktree 串行); 返回句柄 Dispose 释放。可被取消等待(取消时抛 OCE, 不产生句柄)。
+    ///
+    /// <para><b>当前无生产调用方</b>(仅 SelfCheck 覆盖) —— git_add / git_commit / git_create_checkpoint
+    /// 这三个写工具目前直接跑 git, 不经本门, 因此"git 写"与"回合"、"reset --hard"之间仍可交叉。
+    /// 接线要点: 工具方法体整体包在 <c>using</c> 里跑 git 命令, git 返回后再 Dispose;
+    /// 命令失败/抛异常也要释放(using 保证), 但**绝不能**在 Dispose 前跳过错误上报。</para>
+    /// </summary>
     public async Task<IDisposable> WaitGitWriteAsync(string workDir, string owner, CancellationToken ct = default)
     {
         var root = ResolveKey(workDir).WorkTreeRoot;
         var gate = GateFor(root);
-        await gate.WaitAsync(ct).ConfigureAwait(false);
-        return new GitWriteLease(this, root, owner);
+        try
+        {
+            await gate.Semaphore.WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch
+        {
+            // 等待被取消: 引用计数必须在此归还, 否则该 worktree 的门永远不会被淘汰
+            ReleaseGateRef(root, gate);
+            throw;
+        }
+
+        return new GitWriteLease(this, root, owner, gate);
     }
 
-    /// <summary>非阻塞进入 Git 写临界区; 已被占用时返回 false。</summary>
+    /// <summary>非阻塞进入 Git 写临界区; 已被占用时返回 false(lease 为 null, blockedReason 给出原因)。</summary>
     public bool TryEnterGitWrite(string workDir, string owner,
         out IDisposable? lease, out string? blockedReason)
     {
         var root = ResolveKey(workDir).WorkTreeRoot;
         var gate = GateFor(root);
-        if (!gate.Wait(0))
+        if (!gate.Semaphore.Wait(0))
         {
+            ReleaseGateRef(root, gate);
             lease = null;
             blockedReason = $"工作区 {root} 正在执行 git 写操作, 请稍后再试。";
             return false;
         }
 
-        lease = new GitWriteLease(this, root, owner);
+        lease = new GitWriteLease(this, root, owner, gate);
         blockedReason = null;
         return true;
     }
 
-    private SemaphoreSlim GateFor(string root)
+    /// <summary>取出(或新建)该 worktree 的写门, 并记一次引用(+1 表示"有人持有或正在等")。</summary>
+    private GitWriteGate GateFor(string root)
     {
         lock (_lock)
         {
             if (!_gitWriteGates.TryGetValue(root, out var gate))
             {
-                gate = new SemaphoreSlim(1, 1);
+                gate = new GitWriteGate();
                 _gitWriteGates[root] = gate;
             }
 
+            gate.Refs++;
             return gate;
         }
+    }
+
+    /// <summary>
+    /// 归还一次引用; 引用归零且信号量空闲时把条目移出字典(技术债 #18 的"永不回收"修法)。
+    ///
+    /// <para>为什么"Refs==0 && CurrentCount>0"才是安全的淘汰点: 每次 GateFor 都先 +1 再去等信号量,
+    /// 所以 Refs==0 蕴含"没有持有者也没有等待者", 此时该 SemaphoreSlim 不会被任何人再触碰;
+    /// 下次 GateFor 会新建一个干净的信号量, 不会把两个写者放进同一个临界区。</para>
+    ///
+    /// <para>不 Dispose 被移除的 SemaphoreSlim: 此刻已无人引用它, 直接丢给 GC 即可;
+    /// 而 Dispose 反而多一个可能抛 ObjectDisposedException 的时机。</para>
+    /// </summary>
+    private void ReleaseGateRef(string root, GitWriteGate gate)
+    {
+        lock (_lock)
+        {
+            if (gate.Refs > 0) gate.Refs--;
+            if (gate.Refs > 0) return;
+            if (gate.Semaphore.CurrentCount <= 0) return;
+            if (_gitWriteGates.TryGetValue(root, out var current) && ReferenceEquals(current, gate))
+            {
+                _gitWriteGates.Remove(root);
+            }
+        }
+    }
+
+    /// <summary>按 worktree 的写门: 引用计数 + 信号量。Refs 语义见 ReleaseGateRef。</summary>
+    private sealed class GitWriteGate
+    {
+        public readonly SemaphoreSlim Semaphore = new(1, 1);
+
+        /// <summary>持有者 + 等待者总数; 在 _lock 内以非原子方式自增自减。</summary>
+        public int Refs;
     }
 
     private sealed class GitWriteLease : IDisposable
@@ -238,31 +330,33 @@ public sealed class WorkspaceExecutionCoordinator
         private readonly WorkspaceExecutionCoordinator _owner;
         private readonly string _root;
         private readonly string _ownerId;
+        private readonly GitWriteGate _gate;
         private int _released;
 
-        public GitWriteLease(WorkspaceExecutionCoordinator owner, string root, string ownerId)
+        public GitWriteLease(WorkspaceExecutionCoordinator owner, string root, string ownerId,
+            GitWriteGate gate)
         {
             _owner = owner;
             _root = root;
             _ownerId = ownerId;
+            _gate = gate;
         }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _released, 1) != 0) return;
-            SemaphoreSlim? gate;
-            lock (_owner._lock)
-            {
-                _owner._gitWriteGates.TryGetValue(_root, out gate);
-            }
 
-            gate?.Release();
+            // 先 Release 信号量再归还引用: 反过来的话, 中间那一瞬 Refs 可能归零而被淘汰,
+            // 造成"信号量仍有持有者但字典里已无此条目"的竞态。
+            _gate.Semaphore.Release();
+            _owner.ReleaseGateRef(_root, _gate);
         }
     }
 
     // ---- 查询 ----
 
-    /// <summary>当前 workDir 是否可进入(不占用执行权), 不可用时返回原因。</summary>
+    /// <summary>当前 workDir 是否可进入(不占用执行权), 不可用时返回原因。
+    /// 当前无生产调用方(UI 侧可用它在发消息前做禁用态提示); 保留为协调器 API 面的组成部分, 不要删。</summary>
     public string? BlockedReason(string workDir)
     {
         var key = ResolveKey(workDir);
@@ -304,10 +398,13 @@ public sealed class WorkspaceExecutionCoordinator
         return null;
     }
 
+    // 信号量计数 > 0 即空闲。注释保留原始判据的由来: 门按 worktree 常驻字典,
+    // "有条目"不等于"被占用", 因此必须再看计数。条目现已在无引用时被淘汰(见 ReleaseGateRef),
+    // 但并发申请瞬间仍可能存在 Refs>0、尚未 Wait 的条目, 该二次判据依旧必要。
     private bool IsGateFreeLocked(string root)
-        => _gitWriteGates.TryGetValue(root, out var gate) && gate.CurrentCount > 0;
+        => _gitWriteGates.TryGetValue(root, out var gate) && gate.Semaphore.CurrentCount > 0;
 
-    /// <summary>活动快照(回合 + 分派)。</summary>
+    /// <summary>活动快照(回合 + 分派)。当前无生产调用方: 供 UI 诊断面板/将来接线使用, 不要删。</summary>
     public IReadOnlyList<WorkspaceActivity> Snapshot()
     {
         lock (_lock)
@@ -316,7 +413,7 @@ public sealed class WorkspaceExecutionCoordinator
         }
     }
 
-    /// <summary>保留快照。</summary>
+    /// <summary>保留快照。当前无生产调用方: 供 UI 诊断面板/将来接线使用, 不要删。</summary>
     public IReadOnlyList<WorkspaceReservation> Reservations()
     {
         lock (_lock)
@@ -325,7 +422,19 @@ public sealed class WorkspaceExecutionCoordinator
         }
     }
 
+    /// <summary>当前驻留的 git 写门条目数。当前无生产调用方, 仅供 SelfCheck 验证淘汰行为, 不要删。</summary>
+    private int GitWriteGateCount
+    {
+        get { lock (_lock) return _gitWriteGates.Count; }
+    }
+
     // ---- 单元级自检 ----
+
+    /// <summary>
+    /// 自检覆盖的场景组数。Program.cs 的 doctor 输出原先把组数写死成字符串("9 组场景全部通过"),
+    /// 这里新增场景时就会与显示脱节, 故改为引用本常量, 由调用方拼装文案。
+    /// </summary>
+    public const int SelfCheckScenarioCount = 10;
 
     /// <summary>单元级自检: 用假解析器跑并发规则场景, 返回失败项(空列表 = 全部通过)。</summary>
     public static IReadOnlyList<string> SelfCheck()
@@ -333,9 +442,9 @@ public sealed class WorkspaceExecutionCoordinator
         var failures = new List<string>();
         var resolver = new FakeResolver();
         resolver.Map("/wt-a", "feat-x");
-        resolver.Map("/wt-a2", "feat-y"); // 同 worktree 不同目录(子目录在不同分支的场景由分支映射覆盖)
         resolver.Map("/wt-b", "main");
         resolver.Map("/plain", null);     // 非 git 目录
+        resolver.Map("/wt-a/sub", "/wt-a", "feat-x"); // /wt-a 的子目录, 归属同一 worktree
         var c = new WorkspaceExecutionCoordinator(resolver);
 
         void Check(bool condition, string name)
@@ -411,7 +520,30 @@ public sealed class WorkspaceExecutionCoordinator
         c.EndTurn(t10);
         gl2!.Dispose();
 
+        // 10. 同一 worktree 的不同目录(子目录): 必须归一到同一 WorkTreeRoot, 从而参与同一套隔离
+        // 这个场景原先是死数据("/wt-a2" 既非 /wt-a 的子目录、其映射也从未被任何断言使用),
+        // 现由 FakeResolver 的三参 Map 重载显式表达"子目录 → 父 worktree"的归属关系。
+        // 注意: 二参 Map 的根是 "/wt-" + dir, 所以父目录 "/wt-a" 的实际根是 "/wt-wt-a";
+        // 三参 Map 必须写同一个根, 否则断言比的是两个不同 worktree(这是原先场景的写法错误)
+        resolver.Map("/wt-a/sub", "/wt-wt-a", "feat-x");
+        Check(c.TryBeginTurn("s11", "/wt-a", out var t11, out _), "S11 父目录首会话应允许");
+        Check(c.TryBeginTurn("s12", "/wt-a/sub", out var t12, out _), "S12 子目录首会话应允许");
+        Check(RootComparer.Equals(t12.Key.WorkTreeRoot, t11.Key.WorkTreeRoot), "子目录根应归一到父目录的 worktree 根");
+        Check(t12.Key == t11.Key, "同 worktree 子目录应与父目录同键");
+        // 子目录所在分支与父目录活动分支不同时, 同样受跨分支互斥约束(证明子目录走的是 worktree 级判据)。
+        // 根必须与上面一致("/wt-wt-a"), 否则测的是另一个 worktree, 会因"无冲突"而放行。
+        resolver.Map("/wt-a/sub", "/wt-wt-a", "other-branch");
+        Check(!c.TryBeginTurn("s13", "/wt-a/sub", out _, out var r9), "S13 子目录跨分支应拒绝");
+        Check(r9?.Contains("分支") == true, "S13 拒绝原因应含分支说明");
+        c.EndTurn(t12);
+        c.EndTurn(t11);
+
+        // 收尾不变式(不计入场景数): git 写门在无引用后应被淘汰(技术债 #18),
+        // 否则长期驻留会让已关闭的 worktree 永远在字典里"存在"
+        Check(c.GitWriteGateCount == 0, "自检结束 git 写门应全部淘汰");
         Check(c.ActiveTurnCount == 0, "自检结束活动回合应为 0");
+        Check(c.ActiveAssignmentCount == 0, "自检结束活动分派应为 0");
+        Check(c.Reservations().Count == 0, "自检结束保留应全部释放");
         return failures;
     }
 
@@ -421,6 +553,9 @@ public sealed class WorkspaceExecutionCoordinator
         private readonly Dictionary<string, (string Root, string? Branch)> _map = new(StringComparer.Ordinal);
 
         public void Map(string dir, string? branch) => _map[dir] = ("/wt-" + dir.TrimStart('/').Replace('/', '-'), branch);
+
+        /// <summary>把任意目录显式挂到指定 worktree 根上(用于模拟子目录归属同一 worktree)。</summary>
+        public void Map(string dir, string root, string? branch) => _map[dir] = (root, branch);
 
         public string ResolveWorkTreeRoot(string dir) =>
             _map.TryGetValue(NormalizeDir(dir), out var v) ? v.Root : dir;
