@@ -21,8 +21,14 @@ public static class SubagentCompactService
     /// <summary>
     /// 按该子代理的会话开关压缩输出; 失败或未启用时原样返回(不阻塞主流程)。
     /// </summary>
+    /// <param name="providerId">当前回合实际使用的 Provider Id(来自 <c>EngineOptions.ProviderId</c>);
+    /// 为 null 时回退到全局默认 <c>ActiveProvider</c>。</param>
+    /// <param name="model">当前回合实际使用的模型(来自 <c>EngineOptions.Model</c> 解析结果);
+    /// 为 null 时由 <see cref="LlmService.ResolveModel"/> 按该 Provider 推导默认模型。</param>
+    /// <exception cref="OperationCanceledException">回合被取消时原样上抛, 不吞掉取消信号。</exception>
     public static async Task<string> CompactIfNeededAsync(
-        LlmService llm, string agentDisplay, string output, bool enabled, CancellationToken ct)
+        LlmService llm, string agentDisplay, string output, bool enabled, CancellationToken ct,
+        string? providerId = null, string? model = null)
     {
         if (!enabled || string.IsNullOrWhiteSpace(output) || output.Length < MinLengthToCompact)
         {
@@ -31,12 +37,13 @@ public static class SubagentCompactService
 
         try
         {
-            var provider = llm.GetProvider();
+            // 走当前回合的 provider/model, 避免用户切了非默认模型后压缩落到另一个模型
+            var provider = llm.GetProvider(providerId);
             if (provider is null) return output;
 
             var request = new ChatRequest
             {
-                Model = llm.ResolveModel(),
+                Model = llm.ResolveModel(model, providerId),
                 MaxTokens = 2048,
                 Temperature = 0.1,
                 System = """
@@ -63,12 +70,26 @@ public static class SubagentCompactService
             }
 
             var compact = response.Content.Trim();
+            if (compact.Length > TargetLength)
+            {
+                // 兜底: 模型不遵守"压缩"指令时硬截断, 防止压缩反而让主上下文变长
+                var origin = compact.Length;
+                compact = compact[..TargetLength] + $"\n...(压缩结果超长已截断, 原 {origin} 字符)";
+                Log.Warn("Agent", $"子Agent 输出压缩结果超长已截断({agentDisplay}): {origin} → {TargetLength} 字符");
+            }
+
             var sb = new StringBuilder();
             sb.AppendLine($"[已压缩 原始{output.Length}字符 → {compact.Length}字符]");
             sb.Append(compact);
 
             Log.Debug("Agent", $"子Agent 输出已压缩: {agentDisplay} ({output.Length} → {compact.Length} 字符)");
             return sb.ToString();
+        }
+        catch (OperationCanceledException)
+        {
+            // 取消必须上抛: 否则用户点停止后, 还要等一次完整 LLM 往返才真正退出回合
+            // (调用方 AgentToolFactory 转 ToolResult.Error, AgentEngine 再补占位 tool 结果, 链路完整)
+            throw;
         }
         catch (Exception ex)
         {

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using AIShikikan.Core.Logging;
 
 namespace AIShikikan.Core.Services.Mcp;
 
@@ -10,6 +11,12 @@ namespace AIShikikan.Core.Services.Mcp;
 public abstract class McpClientBase : IAsyncDisposable
 {
     public const string ProtocolVersion = "2025-06-18";
+
+    /// <summary>工具调用等长耗时请求的默认超时(秒)。</summary>
+    protected static readonly TimeSpan DefaultCallTimeout = TimeSpan.FromSeconds(300);
+
+    /// <summary>握手与枚举类请求的默认超时(秒)。首次 npx 下载可能较慢, 留足余量。</summary>
+    protected static readonly TimeSpan DefaultSetupTimeout = TimeSpan.FromSeconds(30);
 
     protected readonly Dictionary<long, TaskCompletionSource<JsonNode?>> Pending = [];
     private long _nextId;
@@ -29,7 +36,13 @@ public abstract class McpClientBase : IAsyncDisposable
     /// <summary>发送一条 JSON-RPC 消息(请求或通知); 请求的响应由传输层接收后经 DispatchMessage 派发。</summary>
     protected abstract Task TransmitAsync(JsonObject msg, CancellationToken ct);
 
-    protected async Task<JsonNode?> RequestAsync(string method, JsonObject? param, CancellationToken ct)
+    /// <summary>发送请求并等待响应(使用 <see cref="DefaultSetupTimeout"/> 默认超时)。</summary>
+    protected Task<JsonNode?> RequestAsync(string method, JsonObject? param, CancellationToken ct)
+        => RequestAsync(method, param, ct, DefaultSetupTimeout);
+
+    /// <summary>发送请求并等待响应; 超时(服务器不响应)或外部取消都会终止等待并抛出异常。</summary>
+    protected async Task<JsonNode?> RequestAsync(string method, JsonObject? param,
+        CancellationToken ct, TimeSpan timeout)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -48,13 +61,28 @@ public abstract class McpClientBase : IAsyncDisposable
             Pending[id] = tcs;
         }
 
+        // 超时与外部取消合并到同一 token: 既能兜住服务器不响应, 又能响应用户停止;
+        // 且 Delay 到点自然完成并释放 CTS 注册, 不会在 token 池里堆积回调。
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(timeout);
+        var token = timeoutCts.Token;
+
         try
         {
-            await TransmitAsync(msg, ct).ConfigureAwait(false);
-            var completed = await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, ct)).ConfigureAwait(false);
-            if (completed != tcs.Task)
+            await TransmitAsync(msg, token).ConfigureAwait(false);
+
+            var completed = await Task.WhenAny(tcs.Task, Task.Delay(timeout, token)).ConfigureAwait(false);
+            if (completed != tcs.Task && !tcs.Task.IsCompleted)
             {
-                throw new OperationCanceledException(ct);
+                // 外部取消优先按取消语义抛出, 只有真正卡死才报超时
+                if (ct.IsCancellationRequested)
+                {
+                    throw new OperationCanceledException(ct);
+                }
+
+                Log.Warn("Mcp", $"MCP 请求超时({timeout.TotalSeconds:0}s): {ServerName} {method}");
+                throw new TimeoutException(
+                    $"MCP 服务器 {ServerName} 的 {method} 请求超时({timeout.TotalSeconds:0}s)");
             }
 
             return await tcs.Task.ConfigureAwait(false);
@@ -65,6 +93,9 @@ public abstract class McpClientBase : IAsyncDisposable
             {
                 Pending.Remove(id);
             }
+
+            // 超时/取消时把 tcs 也终结掉, 避免任何潜在等待者永久挂起
+            tcs.TrySetCanceled();
         }
     }
 
@@ -90,18 +121,19 @@ public abstract class McpClientBase : IAsyncDisposable
 
         if (msg.TryGetPropertyValue("result", out var ok))
         {
-            tcs.SetResult(ok);
+            // 用 TrySet*: 请求方可能已在超时/取消路径里终结 TCS, 晚到的响应直接丢弃
+            tcs.TrySetResult(ok);
         }
         else if (msg.TryGetPropertyValue("error", out var errNode) &&
                  errNode is JsonObject errObj &&
                  errObj.TryGetPropertyValue("message", out var em) &&
                  em is JsonValue emv)
         {
-            tcs.SetException(new InvalidOperationException($"MCP 错误: {emv.GetValue<string>()}"));
+            tcs.TrySetException(new InvalidOperationException($"MCP 错误: {emv.GetValue<string>()}"));
         }
         else
         {
-            tcs.SetResult(null);
+            tcs.TrySetResult(null);
         }
     }
 
@@ -127,11 +159,9 @@ public abstract class McpClientBase : IAsyncDisposable
         }
     }
 
+    /// <summary>initialize 握手 + initialized 通知; 超时由 <see cref="DefaultSetupTimeout"/> 统一约束。</summary>
     protected async Task InitializeAsync(CancellationToken ct)
     {
-        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeoutCts.CancelAfter(TimeSpan.FromSeconds(30)); // npx 首次下载/远程服务可能较慢
-
         var result = await RequestAsync("initialize", new JsonObject
         {
             ["protocolVersion"] = ProtocolVersion,
@@ -141,7 +171,7 @@ public abstract class McpClientBase : IAsyncDisposable
                 ["name"] = AppInfo.Name,
                 ["version"] = AppInfo.Version
             }
-        }, timeoutCts.Token).ConfigureAwait(false);
+        }, ct, DefaultSetupTimeout).ConfigureAwait(false);
 
         if (result is JsonObject obj &&
             obj.TryGetPropertyValue("instructions", out var ins) && ins is JsonValue v &&
@@ -212,7 +242,8 @@ public abstract class McpClientBase : IAsyncDisposable
         return tools;
     }
 
-    /// <summary>调用工具并把 content 块文本化(文本原样; 图片/链接以占位标注)。</summary>
+    /// <summary>调用工具并把 content 块文本化(文本原样; 图片/链接以占位标注);
+    /// 使用 <see cref="DefaultCallTimeout"/> 长超时, 避免卡死的服务器拖垮整个回合。</summary>
     public async Task<(string Text, bool IsError)> CallToolAsync(
         string toolName, JsonObject arguments, CancellationToken ct)
     {
@@ -220,7 +251,7 @@ public abstract class McpClientBase : IAsyncDisposable
         {
             ["name"] = toolName,
             ["arguments"] = arguments
-        }, ct).ConfigureAwait(false);
+        }, ct, DefaultCallTimeout).ConfigureAwait(false);
 
         if (result is not JsonObject root)
         {

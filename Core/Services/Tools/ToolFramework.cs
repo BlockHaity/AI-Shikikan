@@ -26,6 +26,18 @@ public class ToolContext
     /// <summary>主对话是否处于 Plan 模式(决定子代理是否以 plan_args 启动)。</summary>
     public bool IsPlanMode { get; init; }
 
+    /// <summary>
+    /// 当前回合使用的 Provider Id(引擎注入)。
+    /// 供需要"与本回合同模型"的子流程使用(如子代理输出压缩), 避免走到全局默认 provider 上。
+    /// </summary>
+    public string? ProviderId { get; init; }
+
+    /// <summary>
+    /// 当前回合实际生效的模型名(引擎注入, 已解析)。
+    /// 供子代理输出压缩等场景复用, 避免各处重复推导导致与主对话模型不一致。
+    /// </summary>
+    public string? Model { get; init; }
+
     /// <summary>子代理实时输出回调(UI 订阅)。</summary>
     public Action<string>? OnToolOutput { get; init; }
 
