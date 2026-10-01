@@ -1,7 +1,9 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 using AIShikikan.Core.Services.Engine;
+using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
 
 namespace AIShikikan.Core.Services.Session;
@@ -25,8 +27,24 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
 {
     private readonly WorkspaceExecutionCoordinator _coordinator;
     private readonly object _lock = new();
+
+    // 同会话回合串行队列: 工作区协调器只管"同工作树同分支"这一层, 允许多个会话并发;
+    // 但同一会话并发跑两个回合会让引擎的对话历史(普通 List, 非线程安全)被并发写、
+    // 并让 _currentTurnId 互相覆盖, 因此这里再加一层会话内串行。
+    private readonly Channel<PendingTurn> _queue = Channel.CreateUnbounded<PendingTurn>(
+        new UnboundedChannelOptions { SingleReader = true });
+    private readonly object _pumpLock = new(); // 保护 _pump 的懒启动, 避免多线程重复启动消费者
+    private Task? _pump;
+    private int _pendingCount; // 排队等待中的回合数(不含正在执行的那个)
     private WorkspaceActivity? _activeActivity;
     private int _disposed;
+
+    /// <summary>排队中的一个回合: 消息 + 图片 + 调用方的取消令牌 + 回填结果的完成源。</summary>
+    private sealed record PendingTurn(
+        string Message,
+        IReadOnlyList<ChatImagePart>? Images,
+        CancellationToken Ct,
+        TaskCompletionSource<string> Completion);
 
     public SessionRuntime(string sessionId, string sessionTitle,
         EngineSessionFactory factory, WorkspaceExecutionCoordinator coordinator)
@@ -51,13 +69,17 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
     /// <summary>进行中的回合 ID(无则 null)。</summary>
     public string? ActiveTurnId { get; private set; }
 
+    /// <summary>当前排队等待执行中的回合数(不含正在执行的那个)。</summary>
+    public int PendingTurnCount => Volatile.Read(ref _pendingCount);
+
     /// <summary>本会话持有的工作区执行权(无则 null)。</summary>
     public WorkspaceActivity? ActiveActivity
     {
         get { lock (_lock) return _activeActivity; }
     }
 
-    /// <summary>会话运行状态变化(回合开始/结束), 供 UI/协调器订阅。</summary>
+    /// <summary>会话运行状态变化(回合开始/结束), 供 UI/协调器订阅。
+    /// 注意: 排队入队/出队不触发本事件(保持"回合开始/结束"语义不变), UI 需自行轮询 PendingTurnCount。</summary>
     public event Action<SessionRuntime>? StateChanged;
 
     /// <summary>引擎原始事件转发(注册表用于后台会话用量落盘)。</summary>
@@ -99,26 +121,110 @@ public sealed class SessionRuntime : ISessionEngineHost, IDisposable
     void ISessionEngineHost.EndTurn(AgentEngine engine, WorkspaceActivity? activity)
     {
         _coordinator.EndTurn(activity);
+
+        bool stateChanged;
         lock (_lock)
         {
-            _activeActivity = null;
-            IsRunning = false;
-            ActiveTurnId = null;
+            // 身份校验: 若活动条目已被后续回合接管(旧回合的 finally 晚于新回合的 finally 执行),
+            // 不能再把 _activeActivity / IsRunning / ActiveTurnId 清空, 否则会抹掉新回合的运行状态
+            stateChanged = activity is null || ReferenceEquals(_activeActivity, activity);
+            if (stateChanged)
+            {
+                _activeActivity = null;
+                IsRunning = false;
+                ActiveTurnId = null;
+            }
         }
 
-        StateChanged?.Invoke(this);
+        if (stateChanged) StateChanged?.Invoke(this);
     }
 
     /// <summary>停止该会话进行中/后续回合(每会话独立取消)。</summary>
     public void Stop() => Engine.CancelSession();
+
+    /// <summary>
+    /// 排入一个回合并等待其完成。同一会话的多个回合在此串行执行,
+    /// 避免并发写引擎对话历史(此前会抛异常或静默丢消息)。
+    /// </summary>
+    public async Task<string> EnqueueTurnAsync(string message, IReadOnlyList<ChatImagePart>? images, CancellationToken ct)
+    {
+        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var turn = new PendingTurn(message, images, ct, tcs);
+
+        // 先自增再入队: 反过来写的话 pump 可能已取走该回合并先行自减, 计数会瞬时变负, UI 的排队指示会闪一下
+        Interlocked.Increment(ref _pendingCount);
+        if (!_queue.Writer.TryWrite(turn))
+        {
+            // 会话已释放(队列已关闭): 用无参 TrySetCanceled 兜底, 带令牌的写法在令牌未取消时
+            // 会静默返回 false 导致 await 永久挂起
+            Interlocked.Decrement(ref _pendingCount);
+            tcs.TrySetCanceled();
+            return await tcs.Task.ConfigureAwait(false);
+        }
+
+        EnsurePump();
+        return await tcs.Task.ConfigureAwait(false);
+    }
+
+    /// <summary>懒启动队列消费者(单消费者, 会话生命周期内常驻)。</summary>
+    private void EnsurePump()
+    {
+        lock (_pumpLock)
+        {
+            // writer 未关闭时 ReadAllAsync 会一直等待, 所以 pump 正常情况下不会自己结束;
+            // 仍保留判空以防会话释放后又被排入
+            if (_pump is not null) return;
+            _pump = Task.Run(PumpAsync);
+        }
+    }
+
+    private async Task PumpAsync()
+    {
+        await foreach (var turn in _queue.Reader.ReadAllAsync().ConfigureAwait(false))
+        {
+            // 出队即减: 计数只表示"还在排队等待"的回合, 不含正在执行的那个(与属性文档一致);
+            // 若放到回合结束后再减, 正在执行的回合也会被算进去, UI 的排队指示会多算一条
+            Interlocked.Decrement(ref _pendingCount);
+            try
+            {
+                var reply = await Engine.RunTurnAsync(turn.Message, turn.Images, turn.Ct).ConfigureAwait(false);
+                turn.Completion.TrySetResult(reply);
+            }
+            catch (OperationCanceledException)
+            {
+                // 注意用无参重载: 会话级 Stop() 取消的是引擎的 _sessionCts, 调用方令牌可能并未取消,
+                // 带令牌写法此时会返回 false, 任务将永远挂起
+                turn.Completion.TrySetCanceled();
+            }
+            catch (Exception ex)
+            {
+                turn.Completion.TrySetException(ex);
+            }
+        }
+    }
 
     private void OnEngineRawEvent(AgentEngineEvent e) => RawEvent?.Invoke(this, e);
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        _queue.Writer.TryComplete(); // 关闭 writer: pump 排空队列后自行退出
+        DrainPendingTurns(); // 引擎即将释放, 队列里还没开始的回合不再执行
         Engine.RawEvent -= OnEngineRawEvent;
         Engine.CancelSession(); // 进行中的回合随会话释放而终止
+    }
+
+    /// <summary>
+    /// 释放队列里尚未开始的回合: 关闭 writer 后 pump 会把剩余项排干, 但此时引擎已在释放,
+    /// 必须在这里把它们以取消态了结, 否则调用方的 await 会永久挂起。
+    /// </summary>
+    private void DrainPendingTurns()
+    {
+        while (_queue.Reader.TryRead(out var turn))
+        {
+            Interlocked.Decrement(ref _pendingCount);
+            turn.Completion.TrySetCanceled();
+        }
     }
 }
 
