@@ -442,7 +442,16 @@ public class ChatService
     /// <summary>只读根级字段与消息条数, 不反序列化消息内容。</summary>
     private static ChatSession? ReadMetadata(string file)
     {
-        using var doc = JsonDocument.Parse(File.ReadAllText(file));
+        // 损坏时回退 .bak: 这是会话列表的主加载路径, 而它的调用方 LoadAllSessions 对异常
+        // 只记 Warn 就跳过 —— 主文件半截而 .bak 完好的话, 会话会从列表里静默消失, 用户
+        // 以为数据丢了, 实际点开(按 id 直接读)还能拿到。validate 回调把"可解析出 id"作为
+        // 可用性判据, 半截 JSON 解析失败即触发回退。
+        if (!AtomicFile.TryReadText(file, out var json, HasSessionId))
+        {
+            return null;
+        }
+
+        using var doc = JsonDocument.Parse(json);
         if (doc.RootElement.ValueKind != JsonValueKind.Object) return null;
         var root = doc.RootElement;
 
@@ -477,6 +486,25 @@ public class ChatService
         return session;
     }
 
+    /// <summary>会话文件可用性判据(与 ReadMetadata / EnsureLoaded 共用):
+    /// 顶层必须是对象, 且带非空字符串 id。缺 id 的会话无法定位自己的文件路径
+    /// (<c>{id}.json</c>), 加载它等于凭空造一个新会话。</summary>
+    private static bool HasSessionId(string content)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(content);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            return doc.RootElement.TryGetProperty("id", out var idEl)
+                   && idEl.ValueKind == JsonValueKind.String
+                   && !string.IsNullOrEmpty(idEl.GetString());
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// 确保会话消息已从文件加载(幂等)。加载后置 IsLoaded, 后续写回安全。
     ///
@@ -496,9 +524,14 @@ public class ChatService
             return;
         }
 
-        // validate 回调负责把"反序列化成功"作为可用性判据, 失败则触发 .bak 回退
+        // validate 回调负责把"确实是可用会话"作为判据, 失败则触发 .bak 回退。
+        // 判据必须强于"反序列化非 null": 合法 JSON 但结构不对(顶层是数组/字符串)同样会
+        // 反序列化成非 null 的空 ChatSession, 只判非 null 会让校验通过、随后用空消息列表
+        // 覆盖用户的原始对话。这里复用 HasSessionId(与列表加载路径同判据), 再额外要求
+        // 反序列化成功, 两道都过才算可用。
         var ok = AtomicFile.TryReadText(path, out var json, content =>
         {
+            if (!HasSessionId(content)) return false;
             try
             {
                 return JsonSerializer.Deserialize(

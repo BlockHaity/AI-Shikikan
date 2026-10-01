@@ -78,7 +78,17 @@ public sealed class ModelProfileCache
 /// 提供上下文窗口大小与成本计算。价格统一以 USD 计。</summary>
 public static class ModelProfileService
 {
-    /// <summary>未收录模型时假设的上下文窗口大小。</summary>
+    /// <summary>模型档案未知(既没配 models.toml, /v1/models 也没收录)时假定的上下文窗口大小。
+    ///
+    /// <para><b>为什么不能返回 0</b>: 调用方(AgentEngine 的自动压缩)用
+    /// <c>total &gt; 0</c> 之类"拿不到窗口就不判断"的守卫, 窗口为 0 会让整条阈值判断
+    /// 短路 —— 自动压缩<em>对所有未收录模型彻底静默失效</em>, 而用户恰恰最可能在用刚出的新模型。
+    /// 给一个保守偏小的窗口(128K 覆盖绝大多数模型的真实值), 最坏结果只是"压缩早一点",
+    /// 而不是"永远不压缩直到请求被服务端拒绝"。</para>
+    ///
+    /// <para>引擎层另有 <c>TurnOptions.FallbackContextTokens</c> 作为第二层兜底;
+    /// 两层都做是对的: 本层保证档案数据结构自洽, 引擎层保证该值可按需关闭/调高。</para>
+    /// </summary>
     public const long DefaultContextTokens = 128_000;
 
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(30) };
@@ -98,20 +108,40 @@ public static class ModelProfileService
             if (_manualConfig is not null) return _manualConfig;
 
             var config = new ModelConfigFile();
-            try
+
+            // 走 AtomicFile: validate 判据是"能反序列化", 半截 TOML 会被判为不可用。
+            // .bak 实际几乎不存在 —— models.toml 是纯手工编辑的文件, 程序没有保存 API,
+            // 从不由 AtomicFile 写盘, 所以没有 .bak 备份可回退。这里要的是 validate:
+            // 挡住"解析成功但内容是垃圾"的半截文件, 避免它污染记忆中的 _manualConfig。
+            ModelConfigFile? parsed = null;
+            if (AtomicFile.TryReadText(ModelsPath, out _, text => TryParseManual(text, out parsed))
+                && parsed is not null)
             {
-                if (File.Exists(ModelsPath))
-                {
-                    var file = TomlBridge.Deserialize<ModelConfigFile>(File.ReadAllText(ModelsPath));
-                    if (file is not null) config = file;
-                }
+                config = parsed;
             }
-            catch
+            else if (parsed is null && File.Exists(ModelsPath))
             {
+                Log.Warn("ModelProfile", $"models.toml 解析失败, 已忽略(按未配置处理): {ModelsPath}");
             }
 
             _manualConfig = config;
             return config;
+        }
+    }
+
+    /// <summary>尝试解析 models.toml 内容; 异常视为不可用(触发 <c>.bak</c> 回退)。</summary>
+    private static bool TryParseManual(string content, out ModelConfigFile? file)
+    {
+        try
+        {
+            file = TomlBridge.Deserialize<ModelConfigFile>(content);
+            return file is not null;
+        }
+        catch (Exception ex)
+        {
+            file = null;
+            Log.Debug("ModelProfile", $"models.toml 解析异常: {ex.Message}");
+            return false;
         }
     }
 
@@ -307,7 +337,9 @@ public static class ModelProfileService
                 var cfg = matched.Value;
                 return new ModelProfile
                 {
-                    ContextTokens = cfg.ContextTokens,
+                    // 条目命中但没填 context_tokens(用户只配了价格)时同样不能给 0:
+                    // 与下方 Unknown 分支同理, 0 会让调用方的阈值判断短路。
+                    ContextTokens = cfg.ContextTokens > 0 ? cfg.ContextTokens : DefaultContextTokens,
                     InputPricePer1M = cfg.InputPricePer1M,
                     OutputPricePer1M = cfg.OutputPricePer1M,
                     CachedInputPricePer1M = cfg.CachedInputPricePer1M,
@@ -326,7 +358,8 @@ public static class ModelProfileService
             {
                 return new ModelProfile
                 {
-                    ContextTokens = api.ContextTokens,
+                    // API 条目缺 context_window 时 provider 常只给价格, 同样回退保守默认值
+                    ContextTokens = api.ContextTokens > 0 ? api.ContextTokens : DefaultContextTokens,
                     InputPricePer1M = api.InputPricePer1M,
                     OutputPricePer1M = api.OutputPricePer1M,
                     Source = ProfileSource.Api
@@ -334,7 +367,14 @@ public static class ModelProfileService
             }
         }
 
-        return new ModelProfile { Source = ProfileSource.Unknown };
+        // 未知来源: 仍然给出保守上下文窗口(而非 0), 否则调用方的阈值判断会整体短路 ——
+        // 自动压缩对未收录模型将永不触发, 而未收录恰恰是新模型的常态。价格保持 0,
+        // CalcCostUsd 对 Unknown 直接返回 0, 不受影响。
+        return new ModelProfile
+        {
+            ContextTokens = DefaultContextTokens,
+            Source = ProfileSource.Unknown
+        };
     }
 
     /// <summary>计算单次调用成本(USD); 未知来源按 0 计。缓存 token 无单独单价时按输入价 10% 估算。</summary>

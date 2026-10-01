@@ -26,7 +26,27 @@ public class GitCheckpointRecord
     /// <summary>关联的会话 ID。)</summary>
     public string SessionId { get; init; } = string.Empty;
 
-    /// <summary>对话截断位置: 该检查点创建时会话已有的消息索引(0-based)。用于 Fork 时复制会话前缀。</summary>
+    /// <summary>
+    /// 对话截断位置: 该检查点创建时会话已有的消息索引(0-based, 即"保留前 N 条")。
+    /// 用于 Fork 时复制会话前缀、回滚时截断会话。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>取值语义</b>:
+    /// <list type="bullet">
+    /// <item>负数: 回滚时清空全部消息(UI 侧按 cutoff &lt; 0 分支处理)。</item>
+    /// <item>0 ~ N-1: 保留前 cutoff 条消息。</item>
+    /// <item>
+    /// <see cref="int.MaxValue"/>: <b>"保留全部对话"</b>。AI 工具
+    /// (<c>git_create_checkpoint</c>)读不到持久化的消息总数, 用极大值占位
+    /// (GitCreateCheckpointTool.KeepAllConversationCutoff)。
+    /// </item>
+    /// </list></para>
+    /// <para><b>不要对这个值做算术</b>: <see cref="int.MaxValue"/> + 1 会溢出成负数,
+    /// 从而被误判成"清空全部消息", 正好与语义相反。判断一律用比较
+    /// (<c>cutoff &lt; Messages.Count</c> / <c>cutoff &lt; 0</c>), 不要 cutoff ± n 或 cutoff - n。</para>
+    /// <para><b>不要"修正"成别的值</b>: 存量记录里已存在 MaxValue 的数据, 改语义会让历史检查点的
+    /// Fork 行为突变。</para>
+    /// </remarks>
     public int ConversationCutoff { get; init; }
 
     /// <summary>检查点来源。)</summary>

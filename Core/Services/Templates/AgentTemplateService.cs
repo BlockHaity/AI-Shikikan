@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Templates;
@@ -30,25 +31,30 @@ public static class AgentTemplateService
         Directory.CreateDirectory(AppPaths.TemplatesDir);
         foreach (var file in Directory.GetFiles(AppPaths.TemplatesDir, "*.toml"))
         {
-            try
+            // 损坏时回退 .bak: Save 走 AtomicFile 会留下 .toml.bak, 主文件半截(写入被中断/
+            // 外部工具改坏)时若无回退, 该模板静默从列表消失, 用户看不出任何异常。
+            AgentTemplate? parsed = null;
+            if (AtomicFile.TryReadText(file, out _, text => TryParseTemplate(text, out parsed))
+                && parsed is not null
+                && !string.IsNullOrEmpty(parsed.Id))
             {
-                var t = TomlBridge.Deserialize<AgentTemplate>(File.ReadAllText(file));
-                if (t is not null && !string.IsNullOrEmpty(t.Id))
+                if (string.IsNullOrEmpty(parsed.Name))
                 {
-                    if (string.IsNullOrEmpty(t.Name))
-                    {
-                        t.Name = t.Id;
-                    }
-
-                    list.Add(t);
+                    parsed.Name = parsed.Id;
                 }
+
+                list.Add(parsed);
             }
-            catch
+            else if (parsed is null && File.Exists(file))
             {
+                // 走不到 .bak 且主文件仍在 = 内容真的坏了(不再是"主文件坏但备份好"的场景),
+                // 必须留痕: 模板丢失是用户可感知的, 空 catch 会让排障完全没有抓手。
+                Log.Warn("Template", $"模板解析失败(已跳过): {file}");
             }
         }
 
-        // 兼容旧 JSON 格式
+        // 兼容旧 JSON 格式。刻意裸读: 这是一次性迁移文件(老版本写出的), 从未经过 AtomicFile,
+        // 不可能有 .bak 可回退, 走 TryReadText 只是白付一次 validate 的解析开销。
         foreach (var file in Directory.GetFiles(AppPaths.TemplatesDir, "*.json"))
         {
             try
@@ -64,12 +70,29 @@ public static class AgentTemplateService
                     list.Add(t);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Template", ex, $"旧 JSON 模板解析失败(已跳过): {file}");
             }
         }
 
         return list;
+    }
+
+    /// <summary>尝试解析模板 TOML; 异常视为不可用(触发 <c>.bak</c> 回退)。</summary>
+    private static bool TryParseTemplate(string content, out AgentTemplate? template)
+    {
+        try
+        {
+            template = TomlBridge.Deserialize<AgentTemplate>(content);
+            return template is not null;
+        }
+        catch (Exception ex)
+        {
+            template = null;
+            Log.Debug("Template", $"模板 TOML 解析异常: {ex.Message}");
+            return false;
+        }
     }
 
     public static AgentTemplate? Find(string? idOrName, IReadOnlyList<AgentTemplate> templates) =>

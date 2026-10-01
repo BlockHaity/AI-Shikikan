@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Personas;
@@ -59,12 +60,15 @@ public static class PersonaService
                     list.Add(persona);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                // 人格是用户手写的, 静默丢弃会让"专家凭空消失"无从排查
+                Log.Warn("Persona", ex, $"人格解析失败(已跳过): {file}");
             }
         }
 
-        // 兼容旧 TOML 格式
+        // 兼容旧 TOML 格式。刻意裸读: 这是老版本一次性写出的迁移文件, 从未经过 AtomicFile,
+        // 不存在 .toml.bak 可回退, 走 TryReadText 只会多一次无用的 validate 解析。
         foreach (var file in Directory.GetFiles(AppPaths.PersonasDir, "*.toml"))
         {
             try
@@ -85,8 +89,9 @@ public static class PersonaService
                     list.Add(persona);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Persona", ex, $"旧 TOML 人格解析失败(已跳过): {file}");
             }
         }
 

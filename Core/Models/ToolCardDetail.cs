@@ -135,7 +135,10 @@ public class SubagentResultEntry
     /// <summary>输出结果(已压缩/截断的文本)。</summary>
     public string Output { get; set; } = string.Empty;
 
-    /// <summary>关联检查点。</summary>
+    /// <summary>关联检查点 —— 已废弃, 恒为 null。
+    /// 子代理统一在当前分支就地工作, 不再为单个子代理建检查点(旧的 ac/&lt;stepId&gt; 分支机制已下线),
+    /// 回滚入口是"每条用户消息"的检查点卡片。保留字段仅为兼容历史会话 JSON(已写盘的数据里带这个键)。</summary>
+    [Obsolete("子代理检查点机制已废弃, 恒为 null; 回滚请用每条用户消息的检查点。")]
     public string? StepId { get; set; }
 
     [JsonIgnore]

@@ -34,7 +34,11 @@ public class CheckpointDetail : ToolCardDetail
     /// <summary>关联的会话 ID。)</summary>
     public string SessionId { get; set; } = string.Empty;
 
-    /// <summary>对话截断索引(用于 Fork 复制)。</summary>
+    /// <summary>对话截断索引(用于 Fork 复制)。语义同 <see cref="GitCheckpointRecord.ConversationCutoff"/>。</summary>
+    /// <remarks>
+    /// 特别地 <see cref="int.MaxValue"/> 表示"保留全部对话"(AI 工具创建检查点时写不),
+    /// 只能用于 <c>cutoff &lt; Messages.Count</c> 这类比较, 不可做加减运算(会溢出成负数而被当成清空)。
+    /// </remarks>
     public int ConversationCutoff { get; set; }
 
     /// <summary>最后回滚方式。)</summary>
