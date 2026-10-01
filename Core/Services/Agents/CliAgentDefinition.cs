@@ -53,10 +53,13 @@ public record CliAgentRunResult
     public int ExitCode { get; init; }
     public required string Output { get; init; }
     public bool TimedOut { get; init; }
+
+    /// <summary>由外部取消(用户点停止 / 回合取消)导致终止, 与 <see cref="TimedOut"/> 区分。</summary>
+    public bool Cancelled { get; init; }
     public required TimeSpan Elapsed { get; init; }
     public required DateTime StartedAt { get; init; }
     public DateTime CompletedAt { get; init; }
-    public bool Succeeded => ExitCode == 0 && !TimedOut;
+    public bool Succeeded => ExitCode == 0 && !TimedOut && !Cancelled;
 }
 
 public static class CliAgentRunner
@@ -145,11 +148,17 @@ public static class CliAgentRunner
                 {
                 }
 
+                // 区分来源: ct 是外部取消(用户点停止 / 回合取消), timeoutCts.CancelAfter 才是真超时。
+                // 二者共用同一个 linked token, 只能靠"外部 token 是否已请求取消"来判别。
+                var userCancelled = ct.IsCancellationRequested;
                 return new CliAgentRunResult
                 {
                     ExitCode = -1,
-                    Output = Tail(output) + "\n[超时] 子代理超过限制时间已强制终止。",
-                    TimedOut = true,
+                    Output = Tail(output) + (userCancelled
+                        ? "\n[已取消] 用户终止了子代理。"
+                        : "\n[超时] 子代理超过限制时间已强制终止。"),
+                    TimedOut = !userCancelled,
+                    Cancelled = userCancelled,
                     StartedAt = startedAt,
                     Elapsed = DateTime.Now - startedAt
                 };
