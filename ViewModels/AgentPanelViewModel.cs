@@ -349,7 +349,6 @@ public partial class AgentPanelViewModel : ViewModelBase
             Name = name,
             Executable = string.IsNullOrWhiteSpace(NewAgentExecutable) ? id : NewAgentExecutable.Trim(),
             DefaultMode = "sync",
-            MaxConcurrent = 1,
             RequireApproval = true,
             TimeoutMinutes = 30,
             Description = NewAgentDescription.Trim()
@@ -498,7 +497,6 @@ public partial class AgentPanelViewModel : ViewModelBase
             ExtraArgs = source.ExtraArgs.ToList(),
             AllowPlanModeWithoutArgs = source.AllowPlanModeWithoutArgs,
             DefaultMode = source.DefaultMode,
-            MaxConcurrent = source.MaxConcurrent,
             RequireApproval = source.RequireApproval,
             TimeoutMinutes = source.TimeoutMinutes,
             Description = description,

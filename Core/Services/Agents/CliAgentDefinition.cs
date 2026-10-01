@@ -27,8 +27,6 @@ public record CliAgentDefinition
     /// <summary>"sync" 常规阻塞 | "async" 异步后台。</summary>
     public string DefaultMode { get; set; } = "sync";
 
-    public int MaxConcurrent { get; set; } = 1;
-
     public bool RequireApproval { get; set; } = true;
 
     public int TimeoutMinutes { get; set; } = 30;
@@ -56,6 +54,7 @@ public record CliAgentRunResult
 
     /// <summary>由外部取消(用户点停止 / 回合取消)导致终止, 与 <see cref="TimedOut"/> 区分。</summary>
     public bool Cancelled { get; init; }
+
     public required TimeSpan Elapsed { get; init; }
     public required DateTime StartedAt { get; init; }
     public DateTime CompletedAt { get; init; }

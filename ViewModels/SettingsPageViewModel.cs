@@ -948,7 +948,6 @@ public partial class SettingsPageViewModel : ViewModelBase
             ExtraArgs = ParseArgs(NewAgentExtraArgs),
             AllowPlanModeWithoutArgs = NewAgentAllowPlanNoArgs,
             DefaultMode = "sync",
-            MaxConcurrent = 1,
             RequireApproval = true,
             TimeoutMinutes = 30,
             Description = "GUI 创建的自定义 Agent"
