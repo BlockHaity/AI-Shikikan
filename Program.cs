@@ -1,6 +1,8 @@
 using AIShikikan.Core;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Session;
+using AIShikikan.Core.Services.Usage;
 using Avalonia;
 using System;
 using System.IO;
@@ -28,11 +30,25 @@ sealed class Program
 
         if (args.Length > 0 && args[0] == "doctor")
         {
-            return RunDoctor();
+            var code = RunDoctor();
+            UsageStatsService.Flush();
+            Log.Flush();
+            return code;
         }
 
-        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
-        AIShikikan.Core.Logging.Log.Info("Boot", "应用正常退出");
+        try
+        {
+            BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+        }
+        finally
+        {
+            // 用量统计是防抖落盘(合并 1.5s 内的多次记录), 不 flush 会丢掉最后一批。
+            // 走到这里说明 lifetime 已结束, 不会再有新记录。
+            UsageStatsService.Flush();
+            Log.Info("Boot", "应用正常退出");
+            Log.Flush();
+        }
+
         return 0;
     }
 
@@ -185,7 +201,7 @@ sealed class Program
             var selfCheckFailures = WorkspaceExecutionCoordinator.SelfCheck();
             checks.Add(("并发协调规则", selfCheckFailures.Count == 0,
                 selfCheckFailures.Count == 0
-                    ? "9 组场景全部通过"
+                    ? $"{WorkspaceExecutionCoordinator.SelfCheckScenarioCount} 组场景全部通过"
                     : string.Join("; ", selfCheckFailures)));
 
             foreach (var (name, ok, detail) in checks)
@@ -243,7 +259,7 @@ sealed class Program
 
             if (gitWarn)
             {
-                Console.WriteLine("⚠ Git 仓库未初始化, 检查点与Git写工具不可用; 首次发送消息将自动执行 git init 与 first commit。");
+                Console.WriteLine("⚠ Git 仓库未初始化, 检查点与Git写工具不可用; 请自行在该目录执行 git init 并创建首个提交。");
             }
 
             Console.WriteLine("全部检查通过 ✓");
