@@ -134,7 +134,10 @@
             </Border>
 
             <!-- 消息列表: ListBox(自带受限 ScrollViewer) + VirtualizingStackPanel 真虚拟化(懒加载),
-                 仅可见消息实例化重控件; ListBox 是 ItemsControl 子类, 模板内 $parent[ItemsControl] 绑定仍生效 -->
+                 仅可见消息实例化重控件; ListBox 是 ItemsControl 子类, 模板内 $parent[ItemsControl] 绑定仍生效。
+                 ⚠ 已知取舍(勿改): 长分段内还有 MarkdownScrollViewer 自带的 ScrollViewer(嵌套滚动),
+                 会削弱外层虚拟化效果(可见区外的分段仍被布局)。修它需要重构分段容器的滚动语义,
+                 会明显改变观感, 收益不确定, 暂保留现状。 -->
             <ListBox x:Name="MessageList" Grid.Row="1"
                      ItemsSource="{Binding Messages}"
                      Background="Transparent"
@@ -162,7 +165,8 @@
                     </Style>
                     <!-- 定向规避(Avalonia 12.x + Material 主题): 消息增删导致容器分离时, 卡内控件的
                          过渡(Opacity/Expander 展开/TextBox 下划线等)订阅会在渲染时钟 Pulse 时悬空触发 NRE。
-                         仅清除本列表内这些控件的过渡(不影响全局), 换取编辑/删除/流式增删的稳定。 -->
+                         仅清除本列表内这些控件的过渡(不影响全局), 换取编辑/删除/流式增删的稳定。
+                         ⚠ 这是必要的 workaround, 不是冗余样式: 去掉会重新出现随机 NRE, 请勿"清理"。 -->
                     <Style Selector="ListBoxItem Button, ListBoxItem ToggleButton, ListBoxItem Expander, ListBoxItem TextBox">
                         <Setter Property="Transitions">
                             <Transitions/>
@@ -773,8 +777,18 @@
                         <TextBox Grid.Column="1" x:Name="InputBox" PlaceholderText="{x:Static res:Strings.Chat_InputPlaceholder}"
                                  Text="{Binding InputText}" IsEnabled="{Binding !IsSending}"
                                  KeyDown="OnInputKeyDown"/>
+                        <!-- ⚠ 产品决策待定(F14): 输入框在发送中被禁用, 既无法修改也无法**预输入下一条**;
+                             而排队态下反而能输入, 发送键却被 CanSendMessage(!IsQueued) 禁用, 无法预先排队。
+                             两种语义都有道理(要么"专注当前轮", 要么"允许连发"), 需要产品拍板后再改。 -->
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
                                     VerticalAlignment="Center">
+                            <!-- 排队中(N): 当前会话还有回合在 Core 队列里等待执行(不含正在执行的那个)。
+                                 文案在 ChatPageViewModel.QueuedBadgeText, 那里是硬编码占位,
+                                 TODO(i18n): 待新增 resx 键 Session_QueuedBadge = "排队中 ({0})" 后改由 Strings 取值。 -->
+                            <TextBlock IsVisible="{Binding IsQueued}" VerticalAlignment="Center"
+                                       Classes="LabelSmall"
+                                       Foreground="{DynamicResource OnSurfaceVariant}"
+                                       Text="{Binding QueuedBadgeText}"/>
                             <!-- 继续输出: 中断后出现 -->
                             <Button Classes="Outlined" Content="{x:Static res:Strings.Chat_Continue}"
                                     Command="{Binding ContinueOutputCommand}" IsVisible="{Binding CanContinue}"

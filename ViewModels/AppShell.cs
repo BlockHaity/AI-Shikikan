@@ -34,6 +34,10 @@ public sealed class AppShell
 
     private AppShell()
     {
+        // ⚠ 已知架构问题(未修, 见报告 F3): 工作目录被硬绑到进程 CWD, 与 preferences.toml 里
+        // 可能存在的默认工作目录设置无关。本构造函数在 MainWindowViewModel 构造链里首次触碰
+        // AppShell.Instance 时触发, 即整台 Core Runtime 的 workspaceRoot 由此确定。
+        // 彻底修需要"持久化 workspaceRoot + 启动时读取"(ThemeService/PreferenceService 层), 改动面大。
         CommanderRuntime.Boot(Directory.GetCurrentDirectory());
         Runtime = CommanderRuntime.Instance;
         ReloadPersonas();
@@ -43,7 +47,15 @@ public sealed class AppShell
         Runtime.Assignments.AssignmentChanged += OnAssignmentChanged;
     }
 
-    /// <summary>子代理分派(与 REST API 同一提示词构建路径): 后台同步执行完成后回调。</summary>
+    /// <summary>
+    /// Agent 面板的手动分派(与工具层的 run_&lt;agent&gt; 并行的一条独立路径):
+    /// 复用同一套提示词构建(ResolvePersonaText + BuildFinalPrompt), 后台同步执行完成后回调。
+    /// </summary>
+    /// <remarks>
+    /// 与 run_&lt;agent&gt; 的语义差异(⚠ 尚未拉齐, 见报告): planMode 已转发(下面 planMode 参数),
+    /// 但**不向 WorkspaceExecutionCoordinator 申请工作区执行权**(因此不与其他分支的活跃会话互斥)、
+    /// **不走工具审批**、**不做输出压缩**。待 AgentToolFactory 接好协调器后, 本方法也应走同一条申请路径。
+    /// </remarks>
     public void Dispatch(CliAgentDefinition agent, string task,
         string? personaId = null, string? templateId = null, string? workingDirectory = null,
         Action<Assignment, CliAgentRunResult?>? onFinished = null,
@@ -135,6 +147,15 @@ public sealed class AppShell
     /// <summary>通知订阅方(如聊天页)刷新展示数据。</summary>
     public void NotifyDataChanged() => DataChanged?.Invoke();
 
+    /// <summary>
+    /// 用 source 全量替换 target 的内容。
+    /// </summary>
+    /// <remarks>
+    /// 刻意保留 Clear() + 逐个 Add() 而不换 AvaloniaList/AvaloniaList 的 Reset 优化:
+    /// 这些集合被 ItemsControl 直接绑定, Clear 会让容器整体重建(与聊天页同源的
+    /// "Material 主题过渡 NRE"风险), 且本类 Reload* 只在设置变更时触发, N 次通知的代价可接受。
+    /// 换成 AvaloniaList 可用 ResetBehavior 一次通知, 但要改所有绑定点的集合类型, 收益不足。
+    /// </remarks>
     private static void Sync<T>(ObservableCollection<T> target, IEnumerable<T> source)
     {
         target.Clear();

@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using System.Text.Json;
 using AIShikikan.Core.Models;
 using AIShikikan.Gui.Resources;
@@ -15,11 +16,17 @@ public enum ToolStatusKind
 }
 
 /// <summary>单条消息的显示模型。</summary>
-public partial class ChatItemViewModel : ViewModelBase
+/// <remarks>
+/// 持有分段(可能含解码出的图片位图)的所有权。消息列表被整体换掉/清空时, 外层应对旧列表里的
+/// 每个实例调用 <see cref="Deactivate"/>(或 <see cref="Dispose"/>) 归还原生内存。
+/// </remarks>
+public partial class ChatItemViewModel : ViewModelBase, IDisposable
 {
     public ChatItemViewModel(MessageRole role)
     {
         Role = role;
+        // 分段被移除/清空时同步归还其位图
+        Segments.CollectionChanged += OnSegmentsCollectionChanged;
     }
 
     public MessageRole Role { get; }
@@ -39,6 +46,83 @@ public partial class ChatItemViewModel : ViewModelBase
     }
 
     public ObservableRange<SegmentItemViewModel> Segments { get; } = [];
+
+    // 已物化、需随本消息一起释放的分段。
+    // 自行记账而不是直接遍历 Segments: ObservableRange.Clear() 之后旧项已无从枚举,
+    // 有了这份快照, Reset 与 Deactivate 才能拿到完整集合。
+    private readonly HashSet<SegmentItemViewModel> _ownedSegments = [];
+
+    private void OnSegmentsCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
+    {
+        switch (e.Action)
+        {
+            case NotifyCollectionChangedAction.Add:
+            case NotifyCollectionChangedAction.Replace:
+                TrackSegments(e.NewItems);
+                ReleaseSegments(e.OldItems);
+                break;
+            case NotifyCollectionChangedAction.Remove:
+                ReleaseSegments(e.OldItems);
+                break;
+            case NotifyCollectionChangedAction.Reset:
+                // Clear(): 旧项不在集合里, 只能靠记账的快照
+                foreach (var seg in _ownedSegments) seg.Dispose();
+                _ownedSegments.Clear();
+                break;
+            // Move 的 NewItems/OldItems 是同一个元素, 不能当作替换处理
+        }
+    }
+
+    private void TrackSegments(System.Collections.IList? items)
+    {
+        if (items is null) return;
+
+        foreach (SegmentItemViewModel seg in items) _ownedSegments.Add(seg);
+    }
+
+    private void ReleaseSegments(System.Collections.IList? items)
+    {
+        if (items is null) return;
+
+        foreach (SegmentItemViewModel seg in items)
+        {
+            if (_ownedSegments.Remove(seg)) seg.Dispose();
+        }
+    }
+
+    /// <summary>归还原生内存并阻止后续懒物化: 本消息已确定不会再被显示时由外层调用
+    /// (消息列表整体换实例/清空时, 对旧列表里的每个消息项调用)。</summary>
+    /// <remarks>
+    /// 调用时机要求: 该消息项必须已离开可见区域, 否则缩略图会变空白。
+    /// </remarks>
+    public void Deactivate()
+    {
+        // 阻断懒物化: 已释放的分段不应在再次访问 Segments 时被重新构建出来
+        _pendingSource = null;
+        foreach (var seg in _ownedSegments) seg.Dispose();
+        _ownedSegments.Clear();
+    }
+
+    public void Dispose()
+    {
+        Segments.CollectionChanged -= OnSegmentsCollectionChanged;
+        Deactivate();
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// 兜底终结器: 显式 <see cref="Deactivate"/>/<see cref="Dispose"/> 才是主路径。
+    /// 这一层是必需的: 父消息项只要还被引用, 其分段就不会变成垃圾, 分段自己的终结器
+    /// 永远等不到 —— 而外层消息列表换实例(会话切换)时旧消息项没有 Dispose 时机。
+    /// </summary>
+    /// <remarks>
+    /// 这里只断开引用而不直接释放: 消息项随即整体成为垃圾, 各分段由自己的终结器释放。
+    /// 终结器线程上不去碰 Dispatcher(会取其内部锁), 也不去释放可能仍在合成的位图。
+    /// </remarks>
+    ~ChatItemViewModel()
+    {
+        _ownedSegments.Clear();
+    }
 
     // 懒加载: 历史消息的分段 VM 延迟到首次访问(即容器被 realized)时才构建;
     // 配合外层虚拟化, 屏幕外的消息完全不构建分段。
@@ -172,7 +256,7 @@ public partial class ChatItemViewModel : ViewModelBase
 }
 
 /// <summary>一条消息中的一个分段(正文 markdown / 思考卡片 / 工具调用卡片)。</summary>
-public partial class SegmentItemViewModel : ViewModelBase
+public partial class SegmentItemViewModel : ViewModelBase, IDisposable
 {
     private static int s_toolSeq;
 
@@ -200,6 +284,56 @@ public partial class SegmentItemViewModel : ViewModelBase
     /// <summary>图片分段: 解码后的位图(供气泡缩略图)。</summary>
     [ObservableProperty]
     private Avalonia.Media.Imaging.Bitmap? _imageBitmap;
+
+    // 本分段"拥有所有权"的位图: 赋值即接管, 被替换/被释放时归还。
+    // 独立于生成属性的后备字段, 便于用 Interlocked 一次性交接所有权 ——
+    // 显式 Dispose 与终结器可能先后到达, 只能有一个赢家, 否则重复释放原生句柄。
+    private Avalonia.Media.Imaging.Bitmap? _ownedBitmap;
+
+    partial void OnImageBitmapChanged(Avalonia.Media.Imaging.Bitmap? value)
+    {
+        // 同一实例被重复赋值: 不是替换, 不动所有权
+        if (ReferenceEquals(_ownedBitmap, value)) return;
+
+        var old = _ownedBitmap;
+        _ownedBitmap = value;
+        if (old is not null) ReleaseDetached(old);
+    }
+
+    /// <summary>归还一张已与绑定解耦的位图。
+    /// 换绑(<see cref="ImageBitmap"/> 置空/换实例)是同步的, 但当前合成帧可能仍持有旧位图,
+    /// 故延后一帧再释放, 避免渲染线程拿到已释放的原生句柄。</summary>
+    private static void ReleaseDetached(Avalonia.Media.Imaging.Bitmap bitmap) =>
+        Avalonia.Threading.Dispatcher.UIThread.Post(
+            bitmap.Dispose, Avalonia.Threading.DispatcherPriority.Background);
+
+    /// <summary>释放本分段持有的缩略图位图(所属消息被丢弃 / 分段被移出集合时由 ChatItemViewModel 调用)。</summary>
+    public void Dispose()
+    {
+        var bitmap = Interlocked.Exchange(ref _ownedBitmap, null);
+        if (bitmap is null) return;
+
+        // 先清空绑定让 Image.Source 立即脱离该位图, 再延后一帧释放
+        if (ReferenceEquals(ImageBitmap, bitmap))
+        {
+            ImageBitmap = null;
+        }
+
+        ReleaseDetached(bitmap);
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// 兜底终结器: 显式 <see cref="Dispose"/> 才是主路径, 这里只保证原生句柄最终归还。
+    /// 取舍: 托管资源不该在终结器里 Dispose, 但位图持有的是非托管内存; 而消息列表
+    /// 整体换实例(会话切换)时旧 ChatItemViewModel 直接变成垃圾, 没有任何 Dispose 时机 ——
+    /// 没有这层兜底, 图片分段会随会话切换持续泄漏。
+    /// </summary>
+    ~SegmentItemViewModel()
+    {
+        // 终结器线程上释放是最后手段(正常路径都已走 Dispose)
+        Interlocked.Exchange(ref _ownedBitmap, null)?.Dispose();
+    }
 
     /// <summary>图片分段: 原始文件名(悬浮提示)。</summary>
     [ObservableProperty]

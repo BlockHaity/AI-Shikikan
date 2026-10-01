@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -57,8 +58,9 @@ public partial class ChatPageViewModel : ViewModelBase
     [ObservableProperty]
     private RightPanelMode _panelMode = RightPanelMode.Assignment;
 
-    [ObservableProperty]
-    private IReadOnlyList<ChatSession> _sessions = [];
+    // 注: 原先这里还有一个 [ObservableProperty] IReadOnlyList<ChatSession> _sessions,
+    // 全仓检索确认没有任何绑定/代码后置使用它(会话列表由 SessionPanelViewModel 自行持有),
+    // 每次赋值只是触发一次无意义的 PropertyChanged, 已删除。
 
     [ObservableProperty]
     private ChatSession? _currentSession;
@@ -90,9 +92,22 @@ public partial class ChatPageViewModel : ViewModelBase
     /// <summary>当前会话有排队等待的回合(供界面提示与发送态判定)。</summary>
     public bool IsQueued => QueuedTurnCount > 0;
 
+    // TODO(i18n 收口): 排队徽标文案暂无对应 resx 键(全仓检索 Strings 无排队相关键),
+    // 暂用硬编码占位。收口时建议新增 Session_QueuedBadge(中文 "排队中 ({0})" / 英文 "Queued ({0})"),
+    // 把这里的常量换成 string.Format(Strings.Session_QueuedBadge, QueuedTurnCount) 即可。
+    private const string QueuedBadgeFormat = "排队中 ({0})";
+
+    /// <summary>排队徽标文案(仅 <see cref="IsQueued"/> 为 true 时显示)。</summary>
+    public string QueuedBadgeText => string.Format(QueuedBadgeFormat, QueuedTurnCount);
+
     /// <summary>排队计数轮询表: 仅在 QueuedTurnCount &gt; 0 时运行, 归零即停, 避免常驻轮询。</summary>
     private readonly DispatcherTimer _queuedPollTimer;
 
+    /// <summary>
+    /// 排队计数变化。启停条件是自指的(靠 QueuedTurnCount 自身), 因此必须有外部"点火"调用:
+    /// 构造函数末尾、切会话、回合结束三处都会调用 <see cref="RefreshQueuedTurnCount"/>,
+    /// 缺一个就会出现"首次进入页面计数恒为 0 → 轮询表永不启动"的死状态。
+    /// </summary>
     partial void OnQueuedTurnCountChanged(int value)
     {
         if (value > 0)
@@ -106,6 +121,7 @@ public partial class ChatPageViewModel : ViewModelBase
         }
 
         OnPropertyChanged(nameof(IsQueued));
+        OnPropertyChanged(nameof(QueuedBadgeText));
         NotifySendState();
     }
 
@@ -116,7 +132,8 @@ public partial class ChatPageViewModel : ViewModelBase
     /// <summary>手动终止当前回合的取消源（按会话保存，支持后台会话独立停止）。</summary>
     private readonly Dictionary<string, CancellationTokenSource> _turnCtsMap = new(StringComparer.Ordinal);
 
-    private CancellationTokenSource? _turnCts;
+    // 注: 原先还有一个单一字段 _turnCts 与上面的字典语义重叠, 其回退分支
+    // `else _turnCts?.Cancel()` 可能停掉另一个会话的回合。已删除, 统一走 _turnCtsMap。
 
     /// <summary>上一轮被中断后可继续输出。</summary>
     [ObservableProperty]
@@ -230,6 +247,7 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         OnPropertyChanged(nameof(CanSendMessage));
         SendMessageCommand.NotifyCanExecuteChanged();
+        ClearMessagesCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnInputTextChanged(string value)
@@ -248,6 +266,9 @@ public partial class ChatPageViewModel : ViewModelBase
         SendMessageCommand.NotifyCanExecuteChanged();
     }
 
+    // TODO(async 化, 依赖 GitService 的 async 版): 本方法在 UI 线程同步拉起 git 进程
+    // (ResolveContext + IsClean, 约 2 个进程), 最坏可冻结 UI 数百毫秒。调用点遍布
+    // OnWorkDirChanged / EndSessionRun / 切会话 / 回滚 / Fork, 迁移时必须逐个改为 await。
     private void RefreshWorkspaceContext()
     {
         var context = HasWorkDir
@@ -311,7 +332,6 @@ public partial class ChatPageViewModel : ViewModelBase
         ThemeService = themeService;
         _chatService = new ChatService();
         _runtime = AppShell.Instance.Runtime;
-        Sessions = _chatService.Sessions;
         CurrentSession = _chatService.CurrentSession;
         _workDir = CurrentSession?.WorkDir ?? string.Empty;
         RefreshMessages();
@@ -368,27 +388,17 @@ public partial class ChatPageViewModel : ViewModelBase
         };
         _chatService.MessageAdded += (_, msg) =>
         {
-            // Core 事件不带 sessionId, 按消息归属会话判定: AddMessage 是"追加后同步触发",
-            // 故该消息此刻必然是所属会话 Messages 的末位。
-            // 归属会话正在流式时, 显示列表已由对应 RunTurnCoreAsync 的流式占位气泡维护, 不能再追加一条。
-            // 不能沿用"任一会话在跑就整体忽略": A 会话后台流式时用户在 B 会话发的消息也会被吞掉,
-            // B 少一条气泡, 下一条消息的增量判定必然失败 → 退化成整集合替换(容器全量重建)。
-            var owner = _chatService.Sessions.FirstOrDefault(s =>
-                s.Messages.Count > 0 && ReferenceEquals(s.Messages[^1], msg));
-            if (owner is not null && IsSessionRunning(owner.Id)) return;
-
-            // 增量追加优先: 整集合替换会大规模回收容器, 触发 Material 主题过渡 NRE
-            if (CurrentSession is { } s && s.Messages.Count == Messages.Count + 1 &&
-                s.Messages[^1].Id == msg.Id)
+            // 为什么需要显式回 UI 线程: 本处理器直接写 Messages(显示集合)并整集合重建,
+            // 而它此前只在"所有 AddMessage 调用点恰好都在 UI 线程"这一**隐式契约**下成立。
+            // 一旦将来某个调用点来自后台线程, 就会在非 UI 线程改 ObservableCollection(崩溃)。
+            // 显式 Post 比隐式约定可靠: 契约落在代码里, 不依赖调用方自觉。
+            if (!Dispatcher.UIThread.CheckAccess())
             {
-                Messages.Add(ChatItemViewModel.From(msg));
-            }
-            else
-            {
-                RefreshMessages();
+                Dispatcher.UIThread.Post(() => OnMessageAdded(msg));
+                return;
             }
 
-            Sessions = _chatService.Sessions;
+            OnMessageAdded(msg);
         };
 
         _runtime.Assignments.AssignmentChanged += _ =>
@@ -403,6 +413,34 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshThinkingOptions();
         RefreshContextUsage();
         RefreshWorkspaceContext();
+        // 轮询表启停条件自指 QueuedTurnCount, 首帧必须由外部点一次火:
+        // 缺这一句, 首次进入聊天页时计数恒为 0 → 轮询表永不启动 → 期间产生的排队要等
+        // 下一次切会话/回合结束才被纠正。
+        RefreshQueuedTurnCount();
+    }
+
+    /// <summary>消息新增回调体(始终在 UI 线程执行)。</summary>
+    private void OnMessageAdded(ChatMessage msg)
+    {
+        // Core 事件不带 sessionId, 按消息归属会话判定: AddMessage 是"追加后同步触发",
+        // 故该消息此刻必然是所属会话 Messages 的末位。
+        // 归属会话正在流式时, 显示列表已由对应 RunTurnCoreAsync 的流式占位气泡维护, 不能再追加一条。
+        // 不能沿用"任一会话在跑就整体忽略": A 会话后台流式时用户在 B 会话发的消息也会被吞掉,
+        // B 少一条气泡, 下一条消息的增量判定必然失败 → 退化成整集合替换(容器全量重建)。
+        var owner = _chatService.Sessions.FirstOrDefault(s =>
+            s.Messages.Count > 0 && ReferenceEquals(s.Messages[^1], msg));
+        if (owner is not null && IsSessionRunning(owner.Id)) return;
+
+        // 增量追加优先: 整集合替换会大规模回收容器, 触发 Material 主题过渡 NRE
+        if (CurrentSession is { } s && s.Messages.Count == Messages.Count + 1 &&
+            s.Messages[^1].Id == msg.Id)
+        {
+            Messages.Add(ChatItemViewModel.From(msg));
+        }
+        else
+        {
+            RefreshMessages();
+        }
     }
 
     private (string SessionId, int ConversationCutoff) GetCurrentConversationPosition() =>
@@ -470,8 +508,38 @@ public partial class ChatPageViewModel : ViewModelBase
         if (string.IsNullOrEmpty(sessionId)) return;
         if (string.IsNullOrEmpty(InputText)) _sessionDrafts.Remove(sessionId);
         else _sessionDrafts[sessionId] = InputText;
-        if (PendingAttachments.Count == 0) _sessionAttachments.Remove(sessionId);
-        else _sessionAttachments[sessionId] = PendingAttachments.ToList();
+        if (PendingAttachments.Count == 0)
+        {
+            if (_sessionAttachments.Remove(sessionId, out var droppedEmpty))
+            {
+                DisposeAttachments(droppedEmpty, keep: null);
+            }
+        }
+        else
+        {
+            var snapshot = PendingAttachments.ToList();
+            // 旧值里可能有一部分就是当前正显示在待发送条带上的同一批对象(重复保存),
+            // 整体释放会把还在界面上的缩略图一起释放掉, 所以只释放不在新快照里的
+            if (_sessionAttachments.TryGetValue(sessionId, out var previous))
+            {
+                DisposeAttachments(previous, keep: snapshot);
+            }
+            _sessionAttachments[sessionId] = snapshot;
+        }
+    }
+
+    /// <summary>释放 <paramref name="items"/> 中不在 <paramref name="keep"/> 里的附件位图。
+    /// 附件缩略图是原生内存, 集合被丢弃时必须显式归还; 但同一批对象常常既在待发送条带上、
+    /// 又在 <c>_sessionAttachments</c> 缓存里, 所以按差集释放而不是整体释放。</summary>
+    private static void DisposeAttachments(IEnumerable<PendingImageAttachment>? items,
+        IReadOnlyCollection<PendingImageAttachment>? keep)
+    {
+        if (items is null) return;
+        foreach (var attachment in items)
+        {
+            if (keep is not null && keep.Contains(attachment)) continue;
+            attachment.Dispose();
+        }
     }
 
     private void RestoreSessionInputState(string? sessionId)
@@ -481,10 +549,16 @@ public partial class ChatPageViewModel : ViewModelBase
             ? draft
             : string.Empty;
         _applyingHistory = false;
+        // 恢复出来的同一批对象马上会加回 PendingAttachments, 绝不能整体释放;
+        // 只释放"切会话后将被丢弃"的那部分
+        var restoring = sessionId is not null && _sessionAttachments.TryGetValue(sessionId, out var cached)
+            ? cached
+            : null;
+        DisposeAttachments(PendingAttachments, keep: restoring);
         PendingAttachments.Clear();
-        if (sessionId is not null && _sessionAttachments.TryGetValue(sessionId, out var attachments))
+        if (restoring is not null)
         {
-            foreach (var attachment in attachments) PendingAttachments.Add(attachment);
+            foreach (var attachment in restoring) PendingAttachments.Add(attachment);
         }
         OnPropertyChanged(nameof(HasPendingAttachments));
         NotifySendState();
@@ -565,7 +639,11 @@ public partial class ChatPageViewModel : ViewModelBase
     /// <summary>按当前模型上限重建思考菜单(关闭/自动 + 不超过上限的档位), 并夹紧当前选中值。</summary>
     private void RefreshThinkingOptions()
     {
-        var cap = CurrentMaxThinking();
+        // Auto = 0, 而 Low = 1, 所以未配置上限时(ProviderConfig.GetMaxThinking 兜底为 Auto)
+        // 不能直接把 cap 当上限用 —— 否则 for 循环一次都不进, 菜单只剩"关闭/自动"两项。
+        // 语义上 Auto = "交回模型自身决定" = 本层不设上限, 因此按 Max 处理。
+        var raw = CurrentMaxThinking();
+        var cap = raw == ThinkingLevel.Auto ? ThinkingLevel.Max : raw;
         var options = new List<ThinkingLevel> { ThinkingLevel.Off, ThinkingLevel.Auto };
         for (var l = ThinkingLevel.Low; l <= cap; l++)
         {
@@ -653,6 +731,14 @@ public partial class ChatPageViewModel : ViewModelBase
         RefreshShellDataChanged();
     }
 
+    /// <summary>
+    /// 引擎全局事件处理(用量落盘 / 自动压缩提示 / ask_user 应答 / 工具审批)。
+    /// </summary>
+    /// <remarks>
+    /// 这里刻意订阅 <c>Engine.OnEvent</c>(即全局 Hub, 按活动会话过滤)而不是引擎的 LocalEvent:
+    /// 非活动会话的用量由 <c>SessionRuntimeRegistry</c> 在 RawEvent 侧直接落盘,
+    /// 两边都收全量事件会重复计数。
+    /// </remarks>
     private void OnEngineUsageRecorded(AgentEngineEvent e)
     {
         if (e is EngineContextCompacted)
@@ -678,9 +764,13 @@ public partial class ChatPageViewModel : ViewModelBase
 
         if (e is not EngineUsageRecorded usage) return;
 
-        var title = CurrentSession?.DisplayTitle ?? "未知会话";
+        // 会话身份一律取事件自带的 Scope, 不读 UI 状态(CurrentSession/_currentSessionId):
+        // 本回调在引擎线程触发, 读 UI 状态既是跨线程访问共享状态, 又会在用户切会话的瞬间
+        // 把用量记到另一个会话名下。兜底与会话注册表的写法保持一致(标题空则回落会话 Id)。
+        var usageSessionId = e.SessionId;
+        var title = string.IsNullOrWhiteSpace(e.SessionTitle) ? usageSessionId : e.SessionTitle;
         UsageStatsService.RecordLlmUsage(
-            _currentSessionId ?? "unknown", title,
+            usageSessionId, title,
             usage.Provider, usage.Model,
             usage.Usage.InputTokens, usage.Usage.OutputTokens,
             usage.Usage.CachedInputTokens);
@@ -829,6 +919,9 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         var items = CurrentSession?.Messages.Select(ChatItemViewModel.From)
                    ?? System.Linq.Enumerable.Empty<ChatItemViewModel>();
+        // 整集合替换前先让旧消息项释放其分段位图; 不释放则每切一次会话/刷新一次列表
+        // 就会留下一批已无 UI 宿主的原生位图(终结器兜底只是延迟, 不是解决)
+        foreach (var old in Messages) old.Deactivate();
         Messages = new ObservableRange<ChatItemViewModel>(items);
     }
 
@@ -906,7 +999,6 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.CreateSession();
         // 新会话必须显式选择自己的工作目录，禁止隐式继承上一会话上下文。
         WorkDir = string.Empty;
-        Sessions = _chatService.Sessions;
         SessionPanel.RefreshItems();
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
@@ -918,8 +1010,19 @@ public partial class ChatPageViewModel : ViewModelBase
     private void DeleteSession(string sessionId)
     {
         _chatService.DeleteSession(sessionId);
+        // 清会话级状态: 删除"正在运行"的会话时, _runningSessionIds/取消源/草稿/附件会变成悬挂条目 ——
+        // 后续只有按"新会话 id"的刷新才会纠正它们, 这些条目永远残留(草稿与附件还会随内存单调增长)。
+        // 取消源一并释放, 避免漏掉的回合继续持有已删会话的引用。
+        _runningSessionIds.Remove(sessionId);
+        if (_turnCtsMap.Remove(sessionId, out var cts)) cts.Dispose();
+        _sessionDrafts.Remove(sessionId);
+        // 该会话的待恢复附件随会话一起消失, 位图要归还(否则删会话后原生内存永久泄漏)
+        if (_sessionAttachments.Remove(sessionId, out var droppedAttachments))
+        {
+            DisposeAttachments(droppedAttachments, keep: null);
+        }
+
         AppShell.Instance.NotifyDataChanged(); // 主页会话分布移除该会话
-        Sessions = _chatService.Sessions;
         SessionPanel.RefreshItems();
         RefreshMessages();
         _currentSessionId = CurrentSession?.Id;
@@ -941,15 +1044,18 @@ public partial class ChatPageViewModel : ViewModelBase
         _chatService.SwitchSession(sessionId);
     }
 
-    [RelayCommand]
+    /// <summary>清空当前会话消息; 生成中不可清(流式占位气泡正挂在显示列表上, 清掉会与引擎历史不一致)。</summary>
+    [RelayCommand(CanExecute = nameof(CanClearMessages))]
     private void ClearMessages()
     {
-        if (CurrentSession is null) return;
+        if (!CanClearMessages() || CurrentSession is null) return;
         _chatService.ClearMessages(CurrentSession.Id);
         RefreshMessages();
         _runtime.Engine.ClearConversation();
         CanContinue = false;
     }
+
+    private bool CanClearMessages() => !IsSending;
 
     /// <summary>从用户消息的自动检查点分叉。</summary>
     [RelayCommand]
@@ -1109,7 +1215,6 @@ public partial class ChatPageViewModel : ViewModelBase
             AppendNotice(Strings.Fork_TruncateFailed);
         }
 
-        Sessions = _chatService.Sessions;
         SessionPanel.RefreshItems();
         RefreshMessages();
         // 必须先切换活动会话: _runtime.Engine 是 Sessions.ActiveEngine 的转发属性,
@@ -1189,7 +1294,6 @@ public partial class ChatPageViewModel : ViewModelBase
         // 不整集合替换(容器大规模回收级联会触发 Material 主题过渡 NRE)
         item.SetUserBodyInPlace(newText);
         RemoveMessagesAfter(item);
-        Sessions = _chatService.Sessions;
         CanContinue = false;
 
         // 引擎历史重建到该消息之前, 新文本由本轮引擎调用追加(原消息的图片附件随本轮重发)
@@ -1231,10 +1335,10 @@ public partial class ChatPageViewModel : ViewModelBase
             if (pos >= 0)
             {
                 RemoveMessagesAfter(item);
+                Messages[pos].Dispose();
                 Messages.RemoveAt(pos);
             }
 
-            Sessions = _chatService.Sessions;
             _runtime.Engine.RebuildConversation(CurrentSession.Messages);
             CanContinue = false;
         }
@@ -1248,6 +1352,8 @@ public partial class ChatPageViewModel : ViewModelBase
 
         for (var i = Messages.Count - 1; i > pos; i--)
         {
+            // 移除前显式释放: 这些消息项不会有人再引用, 终结器兜底只是把泄漏推迟到 GC
+            Messages[i].Dispose();
             Messages.RemoveAt(i);
         }
     }
@@ -1360,6 +1466,9 @@ public partial class ChatPageViewModel : ViewModelBase
         HistoryHint = string.Empty;
     }
 
+    // TODO(async 化, 依赖 GitService 的 async 版): 在 UI 线程同步拉起约 3 个 git 进程
+    // (GetHeadSha + MarkCheckpoint 的 cat-file/tag -l/tag)。它是发送路径的一环,
+    // 与 SendMessage 里的 ResolveContext、RefreshWorkspaceContext 合计约 8 个进程卡在 UI 线程。
     private GitCheckpointRecord? MarkAutomaticCheckpoint(
         GitWorkspaceContext context, ChatSession session, string userText)
     {
@@ -1406,6 +1515,8 @@ public partial class ChatPageViewModel : ViewModelBase
         _sessionAttachments.Remove(sessionId);
         HistoryReset(); // 发送后该条已进入会话历史, 退出浏览态
 
+        // 发送路径上的 UI 线程同步 git 调用(合计约 8 个进程: ResolveContext 3 + 检查点 3 + 上下文刷新 2)。
+        // TODO(async 化): 依赖 GitService 的 async 版; 迁移时注意检查点失败要降级为提示而非中断发送。
         var context = _runtime.GitService.ResolveContext(WorkDir);
         CurrentSession.RepositoryRoot = context.RepositoryRoot;
         CurrentSession.BranchName = context.BranchName;
@@ -1414,6 +1525,8 @@ public partial class ChatPageViewModel : ViewModelBase
         // 附件转图片分段(与引擎侧 ChatImagePart 同源), 发送后清空待发送条带
         var attachments = PendingAttachments.ToList();
         PendingAttachments.Clear();
+        // 会话输入缓存里也清掉: 这些附件已随消息发出, 留着只会在切回本会话时又冒出来
+        if (_currentSessionId is { } sending) _sessionAttachments.Remove(sending);
 
         var isFirstMessage = CurrentSession!.MessageCount == 0;
         var segments = new List<MessageSegment>();
@@ -1427,6 +1540,10 @@ public partial class ChatPageViewModel : ViewModelBase
                 ImageName = att.Name
             });
         }
+
+        // Base64 字符串已提取进分段, 附件对象(含缩略图位图)不再需要。
+        // 注意 FromBitmap 不接管入参所有权, 所以剪贴板那张由 ChatPageView.axaml.cs 负责 Dispose
+        ImageAttachmentService.DisposeAll(attachments);
 
         if (!string.IsNullOrWhiteSpace(content))
         {
@@ -1479,6 +1596,8 @@ public partial class ChatPageViewModel : ViewModelBase
     }
 
     /// <summary>把剪贴板位图加入待发送附件。</summary>
+    /// <summary>收下调用方交来的位图并转成附件。<b>不接管 <paramref name="bmp"/> 的所有权</b>:
+    /// 调用方(剪贴板路径)必须自己 Dispose, 否则这里提前返回时位图就彻底没人引用了。</summary>
     public void AddImageFromBitmap(Avalonia.Media.Imaging.Bitmap bmp, string name)
     {
         if (PendingAttachments.Count >= ImageAttachmentService.MaxAttachments) return;
@@ -1496,6 +1615,12 @@ public partial class ChatPageViewModel : ViewModelBase
     private void RemoveAttachment(PendingImageAttachment attachment)
     {
         PendingAttachments.Remove(attachment);
+        // 已从待发送条带摘掉, 缩略图位图可以归还; 从会话输入缓存里一并摘掉, 避免它悬着到会话销毁
+        if (_currentSessionId is { } sid && _sessionAttachments.TryGetValue(sid, out var cached))
+        {
+            _sessionAttachments[sid] = cached.Where(a => !ReferenceEquals(a, attachment)).ToList();
+        }
+        attachment.Dispose();
         OnPropertyChanged(nameof(HasPendingAttachments));
         NotifySendState();
     }
@@ -1506,7 +1631,6 @@ public partial class ChatPageViewModel : ViewModelBase
     {
         if (!IsSending || _currentSessionId is not { } sessionId) return;
         if (_turnCtsMap.TryGetValue(sessionId, out var cts)) cts.Cancel();
-        else _turnCts?.Cancel();
     }
 
     /// <summary>继续输出: 以固定指令驱动引擎从中断处续写(不新增用户气泡)。</summary>
@@ -1542,9 +1666,12 @@ public partial class ChatPageViewModel : ViewModelBase
         if (CurrentSession?.Id == sessionId) Messages.Add(assistantItem);
 
         // 线性时间线: 分段按事件到达顺序排列(思考/正文/工具交替), UI 顺序 = 实际发生顺序
-        // 线程模型: 以下四个集合**只在 UI 线程**被访问。
+        // 线程模型(重要隐式约定, 见 B5 报告): 以下集合**只在 UI 线程**被访问。
         // 引擎线程(含 run_subagents 的 Task.WhenAll 回调, 无 SyncContext)只往 pendingEvents 入队,
         // 由 FlushUi 统一排空 —— 彻底消除此前"引擎线程写 List/Dictionary + UI 线程读"的跨线程共享。
+        // ⚠ 本方法整体依赖"await 不加 ConfigureAwait(false) → 续体留在 UI 线程"这一约定:
+        // 若下方 EnqueueTurnAsync/RunTurnAsync 任一处改成 ConfigureAwait(false),
+        // ProcessEvent/RebuildSegments 就会在后台线程改 ObservableCollection → 崩溃。
         var entries = new List<TimelineEntry>();
         var toolData = new List<(string Id, string Name, string Args)>();       // 工具调用, 按调用顺序
         var toolOutputs = new Dictionary<string, StringBuilder>();
@@ -1553,6 +1680,16 @@ public partial class ChatPageViewModel : ViewModelBase
         // 引擎线程 → UI 线程的事件队列(ConcurrentQueue 保证入队本身线程安全)
         var pendingEvents = new ConcurrentQueue<AgentEngineEvent>();
         var flushScheduled = 0; // 0=空闲 1=已排 UI 刷新(用 Interlocked 做节流标记)
+
+        // 时间节流(与上面的"同一 tick 只刷一次"正交): Markdown 全文重解析是 CPU 密集且随
+        // 文本长度线性增长的工作, 逐 token 触发会让一轮回复的总代价变成 O(n²)(n = 回复字符数)。
+        // 故两次 RebuildSegments 之间至少间隔 StreamRebuildIntervalMs。
+        const int StreamRebuildIntervalMs = 60;
+        var rebuildTimer = new DispatcherTimer(DispatcherPriority.Render)
+        {
+            Interval = TimeSpan.FromMilliseconds(StreamRebuildIntervalMs)
+        };
+        long lastRebuildStamp = 0; // 0 = 本轮还没重建过分段(首次立即刷新)
 
         // 引擎线程回调: 只入队, 首次入队时排一次 UI 刷新
         void OnEngineEvent(AgentEngineEvent e)
@@ -1606,9 +1743,17 @@ public partial class ChatPageViewModel : ViewModelBase
             }
         }
 
-        // UI 线程同步: 排空事件队列后重建分段
-        void FlushUi()
+        // UI 线程同步: 排空事件队列后重建分段(受时间门限节流)
+        void FlushUi() => DrainAndRebuild(force: false);
+
+        // UI 线程同步: 忽略时间门限的强制刷新。回合收尾(成功/取消/异常)与节流表回调必须走这里,
+        // 否则 Segments 落后于 entries, 末尾按 Segments 持久化的就是被截断的助手消息(数据损坏)。
+        void FlushUiNow() => DrainAndRebuild(force: true);
+
+        void DrainAndRebuild(bool force)
         {
+            Dispatcher.UIThread.CheckAccess();
+
             Interlocked.Exchange(ref flushScheduled, 0);
 
             // 必须先排空再决定是否续排: 排空期间引擎线程可能又入队了新事件
@@ -1628,12 +1773,26 @@ public partial class ChatPageViewModel : ViewModelBase
                 return;
             }
 
+            // 距上次重建不足门限: 本次只累积不刷新, 由节流表补一次(保证最终一定会呈现)。
+            // 只在这里生效: 回合收尾走 FlushUiNow, 不会漏掉最后一次刷新。
+            var now = Stopwatch.GetTimestamp();
+            if (!force && lastRebuildStamp != 0 &&
+                (now - lastRebuildStamp) * 1000L / Stopwatch.Frequency < StreamRebuildIntervalMs)
+            {
+                if (!rebuildTimer.IsEnabled) rebuildTimer.Start();
+                return;
+            }
+
+            lastRebuildStamp = now;
+            rebuildTimer.Stop();
             RebuildSegments();
         }
 
         // UI 线程同步: 按 entries 线性顺序补齐缺失分段(仅尾部追加)并覆盖最新内容
         void RebuildSegments()
         {
+            Dispatcher.UIThread.CheckAccess();
+
             while (assistantItem.Segments.Count < entries.Count)
             {
                 var en = entries[assistantItem.Segments.Count];
@@ -1694,19 +1853,27 @@ public partial class ChatPageViewModel : ViewModelBase
             }
         }
 
+        // 节流表回调: 到点强制重建一次(绑在局部函数声明之后, 避免从 lambda 前向引用局部函数)
+        rebuildTimer.Tick += (_, _) => FlushUiNow();
+
         // 会话运行时: 同一会话的多个回合必须经其队列串行执行(此前直接调 Engine.RunTurnAsync
         // 会并发写引擎对话历史这个普通 List, 是数据竞争)。
         // 优先按 sessionId 精确取, 取不到再退到活动会话; 两者皆 null 才直连兜底引擎。
         var runtime = _runtime.Sessions.TryGet(sessionId) ?? _runtime.Sessions.Active;
         var engine = runtime?.Engine ?? _runtime.Engine;
 
-        engine.OnEvent += OnEngineEvent;
-        _turnCts?.Dispose();
-        _turnCts = new CancellationTokenSource();
+        // 订阅引擎的**本地事件出口**(LocalEvent)而不是 OnEvent:
+        // OnEvent 在引擎带 Hub 时实际订阅的是全局 EngineEventHub, 而 Hub 只向"当前活动会话"
+        // 投递, 于是 (a) 流式中切会话 → 旧会话增量被丢弃 → 下方按 Segments 持久化出被截断的
+        // 助手消息(数据损坏); (b) 后台会话流式 → UI 完全无输出, 只剩整段 reply 兜底, 分段结构/
+        // 思考过程/工具卡全丢。LocalEvent 绑定到本引擎、无条件触发, 两个方向都正确。
+        // 注: 引擎每会话独立且同时只跑一个回合, 故这里收到的必然都是本会话事件, 无需再过滤。
+        engine.LocalEvent += OnEngineEvent;
+        var turnCts = new CancellationTokenSource();
         if (!string.IsNullOrEmpty(sessionId))
         {
             if (_turnCtsMap.Remove(sessionId, out var previous)) previous.Dispose();
-            _turnCtsMap[sessionId] = _turnCts;
+            _turnCtsMap[sessionId] = turnCts;
         }
         try
         {
@@ -1714,12 +1881,12 @@ public partial class ChatPageViewModel : ViewModelBase
             engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
             engine.Options.IsPlanMode = IsPlanMode;
 
-            // 注意此处 await 不加 ConfigureAwait(false): 续体要留在 UI 线程, 下面的 FlushUi/
-            // 分段追加都直接操作 ObservableCollection。
+            // 注意此处 await 不加 ConfigureAwait(false): 续体要留在 UI 线程, 下面的 FlushUiNow/
+            // 分段追加都直接操作 ObservableCollection。见方法开头"线程模型"注释。
             var reply = runtime is not null
-                ? await runtime.EnqueueTurnAsync(engineMessage, images, _turnCts.Token)
-                : await engine.RunTurnAsync(engineMessage, images, _turnCts.Token);
-            FlushUi(); // 兜底同步一次, 确保最终增量已呈现
+                ? await runtime.EnqueueTurnAsync(engineMessage, images, turnCts.Token)
+                : await engine.RunTurnAsync(engineMessage, images, turnCts.Token);
+            FlushUiNow(); // 兜底同步一次, 确保最终增量已呈现(必须强制, 否则会漏掉门限内的最后一批)
 
             // 全程无流式文本时(如纯最终回复), 将整体回复作为正文分段补到时间线末尾
             if (!string.IsNullOrWhiteSpace(reply) &&
@@ -1728,13 +1895,13 @@ public partial class ChatPageViewModel : ViewModelBase
                 var fallback = new TimelineEntry(MessageSegmentKind.Text);
                 fallback.Sb.Append(reply);
                 entries.Add(fallback);
-                FlushUi();
+                FlushUiNow(); // 强制: 否则兜底正文可能还没进 Segments, 会被后面的持久化丢掉
             }
         }
         catch (OperationCanceledException)
         {
             // 用户主动终止: 保留已生成的部分内容并允许继续输出
-            FlushUi();
+            FlushUiNow(); // 强制: 取消多发生在时间门限内, 不强制就会丢掉最后一批增量
             var note = new SegmentItemViewModel(MessageSegmentKind.Text);
             note.SetBody(Strings.Chat_StoppedNote);
             assistantItem.Segments.Add(note);
@@ -1742,18 +1909,25 @@ public partial class ChatPageViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            AIShikikan.Core.Logging.Log.Error("Session", ex, "回合执行失败");
             var err = new SegmentItemViewModel(MessageSegmentKind.Text);
+            // TODO(i18n 收口): 该串为硬编码中文, 且把内部异常消息裸示给用户。
+            // 正确做法是区分"内部错误"(只记日志 + 通用提示)与"用户可见错误"(可展示细节),
+            // 并抽成 Strings 键(如 Chat_TurnFailed)。本次未改: 加键需动共享文件 Resources/Strings*.resx。
             err.SetBody($"⚠ 发生错误: {ex.Message}");
             assistantItem.Segments.Add(err);
         }
         finally
         {
-            engine.OnEvent -= OnEngineEvent;
+            engine.LocalEvent -= OnEngineEvent;
+            rebuildTimer.Stop();
+            // 无会话归属时取消源无处安放(不进字典), 在此释放避免泄漏
+            if (string.IsNullOrEmpty(sessionId)) turnCts.Dispose();
             // 回合出队后排队数可能已归零: 先同步一次, 不必等轮询表下一拍(轮询表仅在 >0 时运行)
             RefreshQueuedTurnCount();
         }
 
-        // 持久化为结构化分段
+        // 持久化为结构化分段(读的是 Segments, 故上面每次收尾刷新都必须强制执行)
         var segments = new List<MessageSegment>();
         foreach (var seg in assistantItem.Segments)
         {

@@ -25,6 +25,12 @@ public partial class ChatPageView : UserControl
     private bool _atBottom = true; // 用户滚上去看历史时暂停自动滚动
     private bool _scrollScheduled;
     private DateTime _lastEscUtc; // 双击 ESC 判定窗口
+    // VM 的 PropertyChanged 处理器必须持有引用: ViewLocator 每次切页都会 new ChatPageView(),
+    // 而 ChatPageViewModel 是长生命周期的单例 —— 用匿名 lambda 订阅就永远解绑不掉,
+    // 反复进出聊天页会在 VM 上堆积 N 个处理器(各自持有已废弃的 view)→ view 泄漏。
+    private PropertyChangedEventHandler? _vmPropertyChanged;
+    // 已订阅的 VM(DataContext 换掉后靠它摘旧订阅; base.OnDataContextChanged 调用后 DataContext 已是新值)
+    private ChatPageViewModel? _boundVm;
 
     public ChatPageView()
     {
@@ -82,7 +88,31 @@ public partial class ChatPageView : UserControl
     protected override void OnDataContextChanged(System.EventArgs e)
     {
         base.OnDataContextChanged(e);
-        if (DataContext is not ChatPageViewModel vm) return;
+        // DataContext 在 base 调用后已是**新** VM, 故必须靠 _boundVm 摘旧订阅再重挂。
+        DetachFromViewModel();
+        AttachToViewModel();
+    }
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        // 兜底重挂: 少数宿主场景会"脱离 → 重新挂回"同一个 view 实例, 此时 OnDataContextChanged
+        // 不会再触发, 不补挂的话视图会静默地不再响应 VM 事件。
+        AttachToViewModel();
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        // 离开视觉树即视为可能被丢弃(ViewLocator 每次切页都 new 一个 view):
+        // 立即解绑, 不等 GC 找机会 —— 否则长生命周期的 ChatPageViewModel 会一直持有指向旧 view 的委托。
+        DetachFromViewModel();
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    /// <summary>把本 view 挂到当前 DataContext 上(幂等: 已挂在同一个 VM 上则无操作)。</summary>
+    private void AttachToViewModel()
+    {
+        if (DataContext is not ChatPageViewModel vm || ReferenceEquals(vm, _boundVm)) return;
 
         void AttachMessages()
         {
@@ -101,7 +131,7 @@ public partial class ChatPageView : UserControl
             AttachTail(vm);
         }
 
-        vm.PropertyChanged += (_, args) =>
+        _vmPropertyChanged = (_, args) =>
         {
             // 流式期间在同一个集合上 Add, 仅靠 PropertyChanged 不够; 集合变化也要触发
             if (args.PropertyName == nameof(ChatPageViewModel.Messages))
@@ -110,7 +140,31 @@ public partial class ChatPageView : UserControl
                 ScheduleScroll();
             }
         };
+        _boundVm = vm;
+        vm.PropertyChanged += _vmPropertyChanged;
         AttachMessages();
+    }
+
+    /// <summary>
+    /// 从本 view 订阅过的 VM 上摘掉全部订阅(属性、消息集合、尾部分段)。
+    /// 视图被丢弃前必须调用, 否则长生命周期的 ChatPageViewModel 会一直持有指向旧 view 的委托。
+    /// </summary>
+    private void DetachFromViewModel()
+    {
+        if (_boundVm is { } vm && _vmPropertyChanged is not null)
+        {
+            vm.PropertyChanged -= _vmPropertyChanged;
+        }
+
+        _boundVm = null;
+        _vmPropertyChanged = null;
+        if (_messagesCollection is not null)
+        {
+            _messagesCollection.CollectionChanged -= OnMessagesChanged;
+            _messagesCollection = null;
+        }
+
+        DetachTail();
     }
 
     /// <summary>获取 ListBox 模板内部的 ScrollViewer 并观察滚动偏移(判断用户是否贴底)。</summary>
@@ -167,17 +221,18 @@ public partial class ChatPageView : UserControl
     private void AttachTail(ChatPageViewModel vm)
     {
         var tail = vm.Messages.Count > 0 ? vm.Messages[^1] : null;
-        if (ReferenceEquals(tail, _tailItem)) return;
 
-        if (_tailItem is not null)
+        // 旧尾部已被移出集合时必须解绑: 下面的 ReferenceEquals 早退只能覆盖"切到另一个尾部",
+        // 覆盖不了"旧尾部消失"这条路径(RemoveMessagesAfter / DeleteUserMessage / 整集合替换),
+        // 那些情况下旧分段仍持有指向本 view 的委托 → view 泄漏。
+        if (_tailItem is not null && !ReferenceEquals(_tailItem, tail) && !vm.Messages.Contains(_tailItem))
         {
-            _tailItem.Segments.CollectionChanged -= OnTailSegmentsChanged;
-            foreach (var seg in _tailItem.Segments)
-            {
-                seg.PropertyChanged -= OnSegmentPropChanged;
-            }
+            DetachTail();
         }
 
+        if (ReferenceEquals(tail, _tailItem)) return;
+
+        DetachTail();
         _tailItem = tail;
 
         if (_tailItem is not null)
@@ -188,6 +243,21 @@ public partial class ChatPageView : UserControl
                 seg.PropertyChanged += OnSegmentPropChanged;
             }
         }
+    }
+
+    /// <summary>解除尾部消息与其全部分段的订阅(必须与 AttachTail 成对)。</summary>
+    private void DetachTail()
+    {
+        if (_tailItem is not null)
+        {
+            _tailItem.Segments.CollectionChanged -= OnTailSegmentsChanged;
+            foreach (var seg in _tailItem.Segments)
+            {
+                seg.PropertyChanged -= OnSegmentPropChanged;
+            }
+        }
+
+        _tailItem = null;
     }
 
     private void OnTailSegmentsChanged(object? sender, NotifyCollectionChangedEventArgs e)
@@ -212,6 +282,9 @@ public partial class ChatPageView : UserControl
         ScheduleScroll();
     }
 
+    // ⚠ 已知取舍(D10, 勿改): 分段任意属性变化都会排一次滚动, _scrollScheduled 只去重到同一 tick。
+    // 分段在流式期间每 ~60ms 就整体刷新一次, 若改成按属性过滤(如只关心 BodyContent),
+    // 会漏掉工具卡展开/折叠等引起的高度变化, 贴底跟随会失准 —— 滚动行为对聊天页观感敏感, 保持现状。
     private void OnSegmentPropChanged(object? sender, PropertyChangedEventArgs e) => ScheduleScroll();
 
     /// <summary>渲染优先级延后滚动, 确保新增分段/文本增长已完成布局测量。</summary>
@@ -410,8 +483,18 @@ public partial class ChatPageView : UserControl
             var bmp = await clipboard.TryGetBitmapAsync();
             if (bmp is not null)
             {
-                vm.AddImageFromBitmap(bmp, "clipboard-image");
-                e.Handled = true;
+                // AddImageFromBitmap 不接管所有权(它只读来降采样/编码, 附件自带副本),
+                // 所以释放责任在调用方。附件已满时它会直接 early-return, 那时 bmp 更是
+                // 完全没有引用者 —— 不释放就是纯泄漏, 且是粘贴路径上最容易发生的那种。
+                try
+                {
+                    vm.AddImageFromBitmap(bmp, "clipboard-image");
+                    e.Handled = true;
+                }
+                finally
+                {
+                    bmp.Dispose();
+                }
             }
         }
         catch
