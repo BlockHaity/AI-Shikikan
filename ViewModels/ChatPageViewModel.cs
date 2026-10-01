@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -77,6 +78,40 @@ public partial class ChatPageViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _isSending;
+
+    /// <summary>当前会话排队等待执行的回合数(不含正在执行的那个)。</summary>
+    /// <remarks>
+    /// SessionRuntime.PendingTurnCount 没有事件(入队/出队刻意不抛 StateChanged, 保持"回合开始/结束"语义),
+    /// UI 无法直接感知, 故由 <see cref="_queuedPollTimer"/> 在有排队时轮询, 归零即停。
+    /// </remarks>
+    [ObservableProperty]
+    private int _queuedTurnCount;
+
+    /// <summary>当前会话有排队等待的回合(供界面提示与发送态判定)。</summary>
+    public bool IsQueued => QueuedTurnCount > 0;
+
+    /// <summary>排队计数轮询表: 仅在 QueuedTurnCount &gt; 0 时运行, 归零即停, 避免常驻轮询。</summary>
+    private readonly DispatcherTimer _queuedPollTimer;
+
+    partial void OnQueuedTurnCountChanged(int value)
+    {
+        if (value > 0)
+        {
+            // 首次观察到排队时启动轮询(尚未启动才启动, 重复 Start 重启间隔)
+            if (!_queuedPollTimer.IsEnabled) _queuedPollTimer.Start();
+        }
+        else
+        {
+            _queuedPollTimer.Stop();
+        }
+
+        OnPropertyChanged(nameof(IsQueued));
+        NotifySendState();
+    }
+
+    /// <summary>按当前会话刷新排队计数(读 SessionRuntime.PendingTurnCount, 仅 UI 线程调用)。</summary>
+    private void RefreshQueuedTurnCount() =>
+        QueuedTurnCount = _runtime.Sessions.TryGet(_currentSessionId ?? string.Empty)?.PendingTurnCount ?? 0;
 
     /// <summary>手动终止当前回合的取消源（按会话保存，支持后台会话独立停止）。</summary>
     private readonly Dictionary<string, CancellationTokenSource> _turnCtsMap = new(StringComparer.Ordinal);
@@ -178,7 +213,8 @@ public partial class ChatPageViewModel : ViewModelBase
 
     public bool HasSendBlockedReason => !string.IsNullOrEmpty(SendBlockedReason);
 
-    public bool CanSendMessage => !IsSending && !HasSendBlockedReason &&
+    /// <summary>排队中的回合会被 Core 队列串行执行, 期间禁止再发消息以免排成长队且打断会话内串行语义。</summary>
+    public bool CanSendMessage => !IsSending && !IsQueued && !HasSendBlockedReason &&
                                   (!string.IsNullOrWhiteSpace(InputText) || PendingAttachments.Count > 0);
 
     partial void OnWorkDirChanged(string value)
@@ -299,6 +335,13 @@ public partial class ChatPageViewModel : ViewModelBase
         StatusPanel.SetSession(_currentSessionId ?? string.Empty);
         StatusPanel.SetWorkspace(WorkDir);
 
+        // 排队计数轮询: PendingTurnCount 无事件可订阅, 仅在确有排队时运行
+        _queuedPollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(500)
+        };
+        _queuedPollTimer.Tick += (_, _) => RefreshQueuedTurnCount();
+
         _chatService.CurrentSessionChanged += (_, session) =>
         {
             SaveSessionInputState(_currentSessionId);
@@ -319,13 +362,20 @@ public partial class ChatPageViewModel : ViewModelBase
             StatusPanel.SetWorkspace(WorkDir);
             RefreshContextUsage();
             RefreshWorkspaceContext();
+            // 排队数按会话隔离: 切会话后必须跟着换, 否则会拿上一个会话的计数挡住发送
+            RefreshQueuedTurnCount();
             NotifySendState();
         };
         _chatService.MessageAdded += (_, msg) =>
         {
-            // 任一会话流式期间由对应 RunTurn 维护；Core 事件未携带 sessionId 时，
-            // 忽略后台会话事件可避免消息串到当前同分支会话。
-            if (_runningSessionIds.Count > 0) return;
+            // Core 事件不带 sessionId, 按消息归属会话判定: AddMessage 是"追加后同步触发",
+            // 故该消息此刻必然是所属会话 Messages 的末位。
+            // 归属会话正在流式时, 显示列表已由对应 RunTurnCoreAsync 的流式占位气泡维护, 不能再追加一条。
+            // 不能沿用"任一会话在跑就整体忽略": A 会话后台流式时用户在 B 会话发的消息也会被吞掉,
+            // B 少一条气泡, 下一条消息的增量判定必然失败 → 退化成整集合替换(容器全量重建)。
+            var owner = _chatService.Sessions.FirstOrDefault(s =>
+                s.Messages.Count > 0 && ReferenceEquals(s.Messages[^1], msg));
+            if (owner is not null && IsSessionRunning(owner.Id)) return;
 
             // 增量追加优先: 整集合替换会大规模回收容器, 触发 Material 主题过渡 NRE
             if (CurrentSession is { } s && s.Messages.Count == Messages.Count + 1 &&
@@ -1492,14 +1542,30 @@ public partial class ChatPageViewModel : ViewModelBase
         if (CurrentSession?.Id == sessionId) Messages.Add(assistantItem);
 
         // 线性时间线: 分段按事件到达顺序排列(思考/正文/工具交替), UI 顺序 = 实际发生顺序
+        // 线程模型: 以下四个集合**只在 UI 线程**被访问。
+        // 引擎线程(含 run_subagents 的 Task.WhenAll 回调, 无 SyncContext)只往 pendingEvents 入队,
+        // 由 FlushUi 统一排空 —— 彻底消除此前"引擎线程写 List/Dictionary + UI 线程读"的跨线程共享。
         var entries = new List<TimelineEntry>();
         var toolData = new List<(string Id, string Name, string Args)>();       // 工具调用, 按调用顺序
         var toolOutputs = new Dictionary<string, StringBuilder>();
         var toolFinished = new Dictionary<string, (string Result, bool IsError, string? StepId, ToolCardDetail? Detail)>();
-        var flushPending = false;
 
-        // 后台线程累积数据, 节流同步到 UI 线程重建分段
+        // 引擎线程 → UI 线程的事件队列(ConcurrentQueue 保证入队本身线程安全)
+        var pendingEvents = new ConcurrentQueue<AgentEngineEvent>();
+        var flushScheduled = 0; // 0=空闲 1=已排 UI 刷新(用 Interlocked 做节流标记)
+
+        // 引擎线程回调: 只入队, 首次入队时排一次 UI 刷新
         void OnEngineEvent(AgentEngineEvent e)
+        {
+            pendingEvents.Enqueue(e);
+            if (Interlocked.CompareExchange(ref flushScheduled, 1, 0) == 0)
+            {
+                Dispatcher.UIThread.Post(FlushUi);
+            }
+        }
+
+        // UI 线程: 消费单个引擎事件(原 OnEngineEvent 的 switch 体)
+        void ProcessEvent(AgentEngineEvent e)
         {
             switch (e)
             {
@@ -1538,17 +1604,36 @@ public partial class ChatPageViewModel : ViewModelBase
                     entries[^1].Sb.Append(Strings.Chat_CtxAutoCompacted);
                     break;
             }
+        }
 
-            if (flushPending) return;
-            flushPending = true;
-            Dispatcher.UIThread.Post(FlushUi);
+        // UI 线程同步: 排空事件队列后重建分段
+        void FlushUi()
+        {
+            Interlocked.Exchange(ref flushScheduled, 0);
+
+            // 必须先排空再决定是否续排: 排空期间引擎线程可能又入队了新事件
+            while (pendingEvents.TryDequeue(out var e))
+            {
+                ProcessEvent(e);
+            }
+
+            if (!pendingEvents.IsEmpty)
+            {
+                // 本轮排空后仍有积压: 续排一次刷新(期间新事件的入队者也会看到 flushScheduled=0 自行排)
+                if (Interlocked.CompareExchange(ref flushScheduled, 1, 0) == 0)
+                {
+                    Dispatcher.UIThread.Post(FlushUi);
+                }
+
+                return;
+            }
+
+            RebuildSegments();
         }
 
         // UI 线程同步: 按 entries 线性顺序补齐缺失分段(仅尾部追加)并覆盖最新内容
-        void FlushUi()
+        void RebuildSegments()
         {
-            flushPending = false;
-
             while (assistantItem.Segments.Count < entries.Count)
             {
                 var en = entries[assistantItem.Segments.Count];
@@ -1609,7 +1694,13 @@ public partial class ChatPageViewModel : ViewModelBase
             }
         }
 
-        _runtime.Engine.OnEvent += OnEngineEvent;
+        // 会话运行时: 同一会话的多个回合必须经其队列串行执行(此前直接调 Engine.RunTurnAsync
+        // 会并发写引擎对话历史这个普通 List, 是数据竞争)。
+        // 优先按 sessionId 精确取, 取不到再退到活动会话; 两者皆 null 才直连兜底引擎。
+        var runtime = _runtime.Sessions.TryGet(sessionId) ?? _runtime.Sessions.Active;
+        var engine = runtime?.Engine ?? _runtime.Engine;
+
+        engine.OnEvent += OnEngineEvent;
         _turnCts?.Dispose();
         _turnCts = new CancellationTokenSource();
         if (!string.IsNullOrEmpty(sessionId))
@@ -1619,11 +1710,15 @@ public partial class ChatPageViewModel : ViewModelBase
         }
         try
         {
-            _runtime.Engine.Options.Thinking = SelectedThinking;
-            _runtime.Engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
-            _runtime.Engine.Options.IsPlanMode = IsPlanMode;
+            engine.Options.Thinking = SelectedThinking;
+            engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
+            engine.Options.IsPlanMode = IsPlanMode;
 
-            var reply = await _runtime.Engine.RunTurnAsync(engineMessage, images, _turnCts.Token);
+            // 注意此处 await 不加 ConfigureAwait(false): 续体要留在 UI 线程, 下面的 FlushUi/
+            // 分段追加都直接操作 ObservableCollection。
+            var reply = runtime is not null
+                ? await runtime.EnqueueTurnAsync(engineMessage, images, _turnCts.Token)
+                : await engine.RunTurnAsync(engineMessage, images, _turnCts.Token);
             FlushUi(); // 兜底同步一次, 确保最终增量已呈现
 
             // 全程无流式文本时(如纯最终回复), 将整体回复作为正文分段补到时间线末尾
@@ -1653,7 +1748,9 @@ public partial class ChatPageViewModel : ViewModelBase
         }
         finally
         {
-            _runtime.Engine.OnEvent -= OnEngineEvent;
+            engine.OnEvent -= OnEngineEvent;
+            // 回合出队后排队数可能已归零: 先同步一次, 不必等轮询表下一拍(轮询表仅在 >0 时运行)
+            RefreshQueuedTurnCount();
         }
 
         // 持久化为结构化分段
