@@ -1,6 +1,5 @@
 namespace AIShikikan.Core.Services.Mcp;
 
-using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 /// <summary>单个 MCP 服务器定义(stdio / http / sse 传输)。</summary>
@@ -61,16 +60,13 @@ public static class McpConfigService
             }
 
             EnsureDefaultExists();
-            try
+            _cache = [];
+            // 主文件为空 / 非法 TOML 时自动回退 .bak, 避免缓存里落进空配置后被写回覆盖
+            McpConfigFile? parsed = null;
+            if (AtomicFile.TryReadText(AppPaths.McpServersPath, out var content, text => TryParse(text, out parsed))
+                && parsed is not null)
             {
-                var content = File.ReadAllText(AppPaths.McpServersPath);
-                var file = TomlBridge.Deserialize<McpConfigFile>(content);
-                _cache = file?.Servers ?? [];
-            }
-            catch (Exception ex)
-            {
-                Log.Warn("Config", ex, $"解析 {AppPaths.McpServersPath} 失败");
-                _cache = [];
+                _cache = parsed.Servers;
             }
 
             return _cache;
@@ -82,22 +78,37 @@ public static class McpConfigService
         lock (Sync)
         {
             Directory.CreateDirectory(AppPaths.ConfigDir);
-            File.WriteAllText(AppPaths.McpServersPath, TomlBridge.Serialize(file));
+            // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 mcp-servers.toml
+            AtomicFile.TryWriteAllText(AppPaths.McpServersPath, TomlBridge.Serialize(file), "mcp-servers.toml");
             _cache = file.Servers.ToList();
         }
     }
 
     public static McpConfigFile LoadUserFile()
     {
+        // Upsert/Remove 走这里: 解析失败返回空对象会被 Save 写回, 故主文件损坏时回退 .bak
+        McpConfigFile? parsed = null;
+        if (AtomicFile.TryReadText(AppPaths.McpServersPath, out var content, text => TryParse(text, out parsed))
+            && parsed is not null)
+        {
+            return parsed;
+        }
+
+        return new McpConfigFile();
+    }
+
+    /// <summary>尝试解析 mcp-servers.toml 内容; 解析异常视为不可用(触发 .bak 回退)。</summary>
+    private static bool TryParse(string content, out McpConfigFile? file)
+    {
         try
         {
-            var content = File.ReadAllText(AppPaths.McpServersPath);
-            return TomlBridge.Deserialize<McpConfigFile>(content) ?? new McpConfigFile();
+            file = TomlBridge.Deserialize<McpConfigFile>(content);
+            return file is not null;
         }
-        catch (Exception ex)
+        catch
         {
-            Log.Warn("Config", ex, $"读取 {AppPaths.McpServersPath} 失败");
-            return new McpConfigFile();
+            file = null;
+            return false;
         }
     }
 
@@ -126,5 +137,12 @@ public static class McpConfigService
         Save(file);
     }
 
-    public static void Refresh() => _cache = null;
+    /// <summary>清空缓存(文件被外部修改后调用); 与其它方法一样纳入 Sync 保护。</summary>
+    public static void Refresh()
+    {
+        lock (Sync)
+        {
+            _cache = null;
+        }
+    }
 }

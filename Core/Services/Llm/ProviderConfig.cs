@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services.Llm;
@@ -77,21 +78,17 @@ public static class ProviderSettingsService
     {
         if (File.Exists(AppPaths.ProvidersPath))
         {
-            try
+            // 主文件为空 / 非法 TOML 时自动回退 .bak: 含 API Key, 丢了极难恢复
+            LlmSettings? parsed = null;
+            if (AtomicFile.TryReadText(AppPaths.ProvidersPath, out var content, text => TryParse(text, out parsed))
+                && parsed is not null)
             {
-                var content = File.ReadAllText(AppPaths.ProvidersPath);
-                var settings = TomlBridge.Deserialize<LlmSettings>(content);
-                if (settings is not null)
-                {
-                    // 用户文件为准: 即使删光了 Provider 也保持原样, 不恢复默认
-                    return settings;
-                }
-            }
-            catch
-            {
+                // 用户文件为准: 即使删光了 Provider 也保持原样, 不恢复默认
+                return parsed;
             }
 
-            // 文件存在但解析失败: 不覆盖用户文件, 按空配置运行
+            // 文件存在但解析失败且无可用备份: 不覆盖用户文件, 按空配置运行
+            Log.Warn("Config", $"读取 {AppPaths.ProvidersPath} 失败且无可用备份, 按空配置运行(Provider 配置可能已丢失)");
             return new LlmSettings();
         }
 
@@ -108,8 +105,9 @@ public static class ProviderSettingsService
                     return settings;
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                Log.Warn("Config", ex, $"解析旧版 {legacyPath} 失败");
             }
 
             return new LlmSettings();
@@ -122,8 +120,9 @@ public static class ProviderSettingsService
             var content = File.ReadAllText(AppPaths.ProvidersPath);
             return TomlBridge.Deserialize<LlmSettings>(content) ?? new LlmSettings();
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Warn("Config", ex, $"读取 {AppPaths.ProvidersPath} 失败");
             return new LlmSettings();
         }
     }
@@ -131,6 +130,22 @@ public static class ProviderSettingsService
     public static void Save(LlmSettings settings)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.ProvidersPath, TomlBridge.Serialize(settings));
+        // 原子写入(tmp -> 刷盘 -> rename): 避免断电/崩溃时留下半截 providers.toml 导致 API Key 全丢
+        AtomicFile.TryWriteAllText(AppPaths.ProvidersPath, TomlBridge.Serialize(settings), "providers.toml(含 API Key)");
+    }
+
+    /// <summary>尝试解析 providers.toml 内容; 解析异常视为不可用(触发 .bak 回退)。</summary>
+    private static bool TryParse(string content, out LlmSettings? settings)
+    {
+        try
+        {
+            settings = TomlBridge.Deserialize<LlmSettings>(content);
+            return settings is not null;
+        }
+        catch
+        {
+            settings = null;
+            return false;
+        }
     }
 }

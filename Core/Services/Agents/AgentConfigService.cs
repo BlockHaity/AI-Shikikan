@@ -43,22 +43,17 @@ public static class AgentConfigService
     {
         if (File.Exists(AppPaths.AgentsPath))
         {
-            try
+            // 主文件为空 / 非法 TOML 时自动回退 .bak, 避免"加载返回空配置 -> 下次写回覆盖原始数据"
+            AgentConfigFile? parsed = null;
+            if (AtomicFile.TryReadText(AppPaths.AgentsPath, out var content, text => TryParse(text, out parsed))
+                && parsed is not null)
             {
-                var content = File.ReadAllText(AppPaths.AgentsPath);
-                var file = TomlBridge.Deserialize<AgentConfigFile>(content);
-                if (file is not null)
-                {
-                    // 用户文件为准: 即使删光了 Agent 也保持原样, 不恢复默认
-                    return file;
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Warn("Config", ex, $"解析 {AppPaths.AgentsPath} 失败");
+                // 用户文件为准: 即使删光了 Agent 也保持原样, 不恢复默认
+                return parsed;
             }
 
-            // 文件存在但解析失败: 不覆盖用户文件, 按空配置运行
+            // 文件存在但解析失败且无可用备份: 不覆盖用户文件, 按空配置运行
+            Log.Warn("Config", $"读取 {AppPaths.AgentsPath} 失败且无可用备份, 按空配置运行");
             return new AgentConfigFile();
         }
 
@@ -138,10 +133,26 @@ public static class AgentConfigService
 
     public static void Refresh() => _cache = null;
 
+    /// <summary>尝试解析 agents.toml 内容; 解析异常视为不可用(触发 .bak 回退)。</summary>
+    private static bool TryParse(string content, out AgentConfigFile? file)
+    {
+        try
+        {
+            file = TomlBridge.Deserialize<AgentConfigFile>(content);
+            return file is not null;
+        }
+        catch
+        {
+            file = null;
+            return false;
+        }
+    }
+
     private static void SaveFile(AgentConfigFile file)
     {
         Directory.CreateDirectory(AppPaths.ConfigDir);
-        File.WriteAllText(AppPaths.AgentsPath, TomlBridge.Serialize(file));
+        // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 agents.toml
+        AtomicFile.TryWriteAllText(AppPaths.AgentsPath, TomlBridge.Serialize(file), "agents.toml");
         _cache = null;
     }
 }

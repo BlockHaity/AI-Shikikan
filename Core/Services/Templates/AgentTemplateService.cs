@@ -191,7 +191,9 @@ public static class AgentTemplateService
     {
         Directory.CreateDirectory(AppPaths.TemplatesDir);
         var file = Path.Combine(AppPaths.TemplatesDir, $"{template.Id}.toml");
-        File.WriteAllText(file, TomlBridge.Serialize(template));
+        // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 .toml 导致模板被静默丢弃。
+        // 附属的 .bak 不会被 LoadAll 的 "*.toml" / "*.json" 扫描匹配到, 不会重复加载。
+        AtomicFile.TryWriteAllText(file, TomlBridge.Serialize(template), $"template:{template.Id}.toml");
     }
 
     /// <summary>从外部 TOML/JSON 文件导入专家模板(兼容旧 JSON), 校验后保存到配置目录。

@@ -96,7 +96,12 @@ public static class PersonaService
     /// <summary>从 Markdown(YAML frontmatter) 文件解析 Persona, 正文作为系统提示词。</summary>
     private static Persona? LoadMarkdown(string file)
     {
-        var content = File.ReadAllText(file);
+        // 主文件为空 / 缺 id(frontmatter 解析失败)时自动回退 .bak, 避免人格被静默丢弃
+        if (!AtomicFile.TryReadText(file, out var content, HasId))
+        {
+            return null;
+        }
+
         var (frontmatter, body) = YamlFrontmatterParser.Parse(content);
 
         if (!frontmatter.TryGetValue("id", out var id) || string.IsNullOrWhiteSpace(id))
@@ -105,6 +110,13 @@ public static class PersonaService
         }
 
         return FromFrontmatter(id, frontmatter, body);
+    }
+
+    /// <summary>校验 Markdown 是否含有可用的 id(与 LoadMarkdown 的成功条件一致)。</summary>
+    private static bool HasId(string content)
+    {
+        var (frontmatter, _) = YamlFrontmatterParser.Parse(content);
+        return frontmatter.TryGetValue("id", out var id) && !string.IsNullOrWhiteSpace(id);
     }
 
     /// <summary>由 frontmatter 与原始正文构建 Persona(加载 .md / 导入 .md 共用);
@@ -145,7 +157,9 @@ public static class PersonaService
     {
         Directory.CreateDirectory(AppPaths.PersonasDir);
         var path = Path.Combine(AppPaths.PersonasDir, $"{persona.Id}.md");
-        File.WriteAllText(path, YamlFrontmatterParser.Build(persona));
+        // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 .md 导致人格被静默丢弃。
+        // 附属的 .bak 不会被 LoadAll 的 "*.md" 扫描匹配到, 不会重复加载。
+        AtomicFile.TryWriteAllText(path, YamlFrontmatterParser.Build(persona), $"persona:{persona.Id}.md");
     }
 
     /// <summary>从外部文件导入专家/人格, 支持 .md(YAML frontmatter, 推荐)、.json(旧格式兼容), 校验后保存到配置目录。</summary>

@@ -1,6 +1,7 @@
 namespace AIShikikan.Core.Services;
 
 using AIShikikan.Core.Logging;
+using AIShikikan.Core.Serialization;
 
 /// <summary>读取程序集内嵌的默认配置文件(TOML), 用于首次启动时初始化用户配置。</summary>
 public static class DefaultConfig
@@ -69,7 +70,7 @@ public static class DefaultConfig
             Directory.CreateDirectory(dir);
         }
 
-        File.WriteAllText(path, content);
-        return true;
+        // 原子写: 默认配置只写一次, 但半截 TOML 会让后续加载静默退回内建默认值, 用户难以察觉
+        return AtomicFile.TryWriteAllText(path, content, $"默认配置首次生成: {resourceName}");
     }
 }

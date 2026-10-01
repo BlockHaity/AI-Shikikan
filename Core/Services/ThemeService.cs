@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json;
+using AIShikikan.Core.Logging;
 using AIShikikan.Core.Serialization;
 
 namespace AIShikikan.Core.Services;
@@ -98,8 +99,14 @@ public class ThemeService
         {
             if (File.Exists(ConfigPath))
             {
-                var content = File.ReadAllText(ConfigPath);
-                _prefs = TomlBridge.Deserialize<Preferences>(content) ?? new Preferences();
+                // 主文件为空 / 非法 TOML 时自动回退 .bak, 避免偏好被重置后写回覆盖
+                Preferences? parsed = null;
+                if (AtomicFile.TryReadText(ConfigPath, out _, text => TryParse(text, out parsed))
+                    && parsed is not null)
+                {
+                    _prefs = parsed;
+                }
+
                 return;
             }
 
@@ -111,9 +118,25 @@ public class ThemeService
                 _prefs = JsonSerializer.Deserialize(content, AppJsonContext.Default.Preferences) ?? new Preferences();
             }
         }
+        catch (Exception ex)
+        {
+            Log.Warn("Config", ex, $"读取 {ConfigPath} 失败, 使用默认偏好");
+            _prefs = new Preferences();
+        }
+    }
+
+    /// <summary>尝试解析 preferences.toml 内容; 解析异常视为不可用(触发 .bak 回退)。</summary>
+    private static bool TryParse(string content, out Preferences? prefs)
+    {
+        try
+        {
+            prefs = TomlBridge.Deserialize<Preferences>(content);
+            return prefs is not null;
+        }
         catch
         {
-            _prefs = new Preferences();
+            prefs = null;
+            return false;
         }
     }
 
@@ -123,10 +146,13 @@ public class ThemeService
         {
             Directory.CreateDirectory(ConfigDir);
             var toml = TomlBridge.Serialize(_prefs);
-            File.WriteAllText(ConfigPath, toml);
+            // 原子写入(tmp -> 刷盘 -> rename): 避免写入中断留下半截 preferences.toml
+            AtomicFile.TryWriteAllText(ConfigPath, toml, "preferences.toml");
         }
-        catch
+        catch (Exception ex)
         {
+            // 序列化失败不应中断 UI(偏好只是显示层设置)
+            Log.Warn("Config", ex, $"序列化 {ConfigPath} 失败, 偏好未写盘");
         }
     }
 

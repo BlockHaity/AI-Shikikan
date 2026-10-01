@@ -18,27 +18,50 @@ public static class RosterConfigService
     public static RosterConfig Load(string sessionId)
     {
         var path = GetPath(sessionId);
-        try
+
+        // 损坏时回退 .bak: Load 失败会返回空配置, 而 Save 会把空配置写回,
+        // 若不做回退, 用户的一次开关切换就把整份 roster 永久清空。
+        if (AtomicFile.TryReadText(path, out var content, ValidateRosterJson))
         {
-            if (File.Exists(path))
+            try
             {
-                var config = JsonSerializer.Deserialize(
-                    File.ReadAllText(path), AppJsonContext.Default.RosterConfig);
+                var config = JsonSerializer.Deserialize(content, AppJsonContext.Default.RosterConfig);
                 if (config is not null) return config;
             }
-        }
-        catch
-        {
+            catch
+            {
+            }
         }
 
         return new RosterConfig();
+    }
+
+    /// <summary>
+    /// 校验 roster.json 是否能反序列化出非 null 对象。
+    /// 注意: 判据刻意不含 "Entries 非空" —— 用户主动清空全部子代理是合法状态。
+    /// </summary>
+    private static bool ValidateRosterJson(string content)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize(content, AppJsonContext.Default.RosterConfig) is not null;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public static void Save(string sessionId, RosterConfig config)
     {
         var path = GetPath(sessionId);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, JsonSerializer.Serialize(config, AppJsonContext.Default.RosterConfig));
+
+        // 原子写: tmp -> 强制刷盘 -> rename 覆盖, 并留 .bak 供 Load 回退
+        AtomicFile.TryWriteAllText(
+            path,
+            JsonSerializer.Serialize(config, AppJsonContext.Default.RosterConfig),
+            $"roster.json({sessionId})");
     }
 
     public static void AddEntry(string sessionId, string agentId, string display, string description, string? personaId)

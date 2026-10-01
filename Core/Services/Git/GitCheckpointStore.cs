@@ -30,13 +30,16 @@ public sealed class GitCheckpointStore
         Directory.CreateDirectory(repoDir);
 
         var file = Path.Combine(repoDir, $"{record.Id}.json");
-        var tempFile = file + ".tmp";
 
         try
         {
             var json = JsonSerializer.Serialize(record, AppJsonContext.Default.GitCheckpointRecord);
-            File.WriteAllText(tempFile, json);
-            File.Move(tempFile, file, overwrite: true);
+
+            // 原子写: 写 .tmp -> 强制刷盘 -> rename 覆盖, 并留 .bak 供损坏回退。
+            // 检查点是回滚能力的依据, 不能容忍半截文件(原先无 Flush(true) 时,
+            // 断电可能让 rename 出一个内容不全的正式文件)。
+            // .tmp 路径同名竞争由 FileShare.None + 失败清理处理, 失败时 AtomicFile 自行清理并上抛。
+            AtomicFile.WriteAllText(file, json);
 
             lock (_lock)
             {
@@ -46,10 +49,6 @@ public sealed class GitCheckpointStore
         catch (Exception ex)
         {
             Log.Warn("GitCheckpoint", ex, $"保存检查点失败: {record.Id}");
-            if (File.Exists(tempFile))
-            {
-                try { File.Delete(tempFile); } catch { }
-            }
             throw;
         }
     }
@@ -110,15 +109,16 @@ public sealed class GitCheckpointStore
         var file = Path.Combine(repoDir, $"{id}.json");
         var key = GetCacheKey(repositoryRoot, id);
 
+        bool existed;
         lock (_lock)
         {
-            var existed = _cache.Remove(key);
-            if (File.Exists(file))
-            {
-                try { File.Delete(file); } catch { }
-            }
-            return existed;
+            existed = _cache.Remove(key);
         }
+
+        // IO 放在锁外: 持锁做磁盘操作会阻塞所有检查点查询。
+        // 用 AtomicFile.Delete 而非 File.Delete: 必须连带清掉 .bak/.tmp 残留。
+        AtomicFile.Delete(file);
+        return existed;
     }
 
     private void LoadAll()
@@ -131,9 +131,17 @@ public sealed class GitCheckpointStore
             {
                 foreach (var file in Directory.GetFiles(repoDir, "*.json"))
                 {
+                    // 解析失败时回退 .bak: 检查点损坏等于该条消息失去回滚能力,
+                    // 而 .bak 往往还留着上一次成功写入的完整记录。
+                    if (!AtomicFile.TryReadText(file, out var content, IsValidCheckpointJson))
+                    {
+                        Log.Warn("GitCheckpoint", $"检查点文件损坏且无可用备份(已跳过): {file}");
+                        continue;
+                    }
+
                     try
                     {
-                        var record = JsonSerializer.Deserialize(File.ReadAllText(file), AppJsonContext.Default.GitCheckpointRecord);
+                        var record = JsonSerializer.Deserialize(content, AppJsonContext.Default.GitCheckpointRecord);
                         if (record is not null)
                         {
                             var key = GetCacheKey(record.RepositoryRoot, record.Id);
@@ -153,6 +161,25 @@ public sealed class GitCheckpointStore
         {
             Log.Error("GitCheckpoint", ex, "检查点存储初始化失败");
             _cache.Clear();
+        }
+    }
+
+    /// <summary>
+    /// 校验检查点 JSON 是否可用: 能反序列化, 且关键字段(Id / RepositoryRoot)非空。
+    /// 缓存键与仓库定位都依赖这两个字段, 缺失则记录无法被查询到, 等同于损坏。
+    /// </summary>
+    private static bool IsValidCheckpointJson(string content)
+    {
+        try
+        {
+            var record = JsonSerializer.Deserialize(content, AppJsonContext.Default.GitCheckpointRecord);
+            return record is not null
+                && !string.IsNullOrWhiteSpace(record.Id)
+                && !string.IsNullOrWhiteSpace(record.RepositoryRoot);
+        }
+        catch
+        {
+            return false;
         }
     }
 

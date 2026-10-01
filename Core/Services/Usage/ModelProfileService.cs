@@ -123,17 +123,29 @@ public static class ModelProfileService
             if (_apiCache is not null) return _apiCache;
 
             var cache = new ModelProfileCache();
-            try
+
+            // 损坏时回退 .bak: 缓存丢了只是多一次 /models 拉取, 但半截 JSON 会让
+            // 解析失败被 catch 吞掉, 直接退化成"没有缓存"而毫无痕迹。
+            if (AtomicFile.TryReadText(CachePath, out var content, text =>
             {
-                if (File.Exists(CachePath))
+                try
                 {
-                    var loaded = JsonSerializer.Deserialize(
-                        File.ReadAllText(CachePath), AppJsonContext.Default.ModelProfileCache);
+                    return JsonSerializer.Deserialize(text, AppJsonContext.Default.ModelProfileCache) is not null;
+                }
+                catch
+                {
+                    return false;
+                }
+            }))
+            {
+                try
+                {
+                    var loaded = JsonSerializer.Deserialize(content, AppJsonContext.Default.ModelProfileCache);
                     if (loaded is not null) cache = loaded;
                 }
-            }
-            catch
-            {
+                catch
+                {
+                }
             }
 
             _apiCache = cache;
@@ -367,14 +379,10 @@ public static class ModelProfileService
 
     private static void TrySaveCache(ModelProfileCache cache)
     {
-        try
-        {
-            Directory.CreateDirectory(AppPaths.DataDir);
-            File.WriteAllText(CachePath,
-                JsonSerializer.Serialize(cache, AppJsonContext.Default.ModelProfileCache));
-        }
-        catch
-        {
-        }
+        // 原子写: 缓存损坏影响小(可重新拉取), 但仍不应留下半截 JSON
+        AtomicFile.TryWriteAllText(
+            CachePath,
+            JsonSerializer.Serialize(cache, AppJsonContext.Default.ModelProfileCache),
+            "models-cache.json");
     }
 }
