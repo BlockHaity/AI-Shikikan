@@ -61,16 +61,11 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- 标题 + 分组开关 + 新建按钮 -->
-        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="8,10,8,4">
+        <!-- 标题 + 新建按钮 -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="8,10,8,4">
             <TextBlock Classes="TitleSmall" Text="{x:Static res:Strings.Session_Panel_Title}"
                        VerticalAlignment="Center"/>
-            <ToggleButton Grid.Column="1" Classes="sessionAction" Padding="4" Margin="0,0,6,0"
-                          IsChecked="{Binding GroupByWorkDir}"
-                          ToolTip.Tip="{x:Static res:Strings.Session_GroupByWorkDir}">
-                <PathIcon Data="{StaticResource IconFolder}" Width="16" Height="16"/>
-            </ToggleButton>
-            <Button Grid.Column="2" Classes="FilledTonal" Padding="8,4"
+            <Button Grid.Column="1" Classes="FilledTonal" Padding="8,4"
                     Command="{Binding NewSessionCommand}"
                     ToolTip.Tip="{x:Static res:Strings.Session_New}">
                 <StackPanel Orientation="Horizontal" Spacing="4">
@@ -80,7 +75,7 @@
             </Button>
         </Grid>
 
-        <!-- 会话列表(分组模式下混排目录组头) -->
+        <!-- 会话列表(按工作目录分组, 组头与会话项混排) -->
         <ScrollViewer Grid.Row="1">
             <Panel>
                 <ItemsControl ItemsSource="{Binding DisplayItems}">

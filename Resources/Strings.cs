@@ -86,9 +86,6 @@ public static class Strings
     public static string Chat_StartAssign => Get(nameof(Chat_StartAssign));
     public static string Chat_Assignments => Get(nameof(Chat_Assignments));
     public static string Chat_Refresh => Get(nameof(Chat_Refresh));
-    public static string Chat_GitMerge => Get(nameof(Chat_GitMerge));
-    public static string Chat_GitDrop => Get(nameof(Chat_GitDrop));
-    public static string Chat_GitRevert => Get(nameof(Chat_GitRevert));
     public static string Chat_GitDiff => Get(nameof(Chat_GitDiff));
     public static string Chat_QuickAssign => Get(nameof(Chat_QuickAssign));
     public static string Chat_TogglePanel => Get(nameof(Chat_TogglePanel));
@@ -141,7 +138,6 @@ public static class Strings
     public static string GitPanel_Switch => Get(nameof(GitPanel_Switch));
     public static string GitPanel_Pull => Get(nameof(GitPanel_Pull));
     public static string GitPanel_Push => Get(nameof(GitPanel_Push));
-    public static string GitPanel_Steps => Get(nameof(GitPanel_Steps));
     public static string GitPanel_Checkpoints => Get(nameof(GitPanel_Checkpoints));
     public static string GitPanel_MarkCheckpoint => Get(nameof(GitPanel_MarkCheckpoint));
     public static string GitPanel_CheckpointLabelPlaceholder => Get(nameof(GitPanel_CheckpointLabelPlaceholder));
@@ -160,7 +156,6 @@ public static class Strings
     public static string GitPanel_NotRepo => Get(nameof(GitPanel_NotRepo));
     public static string GitPanel_SelectFolder => Get(nameof(GitPanel_SelectFolder));
     public static string GitPanel_SelectFolderTip => Get(nameof(GitPanel_SelectFolderTip));
-    public static string GitPanel_InitRepo => Get(nameof(GitPanel_InitRepo));
     public static string GitPanel_DiffTitle => Get(nameof(GitPanel_DiffTitle));
     public static string GitPanel_Graph => Get(nameof(GitPanel_Graph));
     public static string GitPanel_NoGraph => Get(nameof(GitPanel_NoGraph));
@@ -200,6 +195,21 @@ public static class Strings
     public static string Settings_FetchModels => Get(nameof(Settings_FetchModels));
     public static string Settings_Fetching => Get(nameof(Settings_Fetching));
     public static string Settings_EnableAll => Get(nameof(Settings_EnableAll));
+
+    /// <summary>从 API 检出的候选模型下拉框占位文案。</summary>
+    public static string Settings_DetectedModels => Get(nameof(Settings_DetectedModels));
+
+    /// <summary>把下拉框里选中的候选模型加入该 Provider。</summary>
+    public static string Settings_AddDetected => Get(nameof(Settings_AddDetected));
+
+    /// <summary>把全部候选模型一次性加入该 Provider。</summary>
+    public static string Settings_AddAllDetected => Get(nameof(Settings_AddAllDetected));
+
+    /// <summary>手动添加模型 id 输入框的占位文案。</summary>
+    public static string Settings_ManualModelWatermark => Get(nameof(Settings_ManualModelWatermark));
+
+    /// <summary>确认手动添加模型。</summary>
+    public static string Settings_AddManual => Get(nameof(Settings_AddManual));
     public static string Settings_DisableAll => Get(nameof(Settings_DisableAll));
     public static string Settings_ProviderDefaultModel => Get(nameof(Settings_ProviderDefaultModel));
     public static string Settings_AgentSave => Get(nameof(Settings_AgentSave));
@@ -217,7 +227,6 @@ public static class Strings
     public static string Settings_McpToolCount => Get(nameof(Settings_McpToolCount));
     public static string Chat_Model => Get(nameof(Chat_Model));
     public static string Session_Panel_Title => Get(nameof(Session_Panel_Title));
-    public static string Session_GroupByWorkDir => Get(nameof(Session_GroupByWorkDir));
     public static string Session_GroupUnassigned => Get(nameof(Session_GroupUnassigned));
     public static string Session_New => Get(nameof(Session_New));
     public static string Session_Messages => Get(nameof(Session_Messages));
@@ -249,7 +258,6 @@ public static class Strings
     public static string Settings_ContextWindow => Get(nameof(Settings_ContextWindow));
     public static string Settings_ContextWindowTip => Get(nameof(Settings_ContextWindowTip));
     public static string Settings_ContextWindowAuto => Get(nameof(Settings_ContextWindowAuto));
-    public static string Settings_DetectThinking => Get(nameof(Settings_DetectThinking));
     public static string Chat_Thinking => Get(nameof(Chat_Thinking));
     public static string Chat_WorkDir => Get(nameof(Chat_WorkDir));
     public static string Chat_WorkDirDefault => Get(nameof(Chat_WorkDirDefault));
@@ -323,10 +331,6 @@ public static class Strings
     public static string ToolCard_StatusError => Get(nameof(ToolCard_StatusError));
     public static string ToolCard_CopyResult => Get(nameof(ToolCard_CopyResult));
     public static string ToolCard_Copied => Get(nameof(ToolCard_Copied));
-    public static string ToolCard_Rollback => Get(nameof(ToolCard_Rollback));
-    public static string ToolCard_RollbackConfirm => Get(nameof(ToolCard_RollbackConfirm));
-    public static string ToolCard_RolledBack => Get(nameof(ToolCard_RolledBack));
-    public static string ToolCard_RollbackFailed => Get(nameof(ToolCard_RollbackFailed));
     public static string ToolCard_FileMeta => Get(nameof(ToolCard_FileMeta));
     public static string ToolCard_FileTruncated => Get(nameof(ToolCard_FileTruncated));
     public static string ToolCard_Query => Get(nameof(ToolCard_Query));
@@ -342,6 +346,27 @@ public static class Strings
     public static string Chat_MsgDeleteConfirm => Get(nameof(Chat_MsgDeleteConfirm));
     public static string Chat_MsgResend => Get(nameof(Chat_MsgResend));
     public static string Chat_MsgCancel => Get(nameof(Chat_MsgCancel));
+
+    /// <summary>思考档位"关闭"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>off</c> 标识。</summary>
+    public static string Thinking_Level_Off => Get(nameof(Thinking_Level_Off));
+
+    /// <summary>思考档位"自动"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>auto</c> 标识。</summary>
+    public static string Thinking_Level_Auto => Get(nameof(Thinking_Level_Auto));
+
+    /// <summary>思考档位"低"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>low</c> 标识。</summary>
+    public static string Thinking_Level_Low => Get(nameof(Thinking_Level_Low));
+
+    /// <summary>思考档位"中"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>medium</c> 标识。</summary>
+    public static string Thinking_Level_Medium => Get(nameof(Thinking_Level_Medium));
+
+    /// <summary>思考档位"高"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>high</c> 标识。</summary>
+    public static string Thinking_Level_High => Get(nameof(Thinking_Level_High));
+
+    /// <summary>思考档位"极高"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>xhigh</c> 标识；OpenAI 侧与"高"不可区分。</summary>
+    public static string Thinking_Level_XHigh => Get(nameof(Thinking_Level_XHigh));
+
+    /// <summary>思考档位"满"。映射自 <c>ThinkingLevels.DisplayName</c> 的 <c>max</c> 标识；OpenAI 侧与"高"不可区分。</summary>
+    public static string Thinking_Level_Max => Get(nameof(Thinking_Level_Max));
 
 #if DEBUG
     private static readonly CultureInfo EnglishCulture = new("en");

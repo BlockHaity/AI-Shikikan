@@ -66,6 +66,8 @@ public partial class StatusPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isRepoAvailable;
 
+    private bool _repoRefreshQueued;
+
     public StatusPanelViewModel()
     {
         _workDir = _runtime.WorkspaceRoot;
@@ -83,7 +85,7 @@ public partial class StatusPanelViewModel : ViewModelBase
     public void SetWorkspace(string workDir)
     {
         _workDir = workDir;
-        Dispatcher.UIThread.Post(RefreshRepo);
+        RefreshRepo();
     }
 
     private void OnEngineEvent(AgentEngineEvent e)
@@ -110,7 +112,20 @@ public partial class StatusPanelViewModel : ViewModelBase
         RefreshUsage();
     }
 
+    /// 把仓库信息刷新合并到调度器下一轮: 内部含一次同步 git 子进程, 而 AppShell.DataChanged
+    /// 一次 reload 会连着打到 AgentPanel / GitPanel / StatusPanel 三家, 合并后同一次交互只跑一次。
     private void RefreshRepo()
+    {
+        if (_repoRefreshQueued) return;
+        _repoRefreshQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _repoRefreshQueued = false;
+            RefreshRepoNow();
+        });
+    }
+
+    private void RefreshRepoNow()
     {
         if (string.IsNullOrWhiteSpace(_workDir))
         {
@@ -143,6 +158,8 @@ public partial class StatusPanelViewModel : ViewModelBase
         ContextUsed = UsageStatsService.GetLastContextTokens(_sessionId);
 
         var stat = UsageStatsService.GetSessionStat(_sessionId);
+        // 待补 i18n 键(未改): "次" 是硬编码, 英文界面显示 "3 次"。
+        // 不复用 Home_TimesFmt 是因为它是 Home_ 前缀的 "N 次调用", 与这里语义不同, 跨视图借用不合适。
         CallsText = $"{stat.Calls} 次";
         var cost = ModelProfileService.CalcCostUsd(profile, stat.InputTokens, stat.OutputTokens, stat.CachedTokens);
         CostText = ModelProfileService.FormatCost(cost);

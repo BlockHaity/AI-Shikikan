@@ -28,8 +28,13 @@ public partial class HomePageView : UserControl
     {
         InitializeComponent();
         DataContextChanged += OnDataContextChanged;
+        // 静态事件订阅必须在 DetachedFromVisualTree 解绑——本文件是全项目唯一做对这一点的 code-behind,
+        // 其他视图的 ViewLocator 每次切页都会 new 实例并挂到静态事件上, 应照此模式补齐。
         DynamicThemeService.PaletteApplied += OnPaletteChanged;
         DetachedFromVisualTree += (_, _) => DynamicThemeService.PaletteApplied -= OnPaletteChanged;
+        // 残留风险(待 D1 修复): ViewLocator 每次切页新建 HomePageView, 若旧实例在被替换时
+        // 从未走到 DetachedFromVisualTree(例如窗口整体关闭前就没有再切页), 旧实例会一直挂在
+        // 静态事件上。切页路径一定会 detach, 因此只是理论泄漏, 但根治要看 ViewLocator 是否复用视图。
     }
 
     private void OnPaletteChanged(object? sender, EventArgs e) => RenderChart();
@@ -253,8 +258,11 @@ public partial class HomePageView : UserControl
         float mx = (float)pos.X;
         float my = (float)pos.Y;
 
-        // 数据区矩形来自最近一次渲染, 坐标↔像素自行线性映射
+        // 数据区矩形来自最近一次渲染, 坐标↔像素自行线性映射。
+        // LastRender 是 struct, "尚未 Refresh 过"时为 default, 其 DataRect 宽高为 0 —— 用尺寸判空,
+        // 不要用 is null(struct 不可能为 null, 那样写编译不过)
         var rect = UsageChart.Plot.RenderManager.LastRender.DataRect;
+        if (rect.Width <= 0 || rect.Height <= 0) return;
         var bottomEdge = Math.Max(rect.Top, rect.Bottom);
         var dataW = Math.Max(rect.Right - rect.Left, 1);
         var dataH = Math.Max(rect.Height, 1);

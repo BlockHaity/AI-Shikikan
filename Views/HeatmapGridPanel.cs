@@ -73,7 +73,10 @@ public class HeatmapGridPanel : Panel
     /// <summary>当前布局使用的格子边长(供外部同步行高)。</summary>
     public double CurrentCellSize { get; private set; }
 
-    /// <summary>格子缩到下限时整网格所需的最小总宽(供外部同步 Width 以启用横向滚动)。</summary>
+    /// <summary>格子缩到下限时整网格所需的最小总宽(供外部同步 Width 以启用横向滚动)。
+    /// 单一权威公式。ViewModels/HomePageViewModel.HeatmapMinWidth 是它的副本(XAML 用 MinWidth 绑定该副本,
+    /// 因为本属性是普通 CLR 属性、无法参与绑定), 改动此公式必须同步 HomePageViewModel.RebuildHeatmap;
+    /// 彻底去重需把本属性改为只读 AvaloniaProperty 并让 XAML 绑自身, 属自绘控件改动, 暂不做。</summary>
     public double MinTotalWidth
     {
         get

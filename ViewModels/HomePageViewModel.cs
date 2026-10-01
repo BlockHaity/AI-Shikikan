@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using AIShikikan.Core;
 using AIShikikan.Core.Services;
@@ -17,9 +18,8 @@ public partial class HomePageViewModel : ViewModelBase
     /// <summary>「全部」范围且无任何数据时热力图的默认展示周数。</summary>
     private const int DefaultHeatmapWeeks = 26;
 
-    public string WelcomeText { get; } = "欢迎使用 AI-Shikikan";
-    public string DescriptionText { get; } = "一个强大的 Agent 管理与指挥工具";
-    public string VersionText { get; } = $"版本 {AppInfo.Version}";
+    // 版本号展示复用既有 Settings_Version 键("版本" / "Version"), 不新增 Home_ 专用键。
+    public string VersionText { get; } = $"{Strings.Settings_Version} {AppInfo.Version}";
 
     public ThemeService ThemeService { get; }
 
@@ -67,7 +67,10 @@ public partial class HomePageViewModel : ViewModelBase
     /// <summary>图例示例格(等级 0..4)。</summary>
     public IReadOnlyList<HeatmapLegendVm> HeatLegend { get; private set; } = [];
 
-    /// <summary>星期纵栏标签(与 7 行对齐, 仅标一/三/五)。</summary>
+    /// <summary>星期纵栏标签(与 7 行对齐, 仅标一/三/五)。
+    /// 刻意保留中文缩写: 这是热力图"星期坐标轴"的内容标识而非可翻译文案, 且 GutterWidth=18px
+    /// 只够放下 1 个汉字宽度——改用 CultureInfo 的 AbbreviatedDayNames 会输出 Mon/Wed/Fri 这类
+    /// 3 字母串并被裁剪。要本地化需同时放大 GutterWidth, 见报告。</summary>
     public IReadOnlyList<string> HeatGutter { get; } = ["一", "", "三", "", "五", "", ""];
 
     /// <summary>热力图覆盖的日期范围文本。</summary>
@@ -75,14 +78,16 @@ public partial class HomePageViewModel : ViewModelBase
     private string _heatRangeText = string.Empty;
 
     public string TodayUsageText =>
-        $"输入 {Format(UsageSnapshot.TodayInputTokens)} · 输出 {Format(UsageSnapshot.TodayOutputTokens)}";
+        $"{Strings.Home_UsageInput} {Format(UsageSnapshot.TodayInputTokens)} · " +
+        $"{Strings.Home_UsageOutput} {Format(UsageSnapshot.TodayOutputTokens)}";
 
     public string TotalUsageText =>
-        $"输入 {Format(UsageSnapshot.TotalInputTokens)} · 输出 {Format(UsageSnapshot.TotalOutputTokens)}";
+        $"{Strings.Home_UsageInput} {Format(UsageSnapshot.TotalInputTokens)} · " +
+        $"{Strings.Home_UsageOutput} {Format(UsageSnapshot.TotalOutputTokens)}";
 
-    public string LlmCallsText => $"{UsageSnapshot.TotalLlmCalls} 次";
+    public string LlmCallsText => string.Format(Strings.Home_TimesFmt, UsageSnapshot.TotalLlmCalls);
 
-    public string AgentCallsText => $"{UsageSnapshot.TotalAgentCalls} 次";
+    public string AgentCallsText => string.Format(Strings.Home_TimesFmt, UsageSnapshot.TotalAgentCalls);
 
     public HomePageViewModel(ThemeService themeService)
     {
@@ -91,6 +96,8 @@ public partial class HomePageViewModel : ViewModelBase
         BuildLegend();
 
         // 主题明暗或动态调色板变化时重绘热力图与图例配色(折线图由视图层自行监听)
+        // 注意: 这三个订阅都不解绑。当前 VM 由 MainWindowViewModel 持有到进程结束, 而 view 每次切页重建,
+        // "VM 长寿 / view 短命" 下无害; 但若将来改成 VM 也随页面重建, 必须同步补上解绑。
         ThemeService.ThemeChanged += (_, _) => { RebuildHeatmap(); BuildLegend(); };
         DynamicThemeService.PaletteApplied += (_, _) => { RebuildHeatmap(); BuildLegend(); };
         AppShell.Instance.DataChanged += RefreshUsage;
@@ -154,6 +161,9 @@ public partial class HomePageViewModel : ViewModelBase
     /// 按主页全局时间范围构建活跃热力图: 起始日向前对齐到周一, 结束于本周日;
     /// 无记录/未来的天补零(未来为透明占位)。格子平铺, 由视图层网格均分拉伸填满卡片宽度。
     /// 活跃度按全天 token 总量以非零值的 33/66/85 分位数分为 0..4 五档。
+    /// 代价说明: 每次都全量排序 + 3 次线性插值分位数, 但输入被 UsageStatsService 的
+    /// MaxEntries=5000 封顶(每日聚合后条目数远小于此), 且格子数 = 列数×7 受时间范围约束,
+    /// 量级完全可接受, 不做增量缓存——缓存反而会引入"排序结果与快照失效"的一致性坑。
     /// </summary>
     private void RebuildHeatmap()
     {
@@ -208,7 +218,10 @@ public partial class HomePageViewModel : ViewModelBase
         OnPropertyChanged(nameof(HeatCells));
 
         HeatmapColumns = cols;
-        // 最小总宽与 HeatmapGridPanel 布局参数一致: 栏宽 18 + 间距 3 + 每列(最小格 8 + 间距 3)
+        // 最小总宽 = HeatmapGridPanel.MinTotalWidth 的同一条公式(栏宽 + 间距 + 每列(最小格 + 间距) - 间距)。
+        // 两处目前一致(XAML 传入 GutterWidth=18 / CellSpacing=3 / MinCellSize=8, 值为 18 + 11*cols)。
+        // 本该只留面板一处, 但 MinTotalWidth 是普通 CLR 属性无法绑定, 要去重得把它改成只读
+        // AvaloniaProperty 并让 XAML 绑自身——那是自绘控件的改动, 收益不抵风险, 故在此标注需同步修改。
         HeatmapMinWidth = 18 + 3 + cols * (8 + 3) - 3;
 
         HeatLegend = Enumerable.Range(0, 5).Select(i => new HeatmapLegendVm(HeatmapBrush.ForLevel(i))).ToList();
@@ -250,7 +263,11 @@ public partial class HomePageViewModel : ViewModelBase
         if (future) return string.Empty;
 
         var calls = stat?.Calls ?? 0;
-        return $"{date:M月d日}\n{Strings.Home_UsageInput} {Format((int)(stat?.InputTokens ?? 0))} · " +
+        // 日期头必须走 CultureInfo: "M月d日" 里的 月/日 是自定义格式串中的普通字面量
+        // (不是 .NET 的标准说明符), 英文界面会原样输出 "Oct月1日"。MMM/d 才是本地化说明符,
+        // 中文得到 "10月1"、英文得到 "Oct 1"。
+        var dateText = date.ToString("MMM d", CultureInfo.CurrentUICulture);
+        return $"{dateText}\n{Strings.Home_UsageInput} {Format((int)(stat?.InputTokens ?? 0))} · " +
                $"{Strings.Home_UsageOutput} {Format((int)(stat?.OutputTokens ?? 0))} · " +
                $"{string.Format(Strings.Home_TimesFmt, calls)}";
     }

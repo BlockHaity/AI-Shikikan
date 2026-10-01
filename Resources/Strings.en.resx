@@ -89,9 +89,6 @@
   <data name="Chat_StartAssign" xml:space="preserve"><value>Start</value></data>
   <data name="Chat_Assignments" xml:space="preserve"><value>Assignments</value></data>
   <data name="Chat_Refresh" xml:space="preserve"><value>Refresh</value></data>
-  <data name="Chat_GitMerge" xml:space="preserve"><value>Merge</value></data>
-  <data name="Chat_GitDrop" xml:space="preserve"><value>Drop</value></data>
-  <data name="Chat_GitRevert" xml:space="preserve"><value>Revert</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="Chat_QuickAssign" xml:space="preserve"><value>Quick Assign</value></data>
   <data name="Chat_TogglePanel" xml:space="preserve"><value>Collapse panel</value></data>
@@ -144,7 +141,6 @@
   <data name="GitPanel_Switch" xml:space="preserve"><value>Switch</value></data>
   <data name="GitPanel_Pull" xml:space="preserve"><value>Pull</value></data>
   <data name="GitPanel_Push" xml:space="preserve"><value>Push</value></data>
-  <data name="GitPanel_Steps" xml:space="preserve"><value>Legacy steps</value></data>
   <data name="GitPanel_Checkpoints" xml:space="preserve"><value>Checkpoints</value></data>
   <data name="GitPanel_MarkCheckpoint" xml:space="preserve"><value>Mark checkpoint</value></data>
   <data name="GitPanel_CheckpointLabelPlaceholder" xml:space="preserve"><value>Checkpoint label (optional)...</value></data>
@@ -163,7 +159,6 @@
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>Not a git repository; select a folder or init one</value></data>
   <data name="GitPanel_SelectFolder" xml:space="preserve"><value>Select Folder</value></data>
   <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>Pick a folder and detect its git repository</value></data>
-  <data name="GitPanel_InitRepo" xml:space="preserve"><value>Init Git Repository</value></data>
   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
   <data name="GitPanel_Graph" xml:space="preserve"><value>Git graph</value></data>
   <data name="GitPanel_NoGraph" xml:space="preserve"><value>No graph</value></data>
@@ -209,7 +204,6 @@
   <data name="Settings_ContextWindow" xml:space="preserve"><value>Context Window (tokens)</value></data>
   <data name="Settings_ContextWindowTip" xml:space="preserve"><value>Leave empty to follow the model profile (API/built-in) value</value></data>
   <data name="Settings_ContextWindowAuto" xml:space="preserve"><value>Auto</value></data>
-  <data name="Settings_DetectThinking" xml:space="preserve"><value>Auto-detect Thinking Level</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>Default Model</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>Save</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>Edit the executable path then click Save (built-in agents are overridden by Id)</value></data>
@@ -226,7 +220,6 @@
   <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} tools</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>Model</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>Sessions</value></data>
-  <data name="Session_GroupByWorkDir" xml:space="preserve"><value>Group by working directory</value></data>
   <data name="Session_GroupUnassigned" xml:space="preserve"><value>No directory</value></data>
   <data name="Session_New" xml:space="preserve"><value>New Session</value></data>
   <data name="Session_Messages" xml:space="preserve"><value>{0} messages</value></data>
@@ -326,10 +319,6 @@
   <data name="ToolCard_StatusError" xml:space="preserve"><value>Failed</value></data>
   <data name="ToolCard_CopyResult" xml:space="preserve"><value>Copy result</value></data>
   <data name="ToolCard_Copied" xml:space="preserve"><value>Copied</value></data>
-  <data name="ToolCard_Rollback" xml:space="preserve"><value>Roll back checkpoint</value></data>
-  <data name="ToolCard_RollbackConfirm" xml:space="preserve"><value>Confirm rollback?</value></data>
-  <data name="ToolCard_RolledBack" xml:space="preserve"><value>Rolled back to before this checkpoint</value></data>
-  <data name="ToolCard_RollbackFailed" xml:space="preserve"><value>Rollback failed: {0}</value></data>
   <data name="ToolCard_FileMeta" xml:space="preserve"><value>{0} lines · showing {1}-{2}</value></data>
   <data name="ToolCard_FileTruncated" xml:space="preserve"><value>File content is not fully shown</value></data>
   <data name="ToolCard_Query" xml:space="preserve"><value>Query: {0}</value></data>
@@ -345,4 +334,16 @@
   <data name="Chat_MsgDeleteConfirm" xml:space="preserve"><value>Confirm delete?</value></data>
   <data name="Chat_MsgResend" xml:space="preserve"><value>Resend</value></data>
   <data name="Chat_MsgCancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Thinking_Level_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Thinking_Level_Auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Thinking_Level_Low" xml:space="preserve"><value>Low</value></data>
+  <data name="Thinking_Level_Medium" xml:space="preserve"><value>Medium</value></data>
+  <data name="Thinking_Level_High" xml:space="preserve"><value>High</value></data>
+  <data name="Thinking_Level_XHigh" xml:space="preserve"><value>Extra High</value></data>
+  <data name="Thinking_Level_Max" xml:space="preserve"><value>Maximum</value></data>
+  <data name="Settings_DetectedModels" xml:space="preserve"><value>Detected models</value></data>
+  <data name="Settings_AddDetected" xml:space="preserve"><value>Add Selected</value></data>
+  <data name="Settings_AddAllDetected" xml:space="preserve"><value>Add All</value></data>
+  <data name="Settings_ManualModelWatermark" xml:space="preserve"><value>Model ID to add manually</value></data>
+  <data name="Settings_AddManual" xml:space="preserve"><value>Add</value></data>
 </root>

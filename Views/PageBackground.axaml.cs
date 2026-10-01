@@ -3,6 +3,7 @@ using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using AIShikikan.Core.Services;
 
 namespace AIShikikan.Gui.Views;
@@ -55,7 +56,7 @@ public partial class PageBackground : UserControl
             }
             else
             {
-                BgImage.Source = null;
+                SwapBackgroundBitmap(null);
                 BgImage.IsVisible = false;
             }
         }
@@ -79,7 +80,7 @@ public partial class PageBackground : UserControl
         {
             try
             {
-                BgImage.Source = new Bitmap(path);
+                SwapBackgroundBitmap(new Bitmap(path));
                 BgImage.IsVisible = true;
                 return;
             }
@@ -88,7 +89,26 @@ public partial class PageBackground : UserControl
             }
         }
 
-        BgImage.Source = null;
+        SwapBackgroundBitmap(null);
         BgImage.IsVisible = false;
+    }
+
+    /// <summary>换绑背景位图并归还旧实例。
+    /// 背景图整图解码(4K 一张几十 MB), 且三个页面各有一份 PageBackground 实例,
+    /// 每次换背景不释放旧位图就是三倍原生内存泄漏。
+    /// </summary>
+    /// <remarks>
+    /// 只释放自己放上去的 <see cref="Bitmap"/>: Source 理论上可能被外部赋成别的 IImage,
+    /// 那些实例的所有权不在本类。延后一帧再释放, 避免当前合成帧仍引用旧位图。
+    /// </remarks>
+    private void SwapBackgroundBitmap(Bitmap? next)
+    {
+        var old = BgImage.Source;
+        if (ReferenceEquals(old, next)) return;
+
+        BgImage.Source = next;
+        if (old is not Bitmap oldBitmap) return;
+
+        Dispatcher.UIThread.Post(oldBitmap.Dispose, DispatcherPriority.Background);
     }
 }

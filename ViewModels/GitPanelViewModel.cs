@@ -7,6 +7,7 @@ using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Git;
 using AIShikikan.Gui.Resources;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -77,23 +78,45 @@ public partial class GitPanelViewModel : ViewModelBase
     [ObservableProperty]
     private bool _isDetachedHead;
 
+    private bool _refreshQueued;
+
     [ObservableProperty]
     private string _checkpointLabel = string.Empty;
 
     public GitPanelViewModel()
     {
-        Refresh();
+        // 构造期直接同步跑一次: 侧栏首帧就该有内容, 不能等下一轮调度。
+        RefreshNow();
     }
 
     public void SetWorkspace(string workDir)
     {
         _workDir = workDir ?? string.Empty;
         HasSelectedFolder = !string.IsNullOrWhiteSpace(_workDir);
-        Refresh();
+        QueueRefresh();
     }
 
     [RelayCommand]
-    public void Refresh()
+    public void Refresh() => QueueRefresh();
+
+    /// <summary>把刷新请求合并到调度器下一轮执行(多次触发只跑一次)。
+    /// 一次全量刷新要跑 7 个同步 git 子进程, 而 AppShell.DataChanged 一次 reload 会同时打到
+    /// AgentPanel / ChatPage / HomePage 三个订阅者, 再叠加 SetWorkspace 与面板模式切换,
+    /// 同一次交互内常连着触发多次; 根本解法是改 AppShell 的事件模型(由 AppShell 所有者处理),
+    /// 这里只做症状侧缓解。</summary>
+    private void QueueRefresh()
+    {
+        if (_refreshQueued) return;
+        _refreshQueued = true;
+        Dispatcher.UIThread.Post(() =>
+        {
+            _refreshQueued = false;
+            RefreshNow();
+        });
+    }
+
+    /// <summary>全量刷新: 逐项清空后按序重拉, 任何一项缺失都要把对应"有内容"标记复位。</summary>
+    private void RefreshNow()
     {
         StatusFiles.Clear();
         Checkpoints.Clear();
@@ -255,6 +278,9 @@ public partial class GitPanelViewModel : ViewModelBase
     private void RefreshCheckpoints()
     {
         if (_context is null) return;
+        // 产品决策待定: 这里按仓库根拉全部检查点(GetAll), 而记录里带 SessionId/ConversationCutoff。
+        // GitCheckpointStore 已提供 GetBySession 但无调用方——若决定"只显示本会话产生的检查点",
+        // 就把此处换成 GetBySession(会话 id 由聊天页注入, 当前 VM 拿不到)。需 A13 / 协调者拍板。
         foreach (var checkpoint in _runtime.Checkpoints.GetAll(_context.RepositoryRoot)) Checkpoints.Add(checkpoint);
         HasCheckpoints = Checkpoints.Count > 0;
     }
@@ -279,6 +305,8 @@ public partial class GitPanelViewModel : ViewModelBase
         refresh?.Invoke();
     }
 
+    /// 刻意用 ✔/✘ 符号而非本地化文案: 这里是 git 子进程的原始 stdout/stderr 回显,
+    /// 结果主体是命令输出而非可翻译句子, 前缀只做成功/失败提示, 图标性质无需 i18n。
     private void SetResult(GitCommandResult result)
     {
         ResultText = result.Succeeded

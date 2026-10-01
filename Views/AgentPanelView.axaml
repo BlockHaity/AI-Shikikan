@@ -11,6 +11,18 @@
              x:Class="AIShikikan.Gui.Views.AgentPanelView"
              x:DataType="vm:AgentPanelViewModel">
 
+    <!--
+        展开/收起箭头几何在本视图内自持一份。
+        ChatPageView.axaml 的 UserControl.Resources 里也有同名键, 之所以不直接引用:
+        那是宿主视图的私有资源, 跨视图 StaticResource 只能靠逻辑树上溯碰巧解析,
+        一旦 AgentPanelView 被独立实例化(预览 / 复用 / 换宿主)就会解析失败。
+        上提到 Application.Resources 需要改动 ChatPageView.axaml, 不在本视图的改动范围内。
+    -->
+    <UserControl.Resources>
+        <StreamGeometry x:Key="IconChevronRight">M9.29,6.71a1,1,0,0,0,0,1.41L13.17,12l-3.88,3.88a1,1,0,1,0,1.41,1.41l4.59-4.59a1,1,0,0,0,0-1.41L10.7,6.71A1,1,0,0,0,9.29,6.71Z</StreamGeometry>
+        <StreamGeometry x:Key="IconChevronDown">M7.41,8.59L12,13.17l4.59-4.58L18,10l-6,6l-6-6L7.41,8.59Z</StreamGeometry>
+    </UserControl.Resources>
+
     <UserControl.Styles>
         <Style Selector="TextBlock.secTitle">
             <Setter Property="FontSize" Value="13"/>

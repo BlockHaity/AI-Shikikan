@@ -9,6 +9,13 @@ namespace AIShikikan.Gui.Views;
 /// 自适应瀑布流面板: 根据可用宽度决定列数, 子元素按顺序放入当前最矮的列,
 /// 适合高度不一的设置卡片布局。
 /// </summary>
+/// <remarks>
+/// 列分配算法(布局的核心, 测量与排列必须复用同一套结果):
+/// 1. <see cref="ComputeColumns"/> 由可用宽度推出列数与列宽(至少一列, 列宽取整);
+/// 2. 每个子元素以 (列宽, ∞) 测量, 得到自身高度;
+/// 3. 线性扫描各列累计高度, 放入当前最矮的一列(平手取更靠左的列, 保证顺序稳定);
+/// 4. 分配结果记入 _columnOfChild, Arrange 阶段直接复用。
+/// </remarks>
 public class WaterfallPanel : Panel
 {
     /// <summary>单列最小宽度(窗口足够宽时列数自动增加)。</summary>
@@ -55,6 +62,7 @@ public class WaterfallPanel : Panel
             out var columns, out _columnWidth);
 
         var columnHeights = new double[columns];
+        var columnCounts = new int[columns];
         _columnOfChild.Clear();
 
         foreach (var child in Children)
@@ -73,8 +81,11 @@ public class WaterfallPanel : Panel
             }
 
             _columnOfChild.Add(target);
-            columnHeights[target] += h +
-                (_columnOfChild.Count > 1 ? RowSpacing : 0);
+            // 行间距只在该列已有元素时计入。这里必须看"本列"而不是全局已放元素数:
+            // 全局计数会让第 2..n 列的首个元素也带上行间距, 使该列累计高度凭空多一个
+            // RowSpacing, 最终 desiredHeight 比实际内容高出一截(卡片下方多出空白)。
+            columnHeights[target] += h + (columnCounts[target] > 0 ? RowSpacing : 0);
+            columnCounts[target]++;
         }
 
         var desiredHeight = 0d;
@@ -117,6 +128,8 @@ public class WaterfallPanel : Panel
                 columnY[col],
                 columnWidth,
                 child.DesiredSize.Height));
+            // columnY[col] 是"下一个元素该放的 y": 累加含 RowSpacing 是正确的行距语义,
+            // 末位元素多出的那个 RowSpacing 只是累加器的尾数, 不参与任何布局(面板高度取 finalSize)。
             columnY[col] += child.DesiredSize.Height + RowSpacing;
         }
 

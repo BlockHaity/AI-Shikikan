@@ -1,13 +1,8 @@
 using System;
 using System.Globalization;
-using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Data.Converters;
-using Avalonia.Layout;
-using Avalonia.Media;
-using AIShikikan.Core.Models;
-using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Git;
+using AIShikikan.Core.Services.Llm;
 using AIShikikan.Gui.Resources;
 
 namespace AIShikikan.Gui.Views;
@@ -102,7 +97,7 @@ public class FetchingToTextConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        return value is true ? "获取中…" : "获取模型列表";
+        return value is true ? Strings.Settings_Fetching : Strings.Settings_FetchModels;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -116,7 +111,11 @@ public class ModelListVisibilityConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        return value is int count && count > 0;
+        // 同时接受计数(int)与集合(ICollection): 设置页的"候选模型"区绑定的是
+        // ObservableCollection<string> 而不是 Count, 两者都要能判空
+        if (value is int count) return count > 0;
+        if (value is System.Collections.ICollection collection) return collection.Count > 0;
+        return false;
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -125,64 +124,30 @@ public class ModelListVisibilityConverter : IValueConverter
     }
 }
 
-/// <summary>ThinkingLevel → 中文档位文案。</summary>
+/// <summary>
+/// ThinkingLevel → 当前语言的档位文案。
+/// </summary>
+/// <remarks>
+/// <see cref="ThinkingLevels.DisplayName"/> 现返回稳定标识(off/auto/low/medium/high/xhigh/max)而非中文,
+/// Core 层不能反向引用 GUI 的 Strings, 因此展示文案必须在这里按标识映射。
+/// 依赖 7 个新键: Thinking_Level_Off / Auto / Low / Medium / High / XHigh / Max(两个 resx 都要加)。
+/// </remarks>
 public class ThinkingLevelToTextConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        return value is ThinkingLevel level ? ThinkingLevels.DisplayName(level) : string.Empty;
-    }
+        if (value is not ThinkingLevel level) return string.Empty;
 
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        throw new NotSupportedException();
-    }
-}
-
-/// <summary>MessageRole → 聊天消息气泡背景色。</summary>
-public class MessageBgConverter : IValueConverter
-{
-    private static readonly SolidColorBrush UserBrush = new(Color.Parse("#3B5998"));
-    private static readonly SolidColorBrush AssistantBrush = new(Color.Parse("#424242"));
-    private static readonly SolidColorBrush SystemBrush = new(Color.Parse("#5C4033"));
-    private static readonly SolidColorBrush TransparentBrush = new(Colors.Transparent);
-
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        if (value is MessageRole role)
+        return ThinkingLevels.DisplayName(level) switch
         {
-            var app = Application.Current;
-            if (app is not null)
-            {
-                return role switch
-                {
-                    MessageRole.User => app.TryFindResource("SecondaryContainer", null, out var br1) == true ? br1! : UserBrush,
-                    MessageRole.Assistant => app.TryFindResource("SurfaceContainerHigh", null, out var br2) == true ? br2! : AssistantBrush,
-                    _ => app.TryFindResource("SurfaceContainer", null, out var br3) == true ? br3! : SystemBrush,
-                };
-            }
-            return role switch
-            {
-                MessageRole.User => UserBrush,
-                MessageRole.Assistant => AssistantBrush,
-                _ => SystemBrush,
-            };
-        }
-        return TransparentBrush;
-    }
-
-    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        throw new NotSupportedException();
-    }
-}
-
-/// <summary>MessageRole → 水平对齐方式: User 右对齐, 其余左对齐。</summary>
-public class MessageAlignConverter : IValueConverter
-{
-    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
-    {
-        return value is MessageRole.User ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            "off" => Strings.Thinking_Level_Off,
+            "auto" => Strings.Thinking_Level_Auto,
+            "low" => Strings.Thinking_Level_Low,
+            "medium" => Strings.Thinking_Level_Medium,
+            "high" => Strings.Thinking_Level_High,
+            "xhigh" => Strings.Thinking_Level_XHigh,
+            _ => Strings.Thinking_Level_Max
+        };
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

@@ -115,6 +115,12 @@ public partial class SessionItemViewModel : ViewModelBase
         IsEditing = false;
     }
 
+    // ⚠️ E30: 相对时间未走 resx, 待统一收口时处理。少于 1 分钟这一档已本地化(Session_AgoJustNow),
+    // 但 m/h/d 三个后缀与末尾的 MM/dd 日期是硬编码 —— 英文界面下会直接显示 "3h" 而非本地化文案。
+    // 之所以不在此就地修: 正确修法需要 (a) 新增 Session_AgoMinutes/Hours/Days 三键(共享 resx, 本类无所有权),
+    // (b) 一个把"语义标识 + 数值"拼成文案的转换器(Views/Converters.cs, 亦非本文件所有)。
+    // 缺任一条就只能把硬编码从 C# 挪到转换器里, 反而更坏, 故保留现状并在此标注。
+    // 另注: 最后一行 time.ToString("MM/dd") 应改用 CultureInfo 以适配区域化日期格式。
     private static string FormatRelativeTime(DateTime time)
     {
         var span = DateTime.Now - time;
@@ -162,12 +168,12 @@ public partial class SessionGroupHeaderViewModel : ViewModelBase
     }
 }
 
-/// <summary>右侧"会话列表"侧栏: 新建/切换/删除/重命名会话, 支持按工作目录分组整理。</summary>
+/// <summary>右侧"会话列表"侧栏: 新建/切换/删除/重命名会话, 会话始终按工作目录分组展示。</summary>
 public partial class SessionPanelViewModel : ViewModelBase
 {
     private readonly ChatService _chatService;
 
-    /// <summary>展示项: 会话项与(分组模式下的)组头混合。</summary>
+    /// <summary>展示项: 目录组头与组内会话项混合(始终按工作目录分组)。</summary>
     public ObservableCollection<object> DisplayItems { get; } = [];
 
     private readonly Dictionary<string, SessionItemViewModel> _items = new(StringComparer.Ordinal);
@@ -182,18 +188,16 @@ public partial class SessionPanelViewModel : ViewModelBase
     /// <summary>返回运行期间跨工作目录切换的阻止原因；null 表示允许切换。</summary>
     public Func<string, string?>? GetSessionSwitchBlockReason { get; set; }
 
-    [ObservableProperty]
-    private bool _groupByWorkDir;
-
     public bool HasSessions => _chatService.Sessions.Count > 0;
-
-    partial void OnGroupByWorkDirChanged(bool value) => Reload();
 
     public SessionPanelViewModel(ChatService chatService)
     {
         _chatService = chatService;
         Reload();
 
+        // 这 4 个订阅一律 Dispatcher.UIThread.Post(Reload): ChatService 会在引擎线程/后台线程
+        // 触发事件, 而 Reload 会写 DisplayItems(有容器绑定的 ObservableCollection),
+        // 必须切回 UI 线程。Post 而非 Invoke 是为了不阻塞事件源(引擎)线程。
         _chatService.CurrentSessionChanged += (_, _) => Dispatcher.UIThread.Post(Reload);
         _chatService.MessageAdded += (_, _) => Dispatcher.UIThread.Post(Reload);
         _chatService.SessionWorkDirChanged += (_, _) => Dispatcher.UIThread.Post(Reload);
@@ -210,26 +214,22 @@ public partial class SessionPanelViewModel : ViewModelBase
 
     public void RefreshItems() => Reload();
 
-    /// <summary>重建期望顺序并对账到 DisplayItems(原地增/移/删, 避免整集合替换触发容器回收级联 NRE)。</summary>
+    /// <summary>
+    /// 重建期望顺序并对账到 DisplayItems(原地增/移/删, 避免整集合替换触发容器回收级联 NRE)。
+    /// </summary>
+    /// <remarks>
+    /// 设计取舍: 每次事件(哪怕只追加了一条消息)都全量重算一遍期望序列。
+    /// 之所以不改成"增量插入单条", 是因为整集合替换会回收全部容器,
+    /// 在滚动/展开态下引发级联 NRE —— Reconcile 的原地差集已把这个成本压到"只动真正变化的项"。
+    /// 代价是 O(n) 重算 + 每项 O(n) 的占用判定, 见 GetOrCreateItem 上的说明。
+    /// </remarks>
     private void Reload()
     {
         OnPropertyChanged(nameof(HasSessions));
         var currentId = _chatService.CurrentSession?.Id;
-        var desired = GroupByWorkDir ? BuildGrouped(currentId) : BuildFlat(currentId);
+        // 始终按工作目录分组: 分组早已是主路径, 原来的开关只是历史遗留的探索性 UI, 留着会让用户面对两种排列。
+        var desired = BuildGrouped(currentId);
         Reconcile(desired);
-    }
-
-    private List<object> BuildFlat(string? currentId)
-    {
-        var list = new List<object>();
-        foreach (var session in _chatService.Sessions)
-        {
-            var item = GetOrCreateItem(session, currentId);
-            if (item is null) continue;
-            list.Add(item);
-        }
-
-        return list;
     }
 
     private List<object> BuildGrouped(string? currentId)
@@ -301,6 +301,11 @@ public partial class SessionPanelViewModel : ViewModelBase
 
         item.IsSelected = session.Id == currentId;
         var running = IsSessionRunning(session.Id);
+        // 性能特征(P1-3, 暂不改): 下面两个委托由 ChatPageViewModel 提供, 内部对"全部会话"做 LINQ 扫描;
+        // 而 Reload 每条消息都会触发一次, 于是整体退化为 O(n^2)。
+        // 之所以不在这里优化: 判定逻辑的所有权在 ChatPageViewModel, 本类拿不到会话集合的只读视图,
+        // 强行缓存又会把"别的会话刚启动/刚结束"这个外部状态变更漏掉(没有对应的失效信号)。
+        // 正确修法见 docs/plans: 把两个判定下沉为 WorkspaceExecutionCoordinator 的查询并加事件失效。
         var switchReason = GetSessionSwitchBlockReason?.Invoke(session.WorkDir);
         var blockedReason = switchReason ?? GetWorkspaceBlockReason?.Invoke(session);
         item.UpdateRuntime(running, blockedReason);

@@ -133,7 +133,13 @@ public partial class AgentPanelViewModel : ViewModelBase
     public CliAgentDefinition? SelectedAgent
     {
         get => _selectedAgent;
-        set => SetProperty(ref _selectedAgent, value);
+        set
+        {
+            if (!SetProperty(ref _selectedAgent, value)) return;
+            // CanAssign 依赖 SelectedAgent, 必须主动通知: Avalonia 只在 Command 赋值或
+            // CanExecuteChanged 触发时重算 IsEnabledCore, 否则首次求值 false 会让按钮永久禁用。
+            AssignCommand.NotifyCanExecuteChanged();
+        }
     }
 
     private string _sessionId = string.Empty;
@@ -148,6 +154,12 @@ public partial class AgentPanelViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _useCommanderPersonaForAgents;
+
+    /// <summary>CanAssign 依赖任务文本: 空文本时按钮禁用, 输入过程中需持续重算。</summary>
+    partial void OnAssignTaskTextChanged(string value) => AssignCommand.NotifyCanExecuteChanged();
+
+    /// <summary>CanAssign 依赖 IsAssigning: 分派进行中禁止再次提交, 结束后恢复。</summary>
+    partial void OnIsAssigningChanged(bool value) => AssignCommand.NotifyCanExecuteChanged();
 
     public AgentPanelViewModel()
     {
@@ -481,6 +493,8 @@ public partial class AgentPanelViewModel : ViewModelBase
             });
     }
 
+    /// <summary>分配按钮可用性: 需要已选子代理 + 非空任务文本 + 不在分派中。
+    /// 这三个依赖分别由 SelectedAgent 的 setter / OnAssignTaskTextChanged / OnIsAssigningChanged 通知重算。</summary>
     private bool CanAssign() => SelectedAgent is not null
                                 && !string.IsNullOrWhiteSpace(AssignTaskText)
                                 && !IsAssigning;

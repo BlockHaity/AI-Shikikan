@@ -89,9 +89,6 @@
   <data name="Chat_StartAssign" xml:space="preserve"><value>启动</value></data>
   <data name="Chat_Assignments" xml:space="preserve"><value>子代理分派</value></data>
   <data name="Chat_Refresh" xml:space="preserve"><value>刷新</value></data>
-  <data name="Chat_GitMerge" xml:space="preserve"><value>合并</value></data>
-  <data name="Chat_GitDrop" xml:space="preserve"><value>丢弃</value></data>
-  <data name="Chat_GitRevert" xml:space="preserve"><value>回滚</value></data>
   <data name="Chat_GitDiff" xml:space="preserve"><value>Diff</value></data>
   <data name="Chat_QuickAssign" xml:space="preserve"><value>快速分配</value></data>
   <data name="Chat_TogglePanel" xml:space="preserve"><value>收起侧栏</value></data>
@@ -144,7 +141,6 @@
   <data name="GitPanel_Switch" xml:space="preserve"><value>切换</value></data>
   <data name="GitPanel_Pull" xml:space="preserve"><value>拉取</value></data>
   <data name="GitPanel_Push" xml:space="preserve"><value>推送</value></data>
-  <data name="GitPanel_Steps" xml:space="preserve"><value>旧步骤</value></data>
   <data name="GitPanel_Checkpoints" xml:space="preserve"><value>检查点</value></data>
   <data name="GitPanel_MarkCheckpoint" xml:space="preserve"><value>手动标记</value></data>
   <data name="GitPanel_CheckpointLabelPlaceholder" xml:space="preserve"><value>检查点标签（可选）...</value></data>
@@ -163,7 +159,6 @@
   <data name="GitPanel_NotRepo" xml:space="preserve"><value>当前目录不是 git 仓库, 请选择文件夹或初始化仓库</value></data>
   <data name="GitPanel_SelectFolder" xml:space="preserve"><value>选择文件夹</value></data>
   <data name="GitPanel_SelectFolderTip" xml:space="preserve"><value>选定后在此目录检测 git 仓库</value></data>
-  <data name="GitPanel_InitRepo" xml:space="preserve"><value>初始化 Git 仓库</value></data>
   <data name="GitPanel_DiffTitle" xml:space="preserve"><value>Diff</value></data>
   <data name="GitPanel_Graph" xml:space="preserve"><value>提交图谱</value></data>
   <data name="GitPanel_NoGraph" xml:space="preserve"><value>暂无图谱</value></data>
@@ -209,7 +204,6 @@
   <data name="Settings_ContextWindow" xml:space="preserve"><value>上下文窗口(tokens)</value></data>
   <data name="Settings_ContextWindowTip" xml:space="preserve"><value>留空表示跟随模型档案(API/内置)自动值</value></data>
   <data name="Settings_ContextWindowAuto" xml:space="preserve"><value>自动</value></data>
-  <data name="Settings_DetectThinking" xml:space="preserve"><value>自动检测思考等级</value></data>
   <data name="Settings_ProviderDefaultModel" xml:space="preserve"><value>默认模型</value></data>
   <data name="Settings_AgentSave" xml:space="preserve"><value>保存</value></data>
   <data name="Settings_AgentEditHint" xml:space="preserve"><value>修改可执行文件或参数模板后点保存</value></data>
@@ -226,7 +220,6 @@
   <data name="Settings_McpToolCount" xml:space="preserve"><value>{0} 个工具</value></data>
   <data name="Chat_Model" xml:space="preserve"><value>模型</value></data>
   <data name="Session_Panel_Title" xml:space="preserve"><value>会话列表</value></data>
-  <data name="Session_GroupByWorkDir" xml:space="preserve"><value>按工作目录分组</value></data>
   <data name="Session_GroupUnassigned" xml:space="preserve"><value>未指定目录</value></data>
   <data name="Session_New" xml:space="preserve"><value>新建会话</value></data>
   <data name="Session_Messages" xml:space="preserve"><value>{0} 条消息</value></data>
@@ -326,10 +319,6 @@
   <data name="ToolCard_StatusError" xml:space="preserve"><value>失败</value></data>
   <data name="ToolCard_CopyResult" xml:space="preserve"><value>复制结果</value></data>
   <data name="ToolCard_Copied" xml:space="preserve"><value>已复制</value></data>
-  <data name="ToolCard_Rollback" xml:space="preserve"><value>回滚此检查点</value></data>
-  <data name="ToolCard_RollbackConfirm" xml:space="preserve"><value>确认回滚?</value></data>
-  <data name="ToolCard_RolledBack" xml:space="preserve"><value>已回滚到检查点之前</value></data>
-  <data name="ToolCard_RollbackFailed" xml:space="preserve"><value>回滚失败: {0}</value></data>
   <data name="ToolCard_FileMeta" xml:space="preserve"><value>共 {0} 行 · 显示 {1}-{2}</value></data>
   <data name="ToolCard_FileTruncated" xml:space="preserve"><value>文件内容未完整显示</value></data>
   <data name="ToolCard_Query" xml:space="preserve"><value>查询: {0}</value></data>
@@ -345,4 +334,16 @@
   <data name="Chat_MsgDeleteConfirm" xml:space="preserve"><value>确认删除?</value></data>
   <data name="Chat_MsgResend" xml:space="preserve"><value>重新发送</value></data>
   <data name="Chat_MsgCancel" xml:space="preserve"><value>取消</value></data>
+  <data name="Thinking_Level_Off" xml:space="preserve"><value>关闭</value></data>
+  <data name="Thinking_Level_Auto" xml:space="preserve"><value>自动</value></data>
+  <data name="Thinking_Level_Low" xml:space="preserve"><value>低</value></data>
+  <data name="Thinking_Level_Medium" xml:space="preserve"><value>中</value></data>
+  <data name="Thinking_Level_High" xml:space="preserve"><value>高</value></data>
+  <data name="Thinking_Level_XHigh" xml:space="preserve"><value>极高</value></data>
+  <data name="Thinking_Level_Max" xml:space="preserve"><value>满</value></data>
+  <data name="Settings_DetectedModels" xml:space="preserve"><value>检出的模型</value></data>
+  <data name="Settings_AddDetected" xml:space="preserve"><value>添加所选</value></data>
+  <data name="Settings_AddAllDetected" xml:space="preserve"><value>全部添加</value></data>
+  <data name="Settings_ManualModelWatermark" xml:space="preserve"><value>手动添加模型 ID</value></data>
+  <data name="Settings_AddManual" xml:space="preserve"><value>添加</value></data>
 </root>
