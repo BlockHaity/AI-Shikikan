@@ -3,7 +3,9 @@ using MaterialColorUtilities.Palettes;
 using MaterialColorUtilities.Schemes;
 using MaterialColorUtilities.Utils;
 
-namespace AIShikikan.Core.Services;
+// 归 GUI 层: 本服务经 MaterialColorUtilities 依赖 Avalonia 的 Color 类型,
+// 放在 Core 会让 Core 传递引入 Avalonia 引用, 破坏 Core/Gui 的分层。
+namespace AIShikikan.Gui.Services;
 
 public class ExtractedPalette
 {

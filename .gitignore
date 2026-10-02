@@ -27,8 +27,6 @@ stage/
 dist/
 publish/
 out/
-# 根目录可执行产物 (Linux 构建输出)
-/AIShikikan.Gui
 *.binlog
 
 # ---------- NuGet ----------

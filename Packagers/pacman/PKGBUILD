@@ -3,7 +3,7 @@
 #
 # Arch Linux 打包 (makepkg)。
 # 构建来源: GitHub Release 的 selfcontained 二进制包。在仓库内直接打包:
-#   cd packagers/pacman && makepkg -f
+#   cd Packagers/pacman && makepkg -f
 #
 # 注意: Arch 规范禁止 pkgver 含 '-', 因此用下划线表示; 而 GitHub 的发布资产名
 #       与 tag 用的是连字符版本 (见 _ghver), 两者不同源。
@@ -23,7 +23,7 @@ license=('MIT')
 depends=('libx11' 'libxcursor' 'libxrandr' 'libxrender' 'libxkbcommon' 'libxext' 'libxfixes' 'libxi' 'libice' 'libsm' 'libglvnd' 'mesa' 'fontconfig' 'glib2' 'icu')
 makedepends=('tar' 'imagemagick')
 
-source=("../ai-shikikan.desktop" "../../Assets/logo.jpg" "../../LICENSE")
+source=("../ai-shikikan.desktop" "../../src/AIShikikan.Gui/Assets/logo.jpg" "../../LICENSE")
 source_x86_64=("https://github.com/BlockHaity/AI-Shikikan/releases/download/v${_ghver}/AIShikikan-${_ghver}-linux-x64-selfcontained.tar.gz")
 source_aarch64=("https://github.com/BlockHaity/AI-Shikikan/releases/download/v${_ghver}/AIShikikan-${_ghver}-linux-arm64-selfcontained.tar.gz")
 sha256sums=('SKIP' 'SKIP' 'SKIP')

@@ -1,31 +1,20 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <IsAotCompatible>true</IsAotCompatible>
     <PublishAot>true</PublishAot>
     <StripSymbols>true</StripSymbols>
-    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
-    <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
-    <NoWarn>$(NoWarn);OPENAI001</NoWarn>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <RootNamespace>AIShikikan.Gui</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
-    <Folder Include="Models\" />
+    <!-- Assets\** 已覆盖 logo.jpg, 不再单独列一条(重复条目会让资源清单出现两次) -->
     <AvaloniaResource Include="Assets\**" />
-    <AvaloniaResource Include="Assets\logo.jpg" />
   </ItemGroup>
 
   <ItemGroup>
-    <!-- 显式 LogicalName: 代码按 AIShikikan.Core.DefaultConfig.<文件名> 查找, 与根命名空间无关 -->
-    <EmbeddedResource Include="Core\DefaultConfig\*.toml">
-      <LogicalName>AIShikikan.Core.DefaultConfig.%(Filename)%(Extension)</LogicalName>
-    </EmbeddedResource>
+    <ProjectReference Include="..\AIShikikan.Core\AIShikikan.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -36,16 +25,11 @@
     <PackageReference Include="Markdown.Avalonia" Version="12.0.0-a3" />
     <PackageReference Include="Material.Icons.Avalonia" Version="3.*" />
     <PackageReference Include="ScottPlot.Avalonia" Version="5.1.59" />
+    <PackageReference Include="MaterialColorUtilities" Version="0.3.0" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.1">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.1" />
-    <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
-    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
-    <PackageReference Include="OpenAI" Version="2.13.0" />
-    <PackageReference Include="MaterialColorUtilities" Version="0.3.0" />
-    <PackageReference Include="Tomlyn" Version="0.19.0" />
-    <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
 </Project>

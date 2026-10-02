@@ -6,6 +6,9 @@ set -euo pipefail
 #   selfcontained - 自带 .NET 运行时的单文件裁剪发布, 开箱即用
 #   dotnet        - 框架依赖发布, 需要目标机已安装 .NET 运行时
 # 不再做跨平台/跨架构构建 (交叉编译由 CI 各 runner 分别完成)。
+#
+# 解决方案在仓库根 (AIShikikan.slnx), 可执行项目在 src/AIShikikan.Gui/,
+# 类库项目在 src/AIShikikan.Core/。产物名仍是 AIShikikan.Gui。
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$SCRIPT_DIR"
@@ -13,7 +16,7 @@ OUTPUT_DIR="$PROJECT_DIR/artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 VERSION="${VERSION:-$(cat "$PROJECT_DIR/VERSION" 2>/dev/null || echo 1.0.0-vibe)}"
 
-GUI_PROJECT="$PROJECT_DIR/AIShikikan.Gui.csproj"
+GUI_PROJECT="$PROJECT_DIR/src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 detect_host_rid() {
     local arch="x64"

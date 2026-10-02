@@ -2,10 +2,10 @@
 # 统一修改 AI-Shikikan 版本号。想改版本时运行一次即可, 无需逐个文件手改。
 # 会同步更新:
 #   VERSION                          - 单一版本源
-#   packagers/pacman/PKGBUILD        - pkgver (Arch 禁 '-', 自动用下划线) 与 _ghver
+#   Packagers/pacman/PKGBUILD        - pkgver (Arch 禁 '-', 自动用下划线) 与 _ghver
 #   AGENTS.md                        - "当前版本" 标注
-#   app.manifest                     - Win32 4 段数值版本 (取版本号的数字部分)
-#   build.sh/ps1, debug.sh/ps1       - VERSION 缺失时的回退版本
+#   src/AIShikikan.Gui/app.manifest  - Win32 4 段数值版本 (取版本号的数字部分)
+#   build.sh/build.ps1               - VERSION 缺失时的回退版本
 #   .github/workflows/*.yml          - CI 回退版本 (VERSION 缺失时的兜底)
 set -euo pipefail
 
@@ -36,8 +36,6 @@ CURRENT_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
 FALLBACK_FILES=(
   build.sh
   build.ps1
-  debug.sh
-  debug.ps1
   .github/workflows/release.yml
   .github/workflows/debug.yml
 )
@@ -48,8 +46,8 @@ usage() {
       $(basename "$0") current      # 显示当前版本
 
 改版本时无需加 'v' 前缀 (GitHub tag 会自动补 v)。
-会同步更新 VERSION / packagers/pacman/PKGBUILD / AGENTS.md / app.manifest
-及构建脚本与 CI 工作流中的回退版本。
+会同步更新 VERSION / Packagers/pacman/PKGBUILD / AGENTS.md /
+src/AIShikikan.Gui/app.manifest 及构建脚本与 CI 工作流中的回退版本。
 
 样例:
   $(basename "$0") 0.9.0
@@ -89,12 +87,12 @@ NEW="$NEW_VERSION"
 printf '%s\n' "$NEW" > VERSION
 ok "VERSION -> $NEW"
 
-# ---- 2) packagers/pacman/PKGBUILD ----
-PKGBUILD=packagers/pacman/PKGBUILD
+# ---- 2) Packagers/pacman/PKGBUILD ----
+PKGBUILD=Packagers/pacman/PKGBUILD
 ARCH_NEW="${NEW//-/_}"
 sed_i -E "s/^pkgver=.*/pkgver=$ARCH_NEW/" "$PKGBUILD"
 sed_i -E "s/^_ghver=.*/_ghver=$NEW/" "$PKGBUILD"
-ok "packagers/pacman/PKGBUILD -> pkgver=$ARCH_NEW, _ghver=$NEW"
+ok "Packagers/pacman/PKGBUILD -> pkgver=$ARCH_NEW, _ghver=$NEW"
 
 # ---- 3) AGENTS.md 版本标注 ----
 # 用 python3 而非 sed: 中文全角括号在 sed 的反向引用下与 UTF-8 多字节混排时
@@ -120,7 +118,9 @@ print(f"    (替换 {count} 处)")
 PY
 ok "AGENTS.md 版本标注 -> $NEW"
 
-# ---- 4) app.manifest Win32 数值版本 (取数字部分, 补足 4 段) ----
+# ---- 4) src/AIShikikan.Gui/app.manifest Win32 数值版本 (取数字部分, 补足 4 段) ----
+# 重组后 manifest 随可执行项目一起放在 src/AIShikikan.Gui/ 下。
+APP_MANIFEST=src/AIShikikan.Gui/app.manifest
 if [[ "$NEW" =~ ^([0-9]+(\.[0-9]+){0,3}) ]]; then
     NUM_PART="${BASH_REMATCH[1]}"
 else
@@ -134,8 +134,8 @@ case "$nparts" in
     3) MANIFEST_VER="$NUM_PART.0"     ;;
     *) MANIFEST_VER="$NUM_PART"       ;;
 esac
-sed_i -E "s#<assemblyIdentity version=\"[0-9.]+\"#<assemblyIdentity version=\"$MANIFEST_VER\"#g" app.manifest
-ok "app.manifest -> $MANIFEST_VER"
+sed_i -E "s#<assemblyIdentity version=\"[0-9.]+\"#<assemblyIdentity version=\"$MANIFEST_VER\"#g" "$APP_MANIFEST"
+ok "src/AIShikikan.Gui/app.manifest -> $MANIFEST_VER"
 
 # ---- 5) 构建脚本 / CI 里的回退版本 (VERSION 缺失时的兜底) ----
 # 旧版本号可能是新版本号的前缀(如 1.2.0 vs 1.2.0-vibe), 因此在 OLD 后面加

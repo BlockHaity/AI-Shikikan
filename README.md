@@ -59,19 +59,31 @@ CONFIGURATION=Debug ./build.sh selfcontained
 
 > 脚本只构建**当前平台**（架构由 `uname` 自动探测，无 `ARCH` 覆盖）；Linux / macOS / Windows × x64 / arm64 的交叉构建由 CI 各 runner 分别完成。
 
-Windows 对应 `.\build.ps1 [all|aot|selfcontained|dotnet|clean|help] -Configuration Release`，参数而非环境变量，且 `.\debug.ps1` 的应用参数需显式走 `-AppArgs`（与 sh 版并不等价）。
+Windows 对应 `.\build.ps1 [all|aot|selfcontained|dotnet|clean|help] -Configuration Release`，参数而非环境变量（与 sh 版并不等价）。
 
-### 运行
+### 开发调试
 
 ```bash
-# 启动图形界面
-./AIShikikan.Gui
+./debug.sh                     # dotnet run 启动 GUI（不 publish，秒级迭代）
+./debug.sh doctor              # 诊断环境（其余参数原样透传给程序）
+./debug.sh --no-build doctor   # 跳过编译，只跑上次的产物
+```
 
-# 查看版本
-./AIShikikan.Gui --version
+Windows 对应 `.\debug.ps1 [-NoBuild] [-Configuration Debug] [app arguments...]`——用 `-NoBuild` 而非 `--no-build`，`$env:NO_BUILD=1` 同样有效。
 
-# 诊断环境
-./AIShikikan.Gui doctor
+### 运行发布产物
+
+```bash
+./artifacts/dotnet/AIShikikan.Gui           # 框架依赖
+./artifacts/selfcontained/AIShikikan.Gui   # 自带 .NET 运行时
+./artifacts/aot/AIShikikan.Gui             # Native AOT
+```
+
+三个产物都支持 `--version` 与 `doctor` 子命令：
+
+```bash
+./artifacts/dotnet/AIShikikan.Gui --version
+./artifacts/dotnet/AIShikikan.Gui doctor
 ```
 
 ## 配置
@@ -152,21 +164,27 @@ description = "Anthropic 官方编码 Agent"
 
 ## 架构
 
+两个项目，`AIShikikan.Gui` 单向依赖 `AIShikikan.Core`：
+
 ```
-AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
-  ├── Core/                - 核心逻辑（AOT 兼容）
-  │   ├── Services/Git     - Git 检查点服务 (Commit/tag + Reset/Revert/Fork)
-  │   ├── Services/Engine    - Agent 调度引擎
-  │   ├── Services/Agents    - Agent 定义与配置
-  │   ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)
-  │   ├── Services/Personas  - 人格/专家管理
-  │   ├── Services/Templates - 任务模板
-  │   ├── Services/Tools     - 内置工具集
-  │   ├── Services/Mcp       - MCP 客户端 (stdio/http/sse)
-  │   ├── Services/Session   - 会话运行时与工作区并发协调
-  │   └── Services/Usage     - 用量统计与模型档案
-  ├── ViewModels/          - MVVM 视图模型
-  └── Views/               - Avalonia XAML 视图
+src/
+├── AIShikikan.Core/       - 核心逻辑（类库，AOT 兼容，不依赖 Avalonia）
+│   ├── Services/Git       - Git 检查点服务 (Commit/tag + Reset/Revert/Fork)
+│   ├── Services/Engine    - Agent 调度引擎
+│   ├── Services/Agents    - Agent 定义与配置
+│   ├── Services/Llm       - LLM 客户端 (OpenAI/Anthropic)
+│   ├── Services/Personas  - 人格/专家管理
+│   ├── Services/Templates - 任务模板
+│   ├── Services/Tools     - 内置工具集
+│   ├── Services/Mcp       - MCP 客户端 (stdio/http/sse)
+│   ├── Services/Session   - 会话运行时与工作区并发协调
+│   ├── Services/Usage     - 用量统计与模型档案
+│   └── DefaultConfig/     - 内嵌默认配置
+└── AIShikikan.Gui/        - 图形界面 (Avalonia)
+    ├── ViewModels/        - MVVM 视图模型
+    ├── Views/             - Avalonia XAML 视图
+    ├── Services/          - GUI 层服务 (动态主题、图片附件、背景取色)
+    └── Resources/         - 双语字符串
 ```
 
 ## 鸣谢
@@ -193,7 +211,7 @@ AIShikikan.Gui     - 图形界面 (Avalonia) + 核心逻辑
 - [HarmonyOS Sans SC](https://developer.huawei.com/consumer/cn/design/resource/) — 华为, 依据 *HarmonyOS Sans 字体许可协议* 使用(默认标准字体)
 - [CaskaydiaCove Nerd Font Mono](https://github.com/ryanoasis/nerd-fonts) — Nerd Fonts 项目, 依据 *SIL Open Font License 1.1* 使用(默认等宽字体)
 
-字体文件与许可文本位于 `Assets/Fonts/`。
+字体文件与许可文本位于 `src/AIShikikan.Gui/Assets/Fonts/`。
 
 ## 贡献者
 

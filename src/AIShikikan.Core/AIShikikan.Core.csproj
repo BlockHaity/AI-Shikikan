@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>AIShikikan.Core</RootNamespace>
+    <AssemblyName>AIShikikan.Core</AssemblyName>
+    <!-- OpenAI SDK 的实验性 API 提示, 本项目按既定设计使用其内部结构 -->
+    <NoWarn>$(NoWarn);OPENAI001</NoWarn>
+    <!--
+      显式关闭构建期 AOT 分析器, 以保持拆包前的告警基线(0 警告)。
+
+      SDK 规则: EnableAotAnalyzer = (PublishAot==true || IsAotCompatible==true)。
+      拆包前 Core 与 Gui 同在一个项目里, 那个项目带 PublishAot=true, 但 ILLink 的
+      Native.targets 会把分析器兜底关掉 —— 即「IsAotCompatible=true 却没真正分析」。
+      拆包后 Core 作为类库没有 PublishAot, 规则翻转, 分析器真的跑起来了, 于是把
+      9 处既有的 RequiresDynamicCode 用法(JsonArray.Add<T> /
+      JsonSerializer.SerializeToElement<T>)一次性翻出来。
+
+      修这些点属于 AOT 兼容性治理(见 AGENTS.md 已知技术债 #2), 不属于结构重构;
+      AOT 可用性仍以 ./build.sh aot 的真实 Native AOT 发布为准。
+    -->
+    <EnableAotAnalyzer>false</EnableAotAnalyzer>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 显式 LogicalName: 代码按 AIShikikan.Core.DefaultConfig.<文件名> 查找, 与根命名空间无关 -->
+    <EmbeddedResource Include="DefaultConfig\*.toml">
+      <LogicalName>AIShikikan.Core.DefaultConfig.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Anthropic.SDK" Version="5.10.0" />
+    <PackageReference Include="Azure.AI.OpenAI" Version="2.1.0" />
+    <PackageReference Include="OpenAI" Version="2.13.0" />
+    <PackageReference Include="Tomlyn" Version="0.19.0" />
+    <PackageReference Include="YamlDotNet" Version="18.1.0" />
+  </ItemGroup>
+</Project>
