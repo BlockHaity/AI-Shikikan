@@ -186,7 +186,7 @@ dotnet build AIShikikan.Gui.csproj
 ./set-version.sh 0.9.1-vibe   # 改版本（GitHub tag 会自动补 v 前缀）
 ./set-version.sh current      # 查看当前版本
 
-# 版本来源：根目录 VERSION 文件（当前 0.9.0-vibe，用 ./set-version.sh 更新）
+# 版本来源：根目录 VERSION 文件（当前 1.0.0-vibe，用 ./set-version.sh 更新）
 # 环境变量：build.sh = CONFIGURATION / VERSION；debug.sh = CONFIGURATION / VERSION / AOT_MODE(auto|always|off，默认 off)
 # 架构由 uname 自动探测，无 ARCH 覆盖；跨平台/跨架构构建已移除（交叉编译由 CI 各 runner 分别完成）
 

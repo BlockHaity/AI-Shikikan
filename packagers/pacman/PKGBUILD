@@ -9,9 +9,9 @@
 #       与 tag 用的是连字符版本 (见 _ghver), 两者不同源。
 # 发布前请把 pkgver/_ghver 更新为根目录 VERSION 的值, 并把 sha256sums 从 SKIP 换成真实校验值。
 pkgname=ai-shikikan
-pkgver=0.9.0_vibe
+pkgver=1.0.0_vibe
 pkgrel=1
-_ghver=0.9.0-vibe
+_ghver=1.0.0-vibe
 pkgdesc="AI Agent commander desktop app"
 arch=('x86_64' 'aarch64')
 url="https://github.com/BlockHaity/AI-Shikikan"

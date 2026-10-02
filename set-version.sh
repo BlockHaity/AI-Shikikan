@@ -84,7 +84,27 @@ sed -i -E "s/^_ghver=.*/_ghver=$NEW/" "$PKGBUILD"
 ok "packagers/pacman/PKGBUILD -> pkgver=$ARCH_NEW, _ghver=$NEW"
 
 # ---- 3) AGENTS.md 版本标注 ----
-sed -i -E "s#（当前 [0-9A-Za-z._-]+）#（当前 $NEW）#g" AGENTS.md
+# 用 python3 而非 sed: 中文全角括号在 sed 的反向引用下与 UTF-8 多字节混排时
+# 匹配不可靠, 曾出现"脚本报告成功但文档仍写着旧版本"的静默失败。
+# 注意标注的实际写法是「（当前 0.9.0-vibe, 用 ... 更新）」—— 右括号在句末,
+# 并不紧跟版本号, 所以只匹配「（当前 <版本号>」这一段。仅用标准库, 无外部依赖。
+python3 - "$NEW" <<'PY'
+import re, sys, io
+
+new = sys.argv[1]
+path = "AGENTS.md"
+text = io.open(path, encoding="utf-8").read()
+
+# 兼容全角「（当前 x.y.z」与半角 "(当前 x.y.z" 两种写法
+pattern = re.compile(r'([（(])当前\s+[0-9A-Za-z._-]+')
+updated, count = pattern.subn(lambda m: f"{m.group(1)}当前 {new}", text)
+
+if count == 0:
+    sys.exit(f"{path}: 未找到「当前 x.y.z」版本标注, 请手动更新")
+
+io.open(path, "w", encoding="utf-8").write(updated)
+print(f"    (替换 {count} 处)")
+PY
 ok "AGENTS.md 版本标注 -> $NEW"
 
 # ---- 4) app.manifest Win32 数值版本 (取数字部分, 补足 4 段) ----
