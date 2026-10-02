@@ -10,38 +10,66 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 
 ## 项目结构
 
-单一项目 `AIShikikan.Gui.csproj`，位于**仓库根目录**（无 src 嵌套）：
+两个项目，源码全在 `src/` 下，仓库根只留构建脚本与元数据：
 
 ```
-/                          - 仓库根 = 项目根
-  Program.cs / App.axaml(.cs) / ViewLocator.cs
-  Core/                    - 核心逻辑（AOT 兼容）
-  ViewModels/ Views/       - Avalonia MVVM
-  Services/                - GUI 层服务 (DynamicThemeService, ImageAttachmentService)
-  Resources/               - 双语字符串 + Markdown 主题
-  Assets/                  - 字体、logo
-  Core/DefaultConfig/      - 内嵌默认配置（agents.toml 等，随程序集打包）
-  templates/               - 面向用户的 example 文件
-  docs/plans/              - 方案与决策归档
+/                              - 仓库根（无源码）
+  AIShikikan.slnx              - 唯一解决方案文件（根目录裸 dotnet build 即用它）
+  Directory.Build.props        - 两项目共用的 MSBuild 属性（TFM / AOT 开关 / 从 VERSION 注入版本）
+  VERSION / LICENSE / CHANGELOG.md / AGENTS.md / README.md
+  build.sh build.ps1           - 发布构建（publish + 打包归档）
+  debug.sh debug.ps1           - 本地调试（dotnet run，不 publish）
+  set-version.sh               - 一键改版本号
+  Packagers/                   - Linux 系统包打包（deb / rpm / pacman），CI 引用
+  templates/                   - 面向用户的 example 文件
+  static/                      - README 插图
+  docs/plans/                  - 方案与决策归档
+  src/
+    AIShikikan.Core/           - 核心逻辑（类库，零 Avalonia 依赖）
+      AppPaths.cs / AppInfo.cs - 路径解析与应用信息
+      Logging/ Models/ Serialization/
+      Services/                - 全部业务服务（见下节）
+      DefaultConfig/           - 内嵌默认配置（agents.toml 等，随 Core 程序集打包）
+    AIShikikan.Gui/            - Avalonia 可执行项目（程序集名 AIShikikan.Gui）
+      Program.cs / App.axaml(.cs) / ViewLocator.cs / app.manifest
+      ViewModels/ Views/       - Avalonia MVVM
+      Services/                - GUI 层服务 (DynamicThemeService, ImageAttachmentService, ColorExtractionService)
+      Resources/               - 双语字符串 + Markdown 主题
+      Assets/                  - 字体、logo
 ```
+
+两个 csproj 的分工：
+
+| 项目 | 类型 | 关键内容 |
+|---|---|---|
+| `src/AIShikikan.Core` | 类库 | LLM/MCP SDK、Tomlyn、YamlDotNet；**不引用任何 Avalonia 包**；`DefaultConfig/*.toml` 以 LogicalName `AIShikikan.Core.DefaultConfig.*` 内嵌 |
+| `src/AIShikikan.Gui` | Exe（`PublishAot=true`） | Avalonia 全家桶、CommunityToolkit.Mvvm、ScottPlot、MaterialColorUtilities；`ProjectReference` 指向 Core；`AvaloniaResource Assets\**`；`Resources/Strings*.resx`（卫星资源 `en/AIShikikan.Gui.resources.dll` 依赖程序集名，勿改） |
+
+> ⚠️ **不要改程序集名/项目名**。`Strings.cs` 的 `ResourceManager` 名为 `AIShikikan.Gui.Resources.Strings`（由 `RootNamespace` + 目录推出），卫星资源程序集名又由程序集名推出；任一改动都会让英文界面静默回退为中文。
 
 根目录文件：
 
 | 文件 | 说明 |
 |------|------|
+| `AIShikikan.slnx` | 解决方案（唯一），`dotnet build` / `dotnet clean` 直接用 |
 | `VERSION` | 单一版本源（软件与 CI 共用，勿在代码中硬编码） |
-| `Directory.Build.props` | 全局 MSBuild 属性（从 VERSION 注入版本） |
+| `Directory.Build.props` | 两项目共用属性：TFM / Nullable / ImplicitUsings / `IsAotCompatible` / 裁剪与 AOT 静音开关 / 从 VERSION 注入版本 |
 | `build.sh` / `build.ps1` | 发布构建脚本（**仅当前平台**：命令 `all`（默认，三变体）/ `aot` / `selfcontained` / `dotnet` / `clean`，环境变量 `CONFIGURATION` / `VERSION`；无 `ARCH`、无 `AOT_MODE`） |
-| `debug.sh` / `debug.ps1` | Debug 构建并运行 GUI（本地开发最常用，余下参数原样传给程序；`debug.sh` 支持 `AOT_MODE`） |
+| `debug.sh` / `debug.ps1` | 本地调试：`dotnet run --project src/AIShikikan.Gui/AIShikikan.Gui.csproj`，余下参数原样透传给程序；`--no-build`（或 `NO_BUILD=1`）跳过编译 |
 | `.github/workflows/release.yml` | 手动触发的 Release 发布流程 |
 | `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow |
-| `packagers/` | Linux 系统包打包源文件：deb(control) / rpm(spec) / pacman(PKGBUILD) 模板，release.yml 构建时引用 |
-| `set-version.sh` | 一键修改版本号（同步 VERSION / PKGBUILD / manifest / 文档与脚本回退值） |
+| `Packagers/` | Linux 系统包打包：`linux/package.sh`（deb/rpm/pacman 构建脚本）+ deb(control) / rpm(spec) / pacman(PKGBUILD) / .desktop 模板，两个 workflow 均调用 `package.sh` |
+| `set-version.sh` | 一键修改版本号（同步 VERSION / PKGBUILD / `src/AIShikikan.Gui/app.manifest` / AGENTS.md / 脚本与 CI 回退值） |
 
-> ⚠️ 根目录同时存在 `AIShikikan.Gui.csproj` 与 `AIShikikan.slnx`，裸 `dotnet build` 会报 MSB1011，**必须显式指定**：
-> `dotnet build AIShikikan.Gui.csproj`
+> ✅ 根目录只有 `.slnx` 一个解决方案文件，裸 `dotnet build` 可直接用（重组前根目录同时有 csproj 与 slnx，会报 MSB1011）。
+>
+> ⚠️ 根 `Directory.Build.props` 里 `SuppressTrimAnalysisWarnings` / `SuppressAotAnalysisWarnings` 是**属性、不是属性组**，两个项目都会继承，不要在单个 csproj 里「顺手删掉」。
+>
+> ⚠️ `AIShikikan.Core.csproj` 显式写了 `<EnableAotAnalyzer>false</EnableAotAnalyzer>`。SDK 规则是 `EnableAotAnalyzer = (PublishAot || IsAotCompatible)`，Core 作为类库没有 `PublishAot`，规则会翻转并翻出 9 处既有的 `RequiresDynamicCode` 用法。**这不是「关掉检查就没事」**——AOT 兼容性目前只由 `./build.sh aot` 的真实发布兜底（见已知技术债 #2）。
 
 ### Core/Services 内部结构
+
+以下均位于 `src/AIShikikan.Core/Services/`（最后几个 `.cs` 直接在该目录下）：
 
 ```
 Engine/      - Agent 调度引擎 (AgentEngine, AssignmentManager, RosterBuilder,
@@ -71,13 +99,18 @@ ChatTitleService.cs - 首条消息后自动生成会话标题
 DefaultConfig.cs - 内嵌默认配置的写出（providers/agents/mcp-servers.toml）
 ThemeService.cs - preferences.toml 读写（明暗/语言/字体/背景）
 I18nService.cs - 语言切换
-ColorExtractionService.cs - 背景图主色提取(动态主题取色)
 ```
 
-> 模型定义分散在 `Core/Models/`（如 `GitCheckpointRecord.cs`）；`GitTypes.cs` 只放 Git 命令结果类型，
+> ⚠️ **背景图主色提取已移出 Core**：`ColorExtractionService.cs` 现在在
+> `src/AIShikikan.Gui/Services/`（命名空间 `AIShikikan.Gui.Services`）。它经
+> `MaterialColorUtilities` 依赖 Avalonia 的 `Color` 类型，放在 Core 会让 Core
+> 传递引入 Avalonia 引用、破坏分层。只有 `DynamicThemeService` 与
+> `MainWindow.axaml.cs` 用它，两者本就在 GUI 层，改动时别再加回 Core。
+
+> 模型定义分散在 `src/AIShikikan.Core/Models/`（如 `GitCheckpointRecord.cs`）；`GitTypes.cs` 只放 Git 命令结果类型，
 > `LegacyArtifactScanResult` 则定义在 `GitService.cs` 末尾。
 
-启动外观：`CommanderRuntime.Boot()`（`Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、全部服务与工具集，并注册到静态 `Instance`。GUI 外壳单例 `AppShell`（ViewModels/AppShell.cs）持有 Runtime。
+启动外观：`CommanderRuntime.Boot()`（`src/AIShikikan.Core/Services/CommanderRuntime.cs`）初始化配置目录、示例文件、全部服务与工具集，并注册到静态 `Instance`。GUI 外壳单例 `AppShell`（`src/AIShikikan.Gui/ViewModels/AppShell.cs`）持有 Runtime。
 
 ## 关键机制
 
@@ -174,51 +207,70 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 ./build.sh clean                 # 清理 artifacts/
 CONFIGURATION=Debug ./build.sh selfcontained   # 覆盖构建配置
 
-# 编译检查（改完代码至少跑一次；根目录有 csproj + slnx，必须显式指定项目）
-dotnet build AIShikikan.Gui.csproj
+# 编译检查（改完代码至少跑一次；根目录只有 slnx，裸命令直接可用）
+dotnet build                                        # 构建两个项目
+dotnet build src/AIShikikan.Gui/AIShikikan.Gui.csproj   # 只构建 GUI（Core 作为 ProjectReference 带上）
+dotnet build src/AIShikikan.Core/AIShikikan.Core.csproj # 只构建 Core
 
-# Debug 构建并运行（本地开发最常用）
-./debug.sh                # 构建 Debug 版 GUI 并运行
+# 本地调试（本地开发最常用；走 dotnet run，不 publish、不产出 AOT 二进制）
+./debug.sh                # 增量编译并启动 GUI
 ./debug.sh --version      # 查看版本（-h/--help/help 之外的参数原样传给程序）
 ./debug.sh doctor         # 环境诊断（含并发规则自检 + 废弃产物提示）
+./debug.sh --no-build doctor   # 跳过编译，只跑上次的产物（反复 attach 调试器时用）
+NO_BUILD=1 ./debug.sh --version  # --no-build 的环境变量写法
+
+# AOT / 自包含 / 单文件产物只能走发布链路验证
+./build.sh aot
+
+# Linux 系统包（deb / rpm / pacman）
+VERSION=$(cat VERSION) VARIANTS=dotnet ./Packagers/linux/package.sh   # 需先 ./build.sh dotnet
 
 # 修改版本号（一键同步 VERSION / PKGBUILD / app.manifest / AGENTS.md 版本标注 / 脚本与 CI 回退值）
 ./set-version.sh 0.9.1-vibe   # 改版本（GitHub tag 会自动补 v 前缀）
 ./set-version.sh current      # 查看当前版本
 
 # 版本来源：根目录 VERSION 文件（当前 1.0.0-vibe，用 ./set-version.sh 更新）
-# 环境变量：build.sh = CONFIGURATION / VERSION；debug.sh = CONFIGURATION / VERSION / AOT_MODE(auto|always|off，默认 off)
+# 环境变量：build.sh = CONFIGURATION / VERSION；debug.sh = CONFIGURATION / NO_BUILD
+# debug.sh 不再支持 VERSION（dotnet run 无 -p:Version 选项）与 AOT_MODE（不 publish）
 # 架构由 uname 自动探测，无 ARCH 覆盖；跨平台/跨架构构建已移除（交叉编译由 CI 各 runner 分别完成）
 
 # Windows（参数非环境变量，与 sh 版并不等价）
 .\build.ps1 [all|aot|selfcontained|dotnet|clean|help] [-Configuration Release] [-Version x.y.z]
-.\debug.ps1 [gui|help] [-Configuration Debug] [-Version x.y.z] [-AotMode auto|always|off] [-AppArgs <传给程序的参数>]
+.\debug.ps1 [-NoBuild] [-Configuration Debug] [-Help] [app arguments...]
 #   - .\build.ps1 无 -h/--help，只有位置参数 help
-#   - .\debug.ps1 的 -App 只接受 gui|help：直接传 .\debug.ps1 doctor 会被 ValidateSet 拒绝
-#   - .\debug.ps1 --version 会被 PowerShell 绑定成 -Version（改的是构建版本号，不会打印版本）
-#     程序参数请显式走 -AppArgs，例如 .\debug.ps1 gui -AppArgs "--version"
+#   - .\debug.ps1 用 [CmdletBinding(PositionalBinding=$false)] 关掉了位置绑定：
+#     -NoBuild / -Configuration 只能具名传，裸 token 一律透传给程序（.\debug.ps1 doctor 直接可用）
+#   - PowerShell 绑定的是 -NoBuild，不是 --no-build（后者不是合法参数名）；$env:NO_BUILD=1 同样有效
+#   - .\debug.ps1 --version：--version 不匹配任何参数名，作为裸 token 透传给程序 → 打印版本
 ```
 
 ## 运行方式
 
 ```bash
-./AIShikikan.Gui           # Avalonia 图形界面
-./AIShikikan.Gui --version # 查看版本
-./AIShikikan.Gui doctor    # 环境诊断
+# 开发期一律走 debug 脚本（dotnet run，保留调用者的当前工作目录）
+./debug.sh              # Avalonia 图形界面
+./debug.sh --version    # 查看版本
+./debug.sh doctor       # 环境诊断
+
+# 发布产物（./build.sh <变体> 之后，产物名恒为 AIShikikan.Gui）
+./artifacts/dotnet/AIShikikan.Gui           # 框架依赖
+./artifacts/selfcontained/AIShikikan.Gui   # 自带运行时（单文件）
+./artifacts/aot/AIShikikan.Gui             # Native AOT
 ```
 
 ## 技术栈与关键约束
 
-- .NET 10 (`net10.0`)，`PublishAot=true`：全链路 Native AOT 兼容。
-- UI：Avalonia 12.1.3 + CCSWE.Avalonia.Material (Material3)、Markdown.Avalonia、Material.Icons、ScottPlot.Avalonia（趋势图）。版本以 `AIShikikan.Gui.csproj` 为准。
-- MVVM：CommunityToolkit.Mvvm；编译绑定默认开启（`AvaloniaUseCompiledBindingsByDefault=true`，XAML 需 `x:DataType`）。
-- 序列化约束（AOT 必需）：JSON **仅**用源生成上下文 `Core/Serialization/AppJsonContext.cs`；TOML 用 Tomlyn（经 `TomlBridge`）；YAML frontmatter 用 YamlDotNet。禁止反射式序列化。
-- LLM SDK：OpenAI / Anthropic 官方 SDK（仅客户端内部 HTTP 细节使用，主数据结构自定义于 `ChatTypes.cs`）。
-- 动态主题取色：MaterialColorUtilities（配合 `ColorExtractionService` / `DynamicThemeService`）。
+- .NET 10 (`net10.0`)，`PublishAot=true`（仅 Gui）：全链路 Native AOT 兼容。
+- **两项目分层**：`AIShikikan.Core` 不得引用任何 Avalonia 包（Core 里出现 `using Avalonia` 即为分层破坏）；Gui 单向引用 Core，Core **不得**反向引用 Gui（`ColorExtractionService` 因此被移到 GUI 层）。
+- UI：Avalonia 12.1.3 + CCSWE.Avalonia.Material (Material3)、Markdown.Avalonia、Material.Icons、ScottPlot.Avalonia（趋势图）。版本以 `src/AIShikikan.Gui/AIShikikan.Gui.csproj` 为准。
+- MVVM：CommunityToolkit.Mvvm；编译绑定默认开启（`AvaloniaUseCompiledBindingsByDefault=true`，XAML 需 `x:DataType`）。XAML 里的 `clr-namespace` / `using:` 可直接引用 Core 的命名空间（跨程序集解析已验证）。
+- 序列化约束（AOT 必需）：JSON **仅**用源生成上下文 `AppJsonContext.cs`（位于 `src/AIShikikan.Core/Serialization/`）；TOML 用 Tomlyn（经 `TomlBridge`）；YAML frontmatter 用 YamlDotNet。禁止反射式序列化。
+- LLM SDK：OpenAI / Anthropic 官方 SDK（仅客户端内部 HTTP 细节使用，主数据结构自定义于 `ChatTypes.cs`），仅 Core 引用。
+- 动态主题取色：MaterialColorUtilities（GUI 层，配合 `ColorExtractionService` / `DynamicThemeService`）。
 
 ### 原子写（AOT 无关，但关系到数据安全）
 
-**所有用户数据落盘都必须走 `Core/Serialization/AtomicFile.cs`**，禁止裸 `File.WriteAllText`。
+**所有用户数据落盘都必须走 `src/AIShikikan.Core/Serialization/AtomicFile.cs`**，禁止裸 `File.WriteAllText`。
 
 | API | 用途 |
 |---|---|
@@ -245,7 +297,7 @@ dotnet build AIShikikan.Gui.csproj
 
 ## 配置与数据路径
 
-用户配置按平台解析（见 `Core/AppPaths.cs`），Linux 走 XDG 规范：
+用户配置按平台解析（见 `src/AIShikikan.Core/AppPaths.cs`），Linux 走 XDG 规范：
 
 | 目录 | Linux | macOS |
 |------|-------|-------|
@@ -269,14 +321,14 @@ dotnet build AIShikikan.Gui.csproj
 | `checkpoints/` | Git 检查点记录（按仓库哈希分目录） |
 | `assignments/` | 子代理分派记录 |
 
-内嵌默认配置在 `Core/DefaultConfig/`（以 `AIShikikan.Core.DefaultConfig.<文件名>` 为 LogicalName 嵌入程序集，首启动时写出）。
+内嵌默认配置在 `src/AIShikikan.Core/DefaultConfig/`（以 `AIShikikan.Core.DefaultConfig.<文件名>` 为 LogicalName 嵌入 **Core** 程序集，`DefaultConfig.Load` 按 `typeof(DefaultConfig).Assembly` 取，首启动时写出）。
 面向用户的示例文件在 `templates/`。**添加新配置字段时需同步更新两处**。
 
 ## 编码约定
 
 - 语言：**C#**，target `net10.0`，`Nullable` + `ImplicitUsings` 开启。
-- 新增服务放入 `Core/Services/<领域>/`，并通过 `CommanderRuntime.Boot` 装配；新工具按类别在 `AgentToolFactory.CreateCoreTools`（固定工具）或 `CreateSubagentTools`（随右侧栏可见性注册的子代理工具）注册。
-- Core 必须 AOT 兼容；序列化与原子写规则见上节。
+- 新增服务放入 `src/AIShikikan.Core/Services/<领域>/`（与 Avalonia 无关的业务逻辑）或 `src/AIShikikan.Gui/Services/`（界面相关），并通过 `CommanderRuntime.Boot` 装配；新工具按类别在 `AgentToolFactory.CreateCoreTools`（固定工具）或 `CreateSubagentTools`（随右侧栏可见性注册的子代理工具）注册。
+- Core 必须 AOT 兼容且**不得引入 Avalonia 依赖**；序列化与原子写规则见上节。
 - **代码注释使用中文**，且应记录「为什么这么做」而非复述代码。
 - GUI 遵循 MVVM：ViewModels 继承 `ViewModelBase`，视图绑定 `Views/*.axaml`；用户可见文案一律走 `Resources/Strings.resx`（中文）+ `Strings.en.resx`（英文），经 `Strings.cs` 访问器引用。**新增文案必须两个 resx 同时加**——`Strings.Get` 在找不到时静默回退为 key 本身，英文界面会直接显示字面量。`Strings.FindMissingEnglishKeys()`（仅 Debug）供自检。
 - 不得在代码中硬编码版本号，统一读取根目录 `VERSION`（见 `Directory.Build.props`）。
@@ -316,18 +368,18 @@ ci: GitHub Actions 相关
 | # | 问题 | 位置 |
 |---|---|---|
 | 1 | **无测试、无 CI 门禁**：仓库无任何测试项目，两个 workflow 均需手动触发，push/PR 不做验证 | 全仓 |
-| 2 | **AOT 兼容性无人验证**：`SuppressTrimAnalysisWarnings` + `SuppressAotAnalysisWarnings` 把裁剪/AOT 分析器全静音 | `AIShikikan.Gui.csproj` |
+| 2 | **AOT 兼容性无人验证**：`SuppressTrimAnalysisWarnings` + `SuppressAotAnalysisWarnings` 把裁剪/AOT 分析器全静音；`AIShikikan.Core.csproj` 另需显式 `EnableAotAnalyzer=false`（拆包后类库无 `PublishAot`，SDK 规则会翻转并翻出 9 处既有 `RequiresDynamicCode` 用法） | `Directory.Build.props` / `src/AIShikikan.Core/AIShikikan.Core.csproj` |
 | 3 | **UI 线程同步跑 git 进程**：发消息前会在 UI 线程拉起约 6 个 git 进程（`GitService.Run` 用 `GetAwaiter().GetResult()`），最坏可冻结数十秒 | `GitService.cs` |
 | 4 | **流式文本无时间节流**：每个 token 触发一次全量 Markdown 重解析，长回复呈 O(n²) | `ChatPageViewModel.cs` |
 | 5 | **图片附件全流程在 UI 线程**：解码 + PNG 编码 + 二次解码，单张可达 1 秒（最多连贴 4 张） | `ImageAttachmentService.cs` |
 | 6 | **背景图取色全量像素搬运**：4K 图约 100MB 分配 + 830 万次循环，切换背景即触发 | `MainWindow.axaml.cs` |
 | 7 | **`Bitmap` 从不 Dispose**：图片分段与附件缩略图泄漏原生内存 | `ChatItemViewModel.cs` / `ImageAttachmentService.cs` |
 | 8 | **MCP 客户端无自动重连**：进程崩溃后 UI 仍显示已连接，只能手动重连 | `Mcp/` |
-| 9 | **LLM 层无 429/5xx 重试退避**，无首 token 超时 | `Core/Services/Llm/` |
+| 9 | **LLM 层无 429/5xx 重试退避**，无首 token 超时 | `src/AIShikikan.Core/Services/Llm/` |
 | 10 | **每 agent 一个 `run_<id>` 工具无上限**：agent 多了会挤占上下文并降低工具选择准确率 | `AgentToolFactory.cs` |
 | 11 | **超大文件**：`ChatPageViewModel.cs` 约 1750 行、`ChatPageView.axaml` 875 行 | `ViewModels/` `Views/` |
-| 12 | **重复代码**：`Truncate` 5 份（同名函数一个取头一个取尾）、`EnsureUniqueId` 2 份、JSON 参数提取 4 份、路径规范化 4 套 | `Core/` `ViewModels/` |
-| 13 | **csproj 冗余**：`<Folder Include="Models\" />` 指向不存在的目录；`logo.jpg` 被 `Assets\**` 与显式条目重复包含 | `AIShikikan.Gui.csproj` |
+| 12 | **重复代码**：`Truncate` 5 份（同名函数一个取头一个取尾）、`EnsureUniqueId` 2 份、JSON 参数提取 4 份、路径规范化 4 套 | `src/AIShikikan.Core/` `src/AIShikikan.Gui/ViewModels/` |
+| 13 | ~~csproj 冗余~~（**已解决**）：失效的 `<Folder Include="Models\" />` 与和 `Assets\**` 重复的 `logo.jpg` 条目在拆包重建 csproj 时已删除 | `src/AIShikikan.Gui/AIShikikan.Gui.csproj` |
 | 14 | **`TryReserve` 等协调器 API 无生产调用方**，回滚/Fork 确认期无 worktree 级保护 | `WorkspaceExecutionCoordinator.cs` |
 | 15 | **子代理输出未接检查点**：`Assignment.StepId` 已无人赋值，工具卡头部的「检查点:」会是空白 | `AgentToolFactory.cs` |
 | 16 | **压缩未转发当前回合 provider/model**：`ToolContext` 已注入但 `AgentExecutor` 未传给 `CompactIfNeededAsync` | `AgentToolFactory.cs` |
