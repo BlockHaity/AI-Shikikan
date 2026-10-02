@@ -444,34 +444,14 @@ jobs:
 
       - name: Prepare release body from CHANGELOG
         run: |
-          # 只取本次版本对应的段落, 而不是整份文件 —— 否则 CHANGELOG 累积多个版本后,
-          # 每次发布的说明都会包含全部历史条目。
-          VERSION="${{ needs.check.outputs.version }}"
-          if [ -s CHANGELOG.md ]; then
-            python3 - "$VERSION" <<'PY'
-          import io, re, sys
-
-          version = sys.argv[1]
-          text = io.open("CHANGELOG.md", encoding="utf-8").read()
-
-          # 匹配 "## [x.y.z] - date" 标题, 捕获到下一个 "## " 之前的内容
-          pattern = re.compile(
-              r"^## \[" + re.escape(version) + r"\][^\n]*\n(.*?)(?=^## |\Z)",
-              re.MULTILINE | re.DOTALL,
-          )
-          match = pattern.search(text)
-          if match is None:
-              sys.exit(f"CHANGELOG.md 中未找到版本 {version} 的段落, 请确认已更新 changelog")
-
-          body = match.group(1).strip()
-          # 去掉 Keep a Changelog 风格的标题行(它会重复发布名)
-          body = re.sub(r"^#+\s*.*$", "", body, count=1, flags=re.MULTILINE).strip()
-          io.open("release_body.md", "w", encoding="utf-8").write(body + "\n")
-          PY
-          else
+          # CHANGELOG.md 整体作为 Release 正文 —— 它本身就是按版本倒序排列的完整
+          # 变更记录, GitHub 会渲染其中的标题层级, 读者可自行跳到关心的版本。
+          # 缺失即中止: 静默降级成一句"发布"会让每次 Release 的说明都空洞无物。
+          if [ ! -s CHANGELOG.md ]; then
             echo "::error::CHANGELOG.md 缺失或为空, 无法生成发布说明"
             exit 1
           fi
+          cp CHANGELOG.md release_body.md
           printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n\nLinux 系统包 (deb/rpm/pacman):\n- **.deb**: Debian / Ubuntu\n- **.rpm**: Fedora / RHEL / dnf 系\n- **.pkg.tar.zst**: Arch Linux / Manjaro\n' >> release_body.md
 
       - name: Create Release
