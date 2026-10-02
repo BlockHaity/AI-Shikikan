@@ -247,6 +247,13 @@ jobs:
               -e "s|@HOMEPAGE@|$HOMEPAGE|g" \
               -e "s|@DESC@|$DESC|g" \
               packagers/deb/control > "$DEBROOT/DEBIAN/control"
+          # 二进制包的 DEBIAN/control 只允许 RFC822 字段, 不接受 '#' 注释行
+          # (dpkg-deb 会报 "field name '#' must be followed by colon", 行号还指向
+          # 上一个字段, 极具误导性)。模板里一旦加注释就在这里提前拦下。
+          if grep -n '^[[:space:]]*#' "$DEBROOT/DEBIAN/control"; then
+            echo "::error::packagers/deb/control 含注释行, 二进制包 control 不允许注释 (说明请写进 packagers/README.md)"
+            exit 1
+          fi
           # dpkg 要求 Description 多行字段以换行终止, 缺尾换行会报 missing final newline
           [ -z "$(tail -c1 "$DEBROOT/DEBIAN/control")" ] || printf '\n' >> "$DEBROOT/DEBIAN/control"
           # 框架依赖变体: .NET 运行时来自系统包 (最佳努力, 缺包不阻塞安装);
