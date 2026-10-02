@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using AIShikikan.Core.Models;
 using AIShikikan.Core.Services;
+using AIShikikan.Core.Services.Session;
 using AIShikikan.Gui.Resources;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -29,6 +30,10 @@ public partial class SessionItemViewModel : ViewModelBase
     [ObservableProperty]
     private int _messageCount;
 
+    /// <summary>
+    /// 归一化后的完整工作目录路径(分组后组头只显示末级目录名,
+    /// 完整路径在这里保留, 避免同名目录无法区分)。
+    /// </summary>
     [ObservableProperty]
     private string _workDirText = string.Empty;
 
@@ -77,7 +82,7 @@ public partial class SessionItemViewModel : ViewModelBase
         _title = session.DisplayTitle;
         _messageCount = session.MessageCount;
         _timeLabel = FormatRelativeTime(session.UpdatedAt);
-        _workDirText = session.WorkDir;
+        _workDirText = NormalizeWorkDir(session.WorkDir);
         _branchText = session.BranchName;
         _editTitle = _title;
     }
@@ -88,7 +93,7 @@ public partial class SessionItemViewModel : ViewModelBase
         Title = session.DisplayTitle;
         MessageCount = session.MessageCount;
         TimeLabel = FormatRelativeTime(session.UpdatedAt);
-        WorkDirText = session.WorkDir;
+        WorkDirText = NormalizeWorkDir(session.WorkDir);
         BranchText = session.BranchName;
         OnPropertyChanged(nameof(HasBranch));
         OnPropertyChanged(nameof(HasWorkDir));
@@ -97,6 +102,10 @@ public partial class SessionItemViewModel : ViewModelBase
             EditTitle = Title;
         }
     }
+
+    /// <summary>工作目录归一化为可读全路径; 空值返回空串。</summary>
+    private static string NormalizeWorkDir(string? workDir)
+        => string.IsNullOrWhiteSpace(workDir) ? string.Empty : GitWorkspaceResolver.Normalize(workDir);
 
     partial void OnMessageCountChanged(int value)
     {
@@ -177,7 +186,27 @@ public partial class SessionPanelViewModel : ViewModelBase
     public ObservableCollection<object> DisplayItems { get; } = [];
 
     private readonly Dictionary<string, SessionItemViewModel> _items = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, SessionGroupHeaderViewModel> _headers = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, SessionGroupHeaderViewModel> _headers = new(PathComparer);
+
+    /// <summary>
+    /// 路径比较器: Windows/macOS 文件系统默认大小写不敏感, Linux 敏感。
+    /// 决定 <c>/proj/Foo</c> 与 <c>/proj/foo</c> 算不算同一个组。
+    /// </summary>
+    private static readonly StringComparer PathComparer =
+        OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
+            ? StringComparer.OrdinalIgnoreCase
+            : StringComparer.Ordinal;
+
+    /// <summary>
+    /// 会话的工作目录归一化为分组键。同一目录的多种写法(末尾斜杠、相对路径、
+    /// 大小写差异)必须落到同一个组, 否则同一处工作目录会裂成多组。
+    /// 空目录返回空串(归入"未指定目录"组)。
+    ///
+    /// <para>复用 Core 的 <see cref="GitWorkspaceResolver.Normalize"/>(全路径 + 去尾分隔符 +
+    /// Windows 盘符保护), 避免 GUI 与协调器对同一路径算出两个键。</para>
+    /// </summary>
+    private static string GroupKeyOf(string? workDir)
+        => string.IsNullOrWhiteSpace(workDir) ? string.Empty : GitWorkspaceResolver.Normalize(workDir);
 
     /// <summary>由聊天页注入 Core 会话运行态，避免 UI 自行维护第二份状态。</summary>
     public Func<string, bool> IsSessionRunning { get; set; } = _ => false;
@@ -235,23 +264,20 @@ public partial class SessionPanelViewModel : ViewModelBase
     private List<object> BuildGrouped(string? currentId)
     {
         var groups = new List<(string Key, string Title, string FullPath, List<SessionItemViewModel> Items)>();
-        var byKey = new Dictionary<string, int>(StringComparer.Ordinal);
-        const string unassignedKey = "\0unassigned";
+        var byKey = new Dictionary<string, int>(PathComparer);
 
         foreach (var session in _chatService.Sessions)
         {
             var item = GetOrCreateItem(session, currentId);
             if (item is null) continue;
 
-            var dir = session.WorkDir?.Trim() ?? string.Empty;
-            var key = string.IsNullOrEmpty(dir) ? unassignedKey : dir;
+            var key = GroupKeyOf(session.WorkDir);
             if (!byKey.TryGetValue(key, out var gi))
             {
+                var dir = string.IsNullOrEmpty(key) ? string.Empty : key;
                 var title = string.IsNullOrEmpty(dir)
                     ? Strings.Session_GroupUnassigned
-                    : (Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)) is { Length: > 0 } name
-                        ? name
-                        : dir);
+                    : (Path.GetFileName(dir) is { Length: > 0 } name ? name : dir);
                 groups.Add((key, title, dir, []));
                 gi = groups.Count - 1;
                 byKey[key] = gi;
@@ -261,8 +287,9 @@ public partial class SessionPanelViewModel : ViewModelBase
         }
 
         // 组按组内最新活跃时间降序; 未指定目录组固定排最后
+        // 注意: GroupKeyOf 对空目录返回空串(而不是 unassignedKey), 排序必须比对同一个值
         var ordered = groups
-            .OrderBy(g => g.Key == unassignedKey)
+            .OrderBy(g => string.IsNullOrEmpty(g.Key))
             .ThenByDescending(g => g.Items.Count > 0 ? g.Items.Max(i => i.Session.UpdatedAt).Ticks : 0L)
             .ToList();
 
