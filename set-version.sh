@@ -18,6 +18,19 @@ ok()    { echo -e "${GREEN}[OK]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 err()   { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
+# 原地改文件: sed -i 的后缀参数在 GNU/BSD 下语义不同 —— GNU 直接跟选项,
+# BSD 要求给一个后缀占位(习惯上给空串)。本脚本是本地开发脚本, 而项目同时
+# 支持 macOS, 因此统一走 sed_i, 免得 macOS 上把脚本当成备份后缀而失败。
+if [ "$(uname -s)" = "Darwin" ]; then
+  sed_i() { local head=("${@:1:$#-1}"); sed -i '' "${head[@]}" "${!#}"; }
+else
+  sed_i() { sed -i "$@"; }
+fi
+
+# sed 正则字面量转义: 版本号里的 '.' 在正则里是通配符, 直接当 pattern 会顺带
+# 改坏别处的文本(如把 '1.2.0' 匹配到 '1x2y0')。
+sed_escape() { printf '%s' "$1" | sed -e 's/[][\.^$*+?(){}|\\/]/\\&/g'; }
+
 CURRENT_VERSION="$(cat VERSION 2>/dev/null | tr -d '[:space:]')"
 
 FALLBACK_FILES=(
@@ -79,8 +92,8 @@ ok "VERSION -> $NEW"
 # ---- 2) packagers/pacman/PKGBUILD ----
 PKGBUILD=packagers/pacman/PKGBUILD
 ARCH_NEW="${NEW//-/_}"
-sed -i -E "s/^pkgver=.*/pkgver=$ARCH_NEW/" "$PKGBUILD"
-sed -i -E "s/^_ghver=.*/_ghver=$NEW/" "$PKGBUILD"
+sed_i -E "s/^pkgver=.*/pkgver=$ARCH_NEW/" "$PKGBUILD"
+sed_i -E "s/^_ghver=.*/_ghver=$NEW/" "$PKGBUILD"
 ok "packagers/pacman/PKGBUILD -> pkgver=$ARCH_NEW, _ghver=$NEW"
 
 # ---- 3) AGENTS.md 版本标注 ----
@@ -121,13 +134,18 @@ case "$nparts" in
     3) MANIFEST_VER="$NUM_PART.0"     ;;
     *) MANIFEST_VER="$NUM_PART"       ;;
 esac
-sed -i -E "s#<assemblyIdentity version=\"[0-9.]+\"#<assemblyIdentity version=\"$MANIFEST_VER\"#g" app.manifest
+sed_i -E "s#<assemblyIdentity version=\"[0-9.]+\"#<assemblyIdentity version=\"$MANIFEST_VER\"#g" app.manifest
 ok "app.manifest -> $MANIFEST_VER"
 
 # ---- 5) 构建脚本 / CI 里的回退版本 (VERSION 缺失时的兜底) ----
+# 旧版本号可能是新版本号的前缀(如 1.2.0 vs 1.2.0-vibe), 因此在 OLD 后面加
+# 边界断言, 避免把已经存在的 1.2.0-vibe 一起改坏。版本号可含 '.' '-' '_',
+# 边界取"非版本字符或行尾"。
+OLD_RE="$(sed_escape "$OLD")"
+BOUNDARY='([^0-9A-Za-z._-]|$)'
 for f in "${FALLBACK_FILES[@]}"; do
-    if [ -f "$f" ] && grep -q -- "$OLD" "$f"; then
-        sed -i "s/$OLD/$NEW/g" "$f"
+    if [ -f "$f" ] && grep -qE -- "$OLD_RE$BOUNDARY" "$f"; then
+        sed_i -E "s/$OLD_RE$BOUNDARY/$NEW\\1/g" "$f"
         ok "$f 回退版本已同步"
     fi
 done
