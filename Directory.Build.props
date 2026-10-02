@@ -1,6 +1,32 @@
 <Project>
 
   <!--
+    全局 MSBuild 属性: src/ 下所有项目(AIShikikan.Core / AIShikikan.Gui)共用。
+    项目各自的差异(输出类型、发布选项、资源、打包引用)留在各自的 csproj 里。
+
+    两个项目共享的属性放这里而非各自 csproj, 是为了让「加第三个项目」时零成本继承,
+    也避免同一组属性在两个文件里各写一份、走偏。
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    全链路 Native AOT 兼容: 两个项目都声明, Gui 侧再由 PublishAot=true 落地真实 AOT 发布。
+
+    ⚠️ 这里的两个 Suppress* 只是静音「分析器的输出」, 并不代表 AOT 兼容性已验证 ——
+    真正兜底的是 ./build.sh aot 的真实 Native AOT 发布。Core 侧另需显式
+    EnableAotAnalyzer=false (见其 csproj 注释)。详见 AGENTS.md 已知技术债 #2。
+  -->
+  <PropertyGroup>
+    <IsAotCompatible>true</IsAotCompatible>
+    <SuppressTrimAnalysisWarnings>true</SuppressTrimAnalysisWarnings>
+    <SuppressAotAnalysisWarnings>true</SuppressAotAnalysisWarnings>
+  </PropertyGroup>
+
+  <!--
     全局版本号来源: 根目录 VERSION 文件。
     软件 (AssemblyInformationalVersion) 与 GitHub Actions 工作流共用此文件。
   -->

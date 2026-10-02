@@ -1,4 +1,4 @@
-# packagers — Linux 系统包打包源文件
+# Packagers — Linux 系统包打包源文件
 
 本目录保存 deb / rpm(dnf) / pacman 三种 Linux 系统包所需的打包源文件,
 由 `.github/workflows/release.yml` 在 CI 中引用, 也可供本地维护者复用。

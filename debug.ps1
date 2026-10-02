@@ -27,7 +27,7 @@ if ([string]::IsNullOrWhiteSpace($Version)) {
 }
 if ([string]::IsNullOrWhiteSpace($Version)) { $Version = "1.0.0-vibe" }
 $OutputDir = Join-Path $ProjectDir "artifacts/debug"
-$GuiProject = Join-Path $ProjectDir "AIShikikan.Gui.csproj"
+$GuiProject = Join-Path $ProjectDir "src/AIShikikan.Gui/AIShikikan.Gui.csproj"
 
 $hostOs = if ($IsLinux) { "linux" } elseif ($IsMacOS) { "osx" } else { "win" }
 $hostArch = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq
