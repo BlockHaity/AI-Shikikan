@@ -3,12 +3,31 @@ using System.Text.Json.Serialization;
 namespace AIShikikan.Core.Models;
 
 /// <summary>工具卡片结构化展示数据: 供 UI 按工具类型渲染专属卡体, 随 ToolSegment 持久化。</summary>
+///
+/// <para><b>⚠️ 新增派生类型必须登记在这里, 否则字段会被静默丢掉(不会报错)。</b>
+/// <see cref="JsonPolymorphicAttribute.UnknownDerivedTypeHandling"/> 默认是
+/// <c>FallBackToBaseType</c>: 运行期类型不在这份清单里时, STJ 会<b>按基类契约</b>序列化 ——
+/// 不写判别符、不抛异常。而 <see cref="ToolCardDetail"/> 自身没有任何可序列化属性, 结果就是
+/// <c>"detail": {}</c>, 派生类的字段在写盘那一刻就没了。
+/// 反向读同样炸: <c>{}</c> 里没有 <c>$type</c>, STJ 只能去实例化基类, 而基类是 abstract,
+/// 于是抛 <c>JsonException</c>, 整个 <c>ChatSession</c> 反序列化失败(ChatService.EnsureLoaded
+/// 只能落到 .bak 回退, 再失败就标记 IsCorrupted 并锁死写回)。</para>
+///
+/// <para><b>历史成因(勿重犯)</b>: <see cref="CheckpointDetail"/> 当初把
+/// <c>[JsonDerivedType(typeof(CheckpointDetail), "checkpoint")]</c> 写在了<b>它自己</b>身上。
+/// 派生类型清单不继承, 自登记只对"把 CheckpointDetail 当声明类型直接序列化"生效,
+/// 对 <c>ToolSegment.Detail</c>(声明类型是 ToolCardDetail)这条路径完全无效。</para>
+///
+/// <para><b>判别符字符串是已落盘数据的一部分, 不可改</b>: <c>sessions/{id}.json</c> 里
+/// <c>ToolSegment.Detail.$type</c> 就是这些字符串, 改名会让历史会话读不出来。
+/// 现值: fileRead / dirList / glob / grep / subagents / checkpoint。</para>
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
 [JsonDerivedType(typeof(FileReadDetail), "fileRead")]
 [JsonDerivedType(typeof(DirectoryListDetail), "dirList")]
 [JsonDerivedType(typeof(GlobDetail), "glob")]
 [JsonDerivedType(typeof(GrepDetail), "grep")]
 [JsonDerivedType(typeof(SubagentsDetail), "subagents")]
+[JsonDerivedType(typeof(CheckpointDetail), "checkpoint")]
 public abstract class ToolCardDetail
 {
 }

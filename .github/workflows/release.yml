@@ -131,6 +131,17 @@ jobs:
             -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/aot
 
+      # Worker 是独立进程(承载非 MCP 工具与子代理执行), 必须与 GUI 变体一一配对发布:
+      # 用户选 dotnet 变体正是为了省磁盘, 不该塞给他一个 15MB 的 AOT Worker;
+      # 反之也不能假设用户装了 .NET 运行时, 所以三套都要出。
+      - name: Publish Worker AOT (Native AOT)
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Worker/AIShikikan.Worker.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
+            -p:Version=${{ needs.check.outputs.version }} -o stage/worker/aot
+
       - name: Publish regular dotnet (framework-dependent)
         shell: bash
         run: |
@@ -138,6 +149,14 @@ jobs:
             -c Release -r ${{ matrix.rid }} --self-contained false \
             -p:PublishAot=false \
             -p:Version=${{ needs.check.outputs.version }} -o stage/dotnet
+
+      - name: Publish Worker dotnet (framework-dependent)
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Worker/AIShikikan.Worker.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained false \
+            -p:PublishAot=false \
+            -p:Version=${{ needs.check.outputs.version }} -o stage/worker/dotnet
 
       - name: Publish self-contained (with .NET runtime)
         shell: bash
@@ -148,6 +167,16 @@ jobs:
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
+
+      - name: Publish Worker self-contained (with .NET runtime)
+        shell: bash
+        run: |
+          dotnet publish src/AIShikikan.Worker/AIShikikan.Worker.csproj \
+            -c Release -r ${{ matrix.rid }} --self-contained true \
+            -p:PublishAot=false -p:PublishSingleFile=true \
+            -p:PublishTrimmed=true -p:TrimMode=partial \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:Version=${{ needs.check.outputs.version }} -o stage/worker/selfcontained
 
       - name: Build Linux packages (deb / rpm / pacman)
         if: startsWith(matrix.rid, 'linux')
@@ -164,13 +193,33 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p dist
-          chmod +x stage/*/AIShikikan.Gui 2>/dev/null || true
+          # 先把每个变体的 GUI 产物与「配对的 Worker 产物」合并成一个干净的暂存目录,
+          # 归档从那里打。⚠️ 不能直接把 stage/worker/<v> 拷进 stage/<v>/:
+          # 那会污染 publish 输出目录, 下次 CI 复用缓存时会带上上次的陈旧 Worker。
+          # Worker 放 worker/ 子目录(而非平铺)是因为 GUI 的 AOT 会产出 libSkiaSharp 等 .so,
+          # 与 Worker 的原生库同名冲突; dotnet 多文件布局下同名托管 DLL 也会互相覆盖。
+          PACK="$(mktemp -d)"
+          trap 'rm -rf "$PACK"' EXIT
+          for v in aot dotnet selfcontained; do
+            [ -d "stage/$v" ] || continue
+            mkdir -p "$PACK/$v"
+            cp -a "stage/$v/." "$PACK/$v/"
+            if [ -d "stage/worker/$v" ]; then
+              mkdir -p "$PACK/$v/worker"
+              cp -a "stage/worker/$v/." "$PACK/$v/worker/"
+            else
+              echo "::warning::缺少 stage/worker/$v, 该归档将不含 Worker(运行时会降级为同进程内联执行)"
+            fi
+            chmod +x "$PACK/$v/AIShikikan.Gui" 2>/dev/null || true
+            chmod +x "$PACK/$v/worker/AIShikikan.Worker" 2>/dev/null || true
+          done
           # 排除调试符号: AOT 变体的 AIShikikan.Gui.dbg 约占目录 62%,
           # 不排除会让 AOT 归档体积翻倍 (实测 73.4MB -> 47.5MB)
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/aot .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/dotnet .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C stage/selfcontained .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/aot" .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/dotnet" .
+          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/selfcontained" .
 
       - name: Package artifacts (Windows)
         if: runner.os == 'Windows'
@@ -183,9 +232,25 @@ jobs:
           Get-ChildItem -Path stage -Recurse -File |
             Where-Object { $_.Name -like '*.pdb' -or $_.Name -like '*.dbg' } |
             Remove-Item -Force
-          Compress-Archive -Path stage/aot/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.zip
-          Compress-Archive -Path stage/dotnet/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.zip
-          Compress-Archive -Path stage/selfcontained/* -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.zip
+          # 把每个变体的 GUI 产物与「配对的 Worker 产物」合并进暂存目录后再压缩。
+          # Worker 放 worker/ 子目录, 理由同 Unix 步骤(原生库 / 同名托管 DLL 同名冲突)。
+          $pack = Join-Path $env:RUNNER_TEMP 'pack'
+          Remove-Item -Recurse -Force $pack -ErrorAction SilentlyContinue
+          foreach ($v in @('aot', 'dotnet', 'selfcontained')) {
+            if (-not (Test-Path "stage/$v")) { continue }
+            New-Item -ItemType Directory -Force "$pack/$v" | Out-Null
+            Get-ChildItem -Path "stage/$v" -Force | Copy-Item -Destination "$pack/$v" -Recurse -Force
+            if (Test-Path "stage/worker/$v") {
+              New-Item -ItemType Directory -Force "$pack/$v/worker" | Out-Null
+              Get-ChildItem -Path "stage/worker/$v" -Force | Copy-Item -Destination "$pack/$v/worker" -Recurse -Force
+            }
+            else {
+              Write-Warning "缺少 stage/worker/$v, 该归档将不含 Worker(运行时会降级为同进程内联执行)"
+            }
+          }
+          Compress-Archive -Path "$pack/aot/*" -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.zip
+          Compress-Archive -Path "$pack/dotnet/*" -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.zip
+          Compress-Archive -Path "$pack/selfcontained/*" -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.zip
 
       - name: Upload AOT artifact
         uses: actions/upload-artifact@v6

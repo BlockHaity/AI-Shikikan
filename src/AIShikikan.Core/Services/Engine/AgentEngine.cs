@@ -79,7 +79,22 @@ public sealed class EngineOptions
     /// <summary>模型名; 未设置时由 LlmService 按 Provider 默认模型解析。</summary>
     public string? Model { get; set; }
 
-    /// <summary>Provider Id; 为空时 LlmService 走默认 Provider。</summary>
+    /// <summary>Provider Id; 为空(null)时**跟随全局活动 Provider**(<c>LlmService.GetProvider(null)</c>
+    /// 与 <c>GetClient(null)</c> 解析到同一处 <c>LlmSettings.ActiveProviderId</c>), 不是"未知"。
+    ///
+    /// <para>写入方是 <c>CommanderRuntime.ApplyLlmRouting(engine)</c>, 调用时机为<b>每回合开始前</b>
+    /// (GUI 与就地写 <see cref="Thinking"/>/<see cref="WorkDir"/>/<see cref="IsPlanMode"/> 同一处)。
+    /// 这样"本回合用哪个 provider"是回合级快照: 回合中途切 provider 不影响正在跑的回合, 下一回合自动跟上。</para>
+    ///
+    /// <para><b>刻意不在 <c>CreateEngine</c> 构造期固化</b>: 会话引擎是长生命周期缓存对象、不重建,
+    /// 创建时写死会让"用户在聊天页切 Provider 后下一条消息生效"这条既有语义失效。
+    /// 忘记调用也只是退回"跟随全局"(保持 null), 不会把会话钉死在旧 provider 上。</para>
+    ///
+    /// <para>只写 ProviderId 而不写 <see cref="Model"/>: 模型留 null 让引擎每回合经
+    /// <c>LlmService.ResolveModel</c> 现算, 那条路径会做 <c>EnabledModels</c> 合法性校验
+    /// (当前模型被停用时回落到列表内首个); <c>ResolveModel(已填的 model)</c> 是直接短路返回、
+    /// 不再校验的, 先填后校验反而更容易配出"下发了已停用模型"的请求。</para>
+    /// </summary>
     public string? ProviderId { get; set; }
 
     /// <summary>单次请求携带的历史消息条数上限; 当前无外部配置方, 取下方默认值 40。
@@ -849,6 +864,19 @@ public sealed class AgentEngine
                 // 归属会话: 工具侧的"按会话"状态(子代理压缩开关 / Plan 授权)必须按发起回合的会话查,
                 // 不能读"当前活动会话" —— 后台会话跑子代理时用户切到别的会话会串味
                 SessionId = SessionId,
+                // 本回合所属会话的 roster 快照: 直接给引擎字段本身, 它就是该会话的 roster
+                // (CommanderRuntime.GetRosterEntriesFor 也是转手读 Engine.RosterEntries, 同源)。
+                // ⚠️ 消费方判据只能判 null 与否, 绝不能用 `Count > 0`: null = 该会话从未被 GUI
+                // 推送过 roster ⇒ 无限制、回退全局配置; 非 null(含空表) = 以表为准, 而空表正是
+                // SetSubagentToolsVisible(false) / 用户清空全部子代理的表示。历史上用 Count > 0
+                // 一并表达两者, 让「工具已注销但提示词仍在广告 run_<id>」的空表落进「列出全部」分支。
+                // 注意工具目前仍经 AgentExecutionScope.RosterResolver 取值, 与本字段语义等价;
+                // 两条路径刻意并存 —— scope 是进程内委托, 跨不了 Worker 进程, 将来切换消费方以本字段为准。
+                RosterEntries = _rosterEntries,
+                // 指挥官人格快照: 同上, 取本引擎字段而非 CommanderRuntime.Instance.CurrentPersonaText ——
+                // 后者是「用户当前选中的那一篇」, 切人格会就地改写它, A 会话派出的子代理会带着 B 人格跑。
+                // null/空串 = 本回合无指挥官人格, 此时子代理不附加人格前缀(而非回退全局默认)。
+                CommanderPersonaText = _personaText,
                 // 子代理输出压缩要与本回合同 provider/model, 否则用户切了非默认模型时压缩会走另一个模型
                 ProviderId = opts.ProviderId,
                 Model = _currentModel,

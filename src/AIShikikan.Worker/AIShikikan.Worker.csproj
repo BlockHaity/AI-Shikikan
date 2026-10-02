@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    独立 Worker 进程(无 GUI): 承载非 MCP 的工具与子代理执行。
+    参见 docs/plans/worker-architecture.md(§3 进程与管道架构 / §7 构建与发布布局)。
+
+    ⚠ 硬约束: 本项目**不得**引用任何 Avalonia 包, 也**不得** ProjectReference AIShikikan.Gui。
+      Worker 是 headless 子进程, 引 GUI 会把整个 Avalonia 依赖面拖进子进程, 还会隐式依赖
+      GUI 程序集名(卫星资源 en/AIShikikan.Gui.resources.dll 由程序集名推出, 见 AGENTS.md)。
+      同理 Core 不得反向引用 Worker(会成 Core→Worker→Core 的环)。
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>AIShikikan.Worker</AssemblyName>
+    <RootNamespace>AIShikikan.Worker</RootNamespace>
+
+    <!--
+      PublishAot=true 的真实价值(不是"顺手开一下"): 它让 ./build.sh aot 第一次对
+      **Core 那些从未被验证过的 RequiresDynamicCode 路径**做真实 Native AOT 编译 ——
+      git 服务(GitService 拉起 git 子进程 + 解析输出)、文件工具路径解析、CliAgentRunner
+      (子代理进程树管理)、Tomlyn(TOML)/YamlDotNet(YAML frontmatter)解析。
+      这些代码原先只被 GUI 的 AOT 发布"顺带"覆盖到一部分(且分析器被静音), 现在有了
+      一个**职责单一、体量小得多**的 AOT 宿主来兜底, 等于修掉 AGENTS.md 技术债 #2 的一半
+      (另一半仍是 GUI 侧的全量 AOT 发布验证)。
+
+      ⚠ 一个容易踩的坑: 本属性**不会**翻转 Core 的 EnableAotAnalyzer。
+        SDK 规则(Microsoft.NET.Sdk.Analyzers.targets:92)是
+          EnableAotAnalyzer = (PublishAot==true || IsAotCompatible==true)
+        而 EnableAotAnalyzer 只在**当前正在编译的那个项目**里生效。Core 作为被引用的
+        独立程序集早已编译完毕, 本项目设 PublishAot 只是让本项目自己的代码开分析器。
+        Core.csproj 里那句 <EnableAotAnalyzer>false</EnableAotAnalyzer> 仍然稳如泰山 ——
+        所以 Worker 侧看不到 Core 那 9 处 RequiresDynamicCode 告警, 这属于预期, 不是"已修复"。
+        反过来说也别指望在这里看见它们: 真正的判据是 ./build.sh aot 对本项目的真实发布
+        (ILLink + ILC 真的会编译到 Core 的 IL)。
+        另外 Directory.Build.props 的 SuppressTrimAnalysisWarnings 是被 ILLink 真实识别的
+        静音开关(它只静音**告警输出**, 不影响 ILC 是否尝试编译), 同样会被本项目继承。
+    -->
+    <PublishAot>true</PublishAot>
+  </PropertyGroup>
+
+  <!--
+    DefaultConfig/*.toml 内嵌在 **Core** 程序集里(LogicalName AIShikikan.Core.DefaultConfig.*),
+    DefaultConfig.Load 按 typeof(DefaultConfig).Assembly 取资源。本项目引用 Core 即自动获得,
+    不需要任何额外资源配置; 只有「首次启动幂等写出默认 agents.toml」会用到它。
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\AIShikikan.Core\AIShikikan.Core.csproj" />
+  </ItemGroup>
+
+</Project>

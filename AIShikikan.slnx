@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="src/AIShikikan.Core/AIShikikan.Core.csproj" />
   <Project Path="src/AIShikikan.Gui/AIShikikan.Gui.csproj" />
+  <Project Path="src/AIShikikan.Worker/AIShikikan.Worker.csproj" />
 </Solution>

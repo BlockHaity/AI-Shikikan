@@ -4,6 +4,7 @@ using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Engine;
 using AIShikikan.Core.Services.Llm;
 using AIShikikan.Core.Services.Usage;
+using AIShikikan.Core.Services.Worker;
 using AIShikikan.Gui.Resources;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -68,12 +69,87 @@ public partial class StatusPanelViewModel : ViewModelBase
 
     private bool _repoRefreshQueued;
 
+    // ── Worker 执行位置(降级可见性的兜底) ─────────────────────────────
+    // 「悄悄退回同进程内联执行」是引入 Worker 后最危险的一类回归: 工具照常能跑、界面毫无异常,
+    // 只是子代理又回到主进程、重扫描又卡 UI —— 用户唯一能察觉的只有「最近变慢了」, 却无从归因。
+    // 所以状态栏必须把这一档显式显示出来(doctor 只在用户主动敲命令时才看得到, 顶不上这个位置)。
+
+    /// <summary>Worker 模式轮询间隔; 与聊天页排队计数轮询同节奏。</summary>
+    private const int WorkerPollIntervalMs = 500;
+
+    private readonly DispatcherTimer _workerPollTimer;
+    private string _workerModeText = string.Empty;
+    private bool _isWorkerDegraded;
+
+    /// <summary>Worker 模式的一行文案(独立进程 / ⚠ 进程内)。</summary>
+    public string WorkerModeText => _workerModeText;
+
+    /// <summary>当前是否有会话的工具退回主进程内执行(界面据此高亮)。</summary>
+    public bool IsWorkerDegraded => _isWorkerDegraded;
+
+    /// <summary>Worker 模式的解释文案(说明这一档为什么值得注意)。</summary>
+    public string WorkerModeTip => IsWorkerDegraded
+        ? Strings.Status_WorkerInlineTip
+        : Strings.Status_WorkerPipeTip;
+
     public StatusPanelViewModel()
     {
         _workDir = _runtime.WorkspaceRoot;
+
+        // Worker 模式轮询: 降级没有任何事件可订阅 —— 池是在别的线程上把某个槽位钉死成内联的,
+        // 状态变化既不经过 EngineEventHub 也不经过 AppShell.DataChanged, 只能轮询。
+        // 500ms / DispatcherPriority.Background 与聊天页的排队计数轮询完全一致, 不与渲染抢优先级。
+        // 代价可忽略: GetHealth() 内部对 Worker 可执行文件定位有 5s 节流, 两次探测之间只读内存里的组表。
+        _workerPollTimer = new DispatcherTimer(DispatcherPriority.Background)
+        {
+            Interval = TimeSpan.FromMilliseconds(WorkerPollIntervalMs)
+        };
+        _workerPollTimer.Tick += (_, _) => RefreshWorkerMode();
+
         Refresh();
+        RefreshWorkerMode(); // 首帧先出结论, 避免刚进面板要等 500ms 才显示模式
+        _workerPollTimer.Start();
         _runtime.Engine.OnEvent += OnEngineEvent;
         AppShell.Instance.DataChanged += OnShellDataChanged;
+    }
+
+    /// <summary>
+    /// 读一次 Worker 池健康快照, 更新状态栏的模式标记(UI 线程调用)。
+    /// </summary>
+    /// <remarks>
+    /// <para>轮询处理器里<b>不允许抛异常</b>: 一个未处理异常会沿 DispatcherTimer 冒到 UI 循环,
+    /// 表现是整个界面卡死。故整体兜底 try/catch, 失败时保留上一次结论(而不是谎报"正常")。</para>
+    /// <para><b>为什么不用 <c>WorkerHealth.ModeText</c></b>: 它是 Core 里的硬编码中文,
+    /// 英文界面下会直接露出中文。这里按枚举自行映射到 resx 键, 保证双语一致。</para>
+    /// <para><b>为什么 <c>NotFound</c> 与 <c>Inline</c> 合并成一档</b>: 前者是「压根没定位到 Worker 可执行文件」,
+    /// 后者是「拉起失败/已钉死降级」—— 成因不同, 但对用户的结论完全一样(工具跑在主进程里, 失去隔离),
+    /// 分成两行只会让状态栏变啰嗦。区分靠 doctor 的逐条输出。</para>
+    /// </remarks>
+    private void RefreshWorkerMode()
+    {
+        try
+        {
+            var pool = _runtime.Workers;
+            if (pool is null) return;
+
+            // NotConnected(已定位但此刻无存活实例)不算降级 —— 会话还没开过第一回合本就是这个状态(懒启动)
+            var degraded = pool.GetHealth().Mode is WorkerMode.Inline or WorkerMode.NotFound;
+            var text = degraded ? Strings.Status_WorkerInline : Strings.Status_WorkerPipe;
+
+            // 比对文案而不只是标志位: 顺带让语言切换(Strings.Culture 变了, 文案随之变)也能刷新出来。
+            if (degraded == _isWorkerDegraded && text == _workerModeText) return;
+
+            _isWorkerDegraded = degraded;
+            _workerModeText = text;
+            OnPropertyChanged(nameof(WorkerModeText));
+            OnPropertyChanged(nameof(IsWorkerDegraded));
+            OnPropertyChanged(nameof(WorkerModeTip));
+        }
+        catch (Exception ex)
+        {
+            // 吞掉并保留上一次的结论: 谎报"正常"比显示旧值更糟
+            AIShikikan.Core.Logging.Log.Debug("StatusPanel", $"读取 Worker 模式失败: {ex.Message}");
+        }
     }
 
     public void SetSession(string sessionId)

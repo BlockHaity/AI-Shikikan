@@ -236,11 +236,44 @@ public partial class ChatPageViewModel : ViewModelBase
 
     partial void OnWorkDirChanged(string value)
     {
+        ReleaseWorkerOnWorkDirChange(value);
         OnPropertyChanged(nameof(HasWorkDir));
         GitPanel.SetWorkspace(value);
         StatusPanel.SetWorkspace(value);
         RefreshWorkspaceContext();
         NotifySendState();
+    }
+
+    /// <summary>
+    /// 同一会话换了工作目录: 释放<b>旧目录</b>的 Worker 引用。
+    /// 下一次工具调用会按新目录自动 <c>AcquireAsync</c> 到新 Worker, 不需要额外 API。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么不能只看「值变了就 Release 当前会话」</b>: <see cref="WorkDir"/> 的赋值点不止「用户改目录」——
+    /// 切会话(构造函数里 CurrentSessionChanged 处理器)与新建会话也会赋值, 那时当前值属于<b>另一个</b>会话,
+    /// 按当前会话去 -1 就是减错了别人的引用, 好在该目录里别人的 Worker 被误关。</para>
+    /// <para>这里的判据是「会话上已持久化的目录仍等于被替换掉的那个值」:
+    /// ① 用户在界面改目录时, <c>ChatSession.WorkDir</c> 要到发消息时才落盘(<c>SendMessage</c> 里才调
+    /// <c>SetSessionWorkDir</c>), 所以它此刻还是旧目录, 条件成立;
+    /// ② 切会话时 <c>CurrentSession</c> 已经是新会话、它的 <c>WorkDir</c> 就等于新值, 条件不成立, 不会误减。</para>
+    /// <para><b>与删除会话的 Release 不重复</b>: 那条路径走的是 <see cref="AppShell.ReleaseSessionResources"/>,
+    /// 且删完之后不会再有本会话的目录赋值事件(会话已不在列表里)。</para>
+    /// <para>⚠ 已知交互: 在**本会话正在跑回合**时改目录, 旧目录的 Worker 会被立刻关闭, 此刻正在旧目录里
+    /// 执行的那次工具调用会以一条明确的工具错误收场(而不是静默挂起)。这是「立即释放」的代价:
+    /// 不释放的话旧目录的引用计数永远归不了零(该会话还活着, 60s 对账也回收不到它), 残留更久。</para>
+    /// </remarks>
+    private void ReleaseWorkerOnWorkDirChange(string newWorkDir)
+    {
+        var sessionId = _currentSessionId;
+        var previous = CurrentSession?.WorkDir;
+        if (string.IsNullOrEmpty(sessionId) ||
+            string.IsNullOrWhiteSpace(previous) ||
+            IsSameWorkDir(previous, newWorkDir)) // 复用同目录判定: 归一化后相同(如 /repo 与 /repo/)不算换目录
+        {
+            return;
+        }
+
+        _runtime.Workers?.Release(sessionId, previous);
     }
 
     partial void OnIsSendingChanged(bool value)
@@ -1009,7 +1042,11 @@ public partial class ChatPageViewModel : ViewModelBase
     [RelayCommand]
     private void DeleteSession(string sessionId)
     {
+        // 先取目录再删: 删完就再也问不到这个会话绑过哪个目录了(而 Worker 引用计数要按目录归零)
+        var workDir = _chatService.Sessions.FirstOrDefault(s => s.Id == sessionId)?.WorkDir;
         _chatService.DeleteSession(sessionId);
+        // Worker 引用 -1 + 移除会话运行时(引擎此前不会被释放, 删除后仍能跑后台回合)
+        AppShell.Instance.ReleaseSessionResources(sessionId, workDir);
         // 清会话级状态: 删除"正在运行"的会话时, _runningSessionIds/取消源/草稿/附件会变成悬挂条目 ——
         // 后续只有按"新会话 id"的刷新才会纠正它们, 这些条目永远残留(草稿与附件还会随内存单调增长)。
         // 取消源一并释放, 避免漏掉的回合继续持有已删会话的引用。
@@ -1880,6 +1917,11 @@ public partial class ChatPageViewModel : ViewModelBase
             engine.Options.Thinking = SelectedThinking;
             engine.Options.WorkDir = string.IsNullOrWhiteSpace(WorkDir) ? null : WorkDir;
             engine.Options.IsPlanMode = IsPlanMode;
+
+            // 把当前全局 LLM 路由物化进本回合(引擎据此填 ToolContext.ProviderId, 供子代理输出压缩
+            // 等"必须与主回合同 Provider"的子流程复用)。与上面三项同为回合级快照: 回合中途切 Provider
+            // 不影响正在跑的回合, 下一回合自动跟上; 漏调只是退回"跟随全局", 不会把会话钉死在旧 Provider 上。
+            _runtime.ApplyLlmRouting(engine);
 
             // 注意此处 await 不加 ConfigureAwait(false): 续体要留在 UI 线程, 下面的 FlushUiNow/
             // 分段追加都直接操作 ObservableCollection。见方法开头"线程模型"注释。

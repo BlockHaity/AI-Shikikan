@@ -3,6 +3,7 @@ using AIShikikan.Core.Logging;
 using AIShikikan.Core.Services;
 using AIShikikan.Core.Services.Session;
 using AIShikikan.Core.Services.Usage;
+using AIShikikan.Core.Services.Worker;
 using Avalonia;
 using System;
 using System.IO;
@@ -197,12 +198,42 @@ sealed class Program
             var gitWarn = !gitOk;
             checks.Add(("Git 仓库", !gitWarn, gitOk ? $"仓库可用 ({repoRoot})" : "当前目录不是 git 仓库, 聊天可用, 检查点/Git写工具不可用"));
 
-            // 并发协调规则的单元级自检(项目内唯一自检, 纯内存, 无副作用)
+            // 并发协调规则的单元级自检(纯内存, 无副作用)
             var selfCheckFailures = WorkspaceExecutionCoordinator.SelfCheck();
             checks.Add(("并发协调规则", selfCheckFailures.Count == 0,
                 selfCheckFailures.Count == 0
                     ? $"{WorkspaceExecutionCoordinator.SelfCheckScenarioCount} 组场景全部通过"
                     : string.Join("; ", selfCheckFailures)));
+
+            // 工具卡片多态编解码自检: 验证判别符清单与 ToolCardDetail 的 [JsonDerivedType] 未脱节,
+            // 且每个类型都能按具体类型往返。这是 Worker 跨进程传 ToolResult.Detail 的前置条件 ——
+            // 判别符一旦脱节, 故障表现是"整份会话读不出来"(抽象基类实例化失败 → 判损坏 → 永久拒写),
+            // 属于最坏的一类症状, 所以放进 doctor。
+            var codecFailures = ToolCardDetailCodec.SelfCheck();
+            checks.Add(("工具卡片编解码", codecFailures.Count == 0,
+                codecFailures.Count == 0
+                    ? $"{ToolCardDetailCodec.KnownTypeNames.Count} 种卡片类型往返通过"
+                    : string.Join("; ", codecFailures)));
+
+            // Worker 可执行文件定位: 找不到会降级为"同进程内联执行", 功能不丢但失去崩溃隔离,
+            // 因此必须让用户看见自己处在哪种模式。
+            var workerLoc = WorkerLocator.Locate();
+            checks.Add(("Worker 定位", workerLoc.Found, workerLoc.Found
+                ? $"已定位 ({workerLoc.Source}) → {workerLoc.ExecutablePath}"
+                : $"未找到, 将降级为同进程内联执行 | {workerLoc.Detail}"));
+
+            // Worker 端到端自检: 协议编解码 / 工具执行 / 取消传播 / 跨进程往返 / 身份键一致性。
+            // 与上面两项的分工: 那两项只验"零件在不在", 这一项验"拼起来能不能跑"。
+            // 管道那一段在 Worker 产物可定位时会真的起一个进程跑完握手→同步→调用→关闭; 未定位则跳过并记一条说明,
+            // 跳过不算失败(那是本方案允许的降级态), 但必须让用户看见"这次没验到跨进程那条路"。
+            var workerSelf = WorkerSelfCheck.RunDetailed();
+            checks.Add(("Worker 端到端", workerSelf.Ok,
+                (workerSelf.Ok
+                    ? $"{WorkerSelfCheck.ScenarioCount} 组场景通过"
+                    : string.Join("; ", workerSelf.Failures))
+                + (workerSelf.Notes.Count == 0
+                    ? string.Empty
+                    : " | " + string.Join("; ", workerSelf.Notes))));
 
             foreach (var (name, ok, detail) in checks)
             {

@@ -413,7 +413,11 @@ public partial class SessionPanelViewModel : ViewModelBase
     [RelayCommand]
     private void DeleteSession(SessionItemViewModel item)
     {
+        // 目录必须在删之前取: 删完就问不到了, 而 Worker 引用计数按 (会话, 目录) 归零
+        var workDir = item.Session.WorkDir;
         _chatService.DeleteSession(item.Session.Id);
+        // 与聊天页的删除入口共用同一段收尾(Worker 引用 -1 + 移除会话运行时)
+        AppShell.Instance.ReleaseSessionResources(item.Session.Id, workDir);
         AppShell.Instance.NotifyDataChanged(); // 主页会话分布移除该会话
     }
 

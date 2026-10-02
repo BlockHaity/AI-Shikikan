@@ -30,20 +30,28 @@ public class ToolContext
     public bool IsPlanMode { get; init; }
 
     /// <summary>
-    /// 当前回合使用的 Provider Id(引擎注入)。
-    /// 供需要"与本回合同模型"的子流程使用(如子代理输出压缩), 避免走到全局默认 provider 上。
-    /// ⚠️ 已知: GUI 的 provider/model 选择写进全局 providers.toml, <c>EngineOptions.ProviderId</c>
-    /// 至今零生产调用方, 因此本字段实际恒为 null —— 压缩仍会回退到 <c>LlmService.ActiveProvider</c>。
-    /// 接线"引擎侧模型快照"语义后本字段才会真正生效, 届时调用方无需改动。
+    /// 当前回合使用的 Provider Id(引擎注入; 由 <c>CommanderRuntime.ApplyLlmRouting</c> 在回合开始前写入)。
+    /// 供需要"与本回合同 Provider"的子流程使用(如子代理输出压缩)。
     /// </summary>
+    /// <remarks>
+    /// <para>⚠️ <b>为 null 的语义是「跟随全局活动 Provider」，不是「未知」</b>。
+    /// <c>LlmService.GetProvider(null)</c> 与 <c>GetClient(null)</c> 解析到同一处
+    /// (<c>LlmSettings.ActiveProviderId</c>), 所以压缩与主回路<b>不会因此跑偏 Provider</b>。
+    /// 接线本字段的价值在于: 将来某条流程显式指定了非活动 Provider 时, 能把它带下去。</para>
+    /// <para>接线位置在<b>每回合开始前</b>(与 GUI 就地写 <c>Options.Thinking/WorkDir/IsPlanMode</c> 同一处)。
+    /// 刻意<b>不</b>在会话引擎创建时固化: 会话引擎是长生命周期缓存对象, 不重建;
+    /// 一旦创建时写死, 用户在聊天页切 Provider 后「下一条消息生效」这条既有语义就失效。</para>
+    /// </remarks>
     public string? ProviderId { get; init; }
 
     /// <summary>
     /// 当前回合实际生效的模型名(引擎注入, 已解析)。
     /// 供子代理输出压缩等场景复用, 避免各处重复推导导致与主对话模型不一致。
-    /// ⚠️ 同 <see cref="ProviderId"/>: <c>EngineOptions.Model</c> 无生产调用方, 本字段实际为引擎
-    /// 从全局配置解析出的默认模型; 若要"严格跟随本回合选择", 需先接上引擎侧快照。
     /// </summary>
+    /// <remarks>
+    /// 本字段<b>当前是有效的</b>: 引擎在 <c>ResolveModel</c> 之后把结果缓存进 <c>_currentModel</c> 再注入,
+    /// 因此它就是本回合真正用的模型(与 <see cref="ProviderId"/> 不同, 这里不是死管线)。
+    /// </remarks>
     public string? Model { get; init; }
 
     /// <summary>执行本工具的会话 Id(引擎注入)。
@@ -51,6 +59,47 @@ public class ToolContext
     /// 不能读"当前活动会话" —— 后台会话同时跑时两者不是同一个。
     /// 为 null/空时调用方需自行回退(见 AgentExecutor.RosterOf)。</summary>
     public string? SessionId { get; init; }
+
+    /// <summary>本回合所属会话的子代理 roster 快照 (会话级配置: Enabled/CompactEnabled/UseInPlanMode)。
+    /// 工具用它判断「输出压缩是否开启」与「Plan 模式是否授权」, 不再读全局活动会话 ——
+    /// 后者会让后台会话的判定串味 (已记录的语义缺陷)。</summary>
+    /// <remarks>
+    /// <para>⚠️ <b>null 与空表的语义截然不同, 判据只能看 null 与否, 绝不能用 <c>Count &gt; 0</c></b>:</para>
+    /// <list type="bullet">
+    /// <item><c>null</c> = 无会话 roster 下发(会话从未被 GUI 推送过)→ 无限制, 回退全局配置;</item>
+    /// <item>非 null(含<em>空表</em>) = 以该表为准, 空表即「用户已清空全部子代理」。</item>
+    /// </list>
+    /// 与 <c>RosterBuilder.Build</c> 的 <c>rosterEntries</c> 完全同构。历史上用 <c>Count &gt; 0</c>
+    /// 一并表达两种含义, 导致 <c>SetSubagentToolsVisible(false)</c> 传入的空表反落到「列出全部 Agent」
+    /// 分支: 工具已注销而提示词仍在广告 <c>run_&lt;id&gt;</c>, AI 持续调用不存在的工具。</item>
+    /// <para>另两点落地提醒:</para>
+    /// <list type="bullet">
+    /// <item><b>两条取值路径并存(刻意)</b>: 引擎已注入本字段, 但子代理工具当前仍走
+    /// <c>AgentExecutionScope.RosterResolver</c>(进程内委托)。保留两条是因为本字段会随 Worker 协议
+    /// 序列化到子进程, 而 scope 是委托、跨不了进程。切换消费方时判据只能是
+    /// <c>is not null</c>, 且必须把 resolver 返回的 null <b>先收成空表</b>(scope 那条路径的既有语义),
+    /// 否则「未启用」会被误判成「无限制」, 反向则把「无限制」误判成「用户清空」。</item>
+    /// <item><b>是引用快照而非深拷贝</b>: 元素为可变 <c>AgentRosterEntry</c>(INotifyPropertyChanged,
+    /// 直接绑在右侧栏 UI 上), 工具执行途中用户改开关, 同一对象上看到的值会跟着变。
+    /// <c>IReadOnlyList</c> 只挡"替换元素", 挡不住"改元素字段"; 需要严格时点一致请自行复制。</item>
+    /// </list>
+    /// </remarks>
+    public IReadOnlyList<AgentRosterEntry>? RosterEntries { get; init; }
+
+    /// <summary>指挥官人格全文快照。子代理工具解析人格文本时用它作为兜底,
+    /// 不再读 CommanderRuntime.Instance.CurrentPersonaText。</summary>
+    /// <remarks>
+    /// <para><b>为什么必须是快照字段而不是继续读全局单例</b>: <c>CurrentPersonaText</c> 是
+    /// "用户当前在设置页选中的那一篇人格", 与「谁在本回合当指挥官」无关 —— 两个会话可以各带各的人格,
+    /// 而切人格会就地改写这个全局值。子代理 prompt 由它拼装, 读全局值意味着 A 会话派出的子代理
+    /// 可能在用户切人格后带着 B 人格跑。</para>
+    /// <para>⚠️ 语义约定: null / 空串 = 本回合无指挥官人格(此时子代理应当<em>不</em>附加人格前缀,
+    /// 而非回退去取全局默认 —— 回退会把上面那个串味缺陷原地保留)。判定请用
+    /// <c>string.IsNullOrWhiteSpace</c>, 勿只判 null(引擎侧赋值可能给到空串)。</para>
+    /// <para>⚠️ 同 <see cref="RosterEntries"/>: 引擎已注入本字段, 但子代理工具当前仍走
+    /// <c>AgentExecutionScope.CommanderPersonaText</c>(进程内快照)。两条并存的原因同上。</para>
+    /// </remarks>
+    public string? CommanderPersonaText { get; init; }
 
     /// <summary>子代理实时输出回调(UI 订阅)。</summary>
     public Action<string>? OnToolOutput { get; init; }

@@ -148,6 +148,33 @@ public sealed class AppShell
     public void NotifyDataChanged() => DataChanged?.Invoke();
 
     /// <summary>
+    /// 会话被删除时的资源收尾: 先 <c>WorkerPool.Release</c>(引用 -1, 目录归零则关掉该目录全部 Worker),
+    /// 再 <c>SessionRuntimeRegistry.RemoveSession</c>。聊天页与会话面板的删除入口都走这里, 避免两处各写一半。
+    /// </summary>
+    /// <param name="sessionId">被删会话 Id。</param>
+    /// <param name="workDir">
+    /// 该会话绑定过的工作目录(优先由调用方给出, 因为只有它知道删除前的值)。
+    /// 为空时退回运行时的 <c>WorkDir</c>; 两者都空也安全 —— 池会按会话 Id 全组搜索。
+    /// </param>
+    /// <remarks>
+    /// <para><b>⚠ 顺序不能反</b>: <c>RemoveSession</c> 会把运行时从注册表摘掉并 Dispose,
+    /// 那时 <c>SessionRuntime.WorkDir</c> 就再也取不到了。而漏掉一次 -1 的代价是
+    /// 该目录的 Worker 永远不会被关闭(它会一直占着工作目录的 git 写锁), 且只能等 60s 的对账兜底。</para>
+    /// <para>池的 <c>Release</c> 刻意不抛异常, 这里也就无需 try/catch ——
+    /// 加了反而会掩盖"参数给错"这类真问题(该问题表现为 Worker 不被回收)。</para>
+    /// </remarks>
+    public void ReleaseSessionResources(string sessionId, string? workDir)
+    {
+        if (string.IsNullOrEmpty(sessionId)) return;
+
+        var rt = Runtime.Sessions.TryGet(sessionId);
+        var dir = !string.IsNullOrWhiteSpace(workDir) ? workDir : rt?.WorkDir ?? string.Empty;
+
+        Runtime.Workers?.Release(sessionId, dir);
+        Runtime.Sessions.RemoveSession(sessionId);
+    }
+
+    /// <summary>
     /// 用 source 全量替换 target 的内容。
     /// </summary>
     /// <remarks>

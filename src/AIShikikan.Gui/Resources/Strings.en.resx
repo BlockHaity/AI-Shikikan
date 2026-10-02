@@ -109,6 +109,10 @@
   <data name="Status_PriceSourceApi" xml:space="preserve"><value>Prices: API</value></data>
   <data name="Status_PriceSourceUnknown" xml:space="preserve"><value>Prices: unknown</value></data>
   <data name="Status_PriceFetchFailed" xml:space="preserve"><value>Failed to fetch prices: {0}</value></data>
+  <data name="Status_WorkerPipe" xml:space="preserve"><value>Worker tools: separate process</value></data>
+  <data name="Status_WorkerInline" xml:space="preserve"><value>Worker tools: ⚠ in-process (Worker not enabled)</value></data>
+  <data name="Status_WorkerPipeTip" xml:space="preserve"><value>Tools and sub-agents run in a separate Worker process, isolated from crashes in the main process.</value></data>
+  <data name="Status_WorkerInlineTip" xml:space="preserve"><value>Tools run inside the main process: sub-agents can stall it and long scans block the UI.</value></data>
   <data name="SubAgent_Title" xml:space="preserve"><value>Sub-agents</value></data>
   <data name="SubAgent_Add" xml:space="preserve"><value>Add sub-agent</value></data>
   <data name="SubAgent_AddName" xml:space="preserve"><value>Name</value></data>

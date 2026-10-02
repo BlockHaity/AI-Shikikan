@@ -109,6 +109,10 @@
   <data name="Status_PriceSourceApi" xml:space="preserve"><value>价格来源: API</value></data>
   <data name="Status_PriceSourceUnknown" xml:space="preserve"><value>价格来源: 未收录</value></data>
   <data name="Status_PriceFetchFailed" xml:space="preserve"><value>价格拉取失败: {0}</value></data>
+  <data name="Status_WorkerPipe" xml:space="preserve"><value>Worker 工具执行: 独立进程</value></data>
+  <data name="Status_WorkerInline" xml:space="preserve"><value>Worker 工具执行: ⚠ 进程内(未启用 Worker)</value></data>
+  <data name="Status_WorkerPipeTip" xml:space="preserve"><value>工具与子代理在独立的 Worker 进程中执行, 与主进程崩溃隔离。</value></data>
+  <data name="Status_WorkerInlineTip" xml:space="preserve"><value>工具在主进程内执行: 子代理会拖住主进程, 耗时扫描会卡住界面。</value></data>
   <data name="SubAgent_Title" xml:space="preserve"><value>子Agent</value></data>
   <data name="SubAgent_Add" xml:space="preserve"><value>添加子Agent</value></data>
   <data name="SubAgent_AddName" xml:space="preserve"><value>名称</value></data>

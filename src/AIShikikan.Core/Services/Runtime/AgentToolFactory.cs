@@ -13,11 +13,25 @@ using AIShikikan.Core.Services.Tools.Builtin;
 
 namespace AIShikikan.Core.Services.Runtime;
 
-/// <summary>构建 LLM 可见工具集: 基础只读/git 工具 + 子代理工具(run_&lt;agent&gt; / assign_task / run_subagents)。</summary>
+/// <summary>构建 LLM 可见工具集: 基础只读/git 工具 + 子代理工具(run_&lt;agent&gt; / assign_task / run_subagents)。
+///
+/// <para><b>关于 <see cref="AgentExecutionScope"/> 参数(新增, 可选)</b>:
+/// 子代理工具与 <c>git_create_checkpoint</c> 原先反向读静态单例 <c>CommanderRuntime.Instance</c>;
+/// 工具层被搬到独立 Worker 进程后单例里没有 GUI 侧状态, 反向读会**静默**退化成
+/// 「未授权 / 空表 / 空人格」而不报错。现改为由调用方显式注入 scope。
+/// <b>scope 为 null 时的降级语义与改动前(单例为 null 时)逐字一致</b>, 详见
+/// <see cref="AgentExecutionScope"/> 类注释: 人格不落到指挥官人格、roster 取空表(压缩恒关)、
+/// Plan 授权恒 false(执行兜底不拒绝)、会话 id 退化为空串。既有调用方不传 scope 仍可编译运行,
+/// 但会失去会话级子代理配置(压缩开关 / Plan 授权), 接线时应显式传入。</para>
+/// </summary>
 public static class AgentToolFactory
 {
-    /// <summary>固定基础工具: 只读文件工具 + git 工具(始终注册)。</summary>
-    public static IReadOnlyList<ITool> CreateCoreTools(GitService git)
+    /// <summary>固定基础工具: 只读文件工具 + git 工具(始终注册)。
+    ///
+    /// <para><paramref name="scope"/> 仅 <c>git_create_checkpoint</c> 会用(工具卡归属会话 id 的兜底);
+    /// 为 null 时归属 id 直接取 <c>ToolContext.SessionId</c>, 取不到则留空串
+    /// (等价于今天读不到单例的行为)。</para></summary>
+    public static IReadOnlyList<ITool> CreateCoreTools(GitService git, AgentExecutionScope? scope = null)
     {
         return new List<ITool>
         {
@@ -28,37 +42,81 @@ public static class AgentToolFactory
             new GitStatusTool(git),
             new GitAddTool(git),
             new GitCommitTool(git),
-            new GitCreateCheckpointTool(git),
+            new GitCreateCheckpointTool(git, scope),
             new GitDiffTool(git),
             new AskUserTool()
         };
     }
 
-    /// <summary>子代理工具: run_&lt;agent&gt; / assign_task / run_subagents(随右侧栏开关注册/注销)。</summary>
+    /// <summary>子代理工具: run_&lt;agent&gt; / assign_task / run_subagents(随右侧栏开关注册/注销)。
+    ///
+    /// <para><paramref name="scope"/> 为 null 时按 <see cref="AgentExecutionScope"/> 的降级约定执行
+    /// (无指挥官人格兜底 / roster 空表 / Plan 授权恒 false), 行为等价于改动前单例不可用的场景。</para></summary>
     public static IReadOnlyList<ITool> CreateSubagentTools(
         IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas,
         IReadOnlyList<AgentTemplate> templates,
-        GitService git,
         AssignmentManager assignments,
-        LlmService? llm = null)
+        LlmService? llm = null,
+        AgentExecutionScope? scope = null)
     {
-        // 注: 子代理工具本身不直接操作 git(只经 AssignmentManager 派发), 保留 git 参数以维持调用方签名。
-        _ = git;
+        // 注: 三个子代理工具本身不直接操作 git(只经 AssignmentManager 派发), 原先的 git 参数
+        // 从构造起就只被存成字段而从不读取(仅 `_ = git;` 丢弃), 属纯死参数, 已删除 ——
+        // 留着只会让人误以为子代理工具有 git 副作用。
         var list = new List<ITool>();
         foreach (var agent in agents)
         {
-            list.Add(new AgentExecutionTool(agent, personas, templates, git, assignments, llm));
+            list.Add(new AgentExecutionTool(agent, personas, templates, assignments, llm, scope));
         }
 
-        list.Add(new AssignTaskTool(agents, personas, templates, git, assignments, llm));
-        list.Add(new SubagentGroupTool(agents, personas, templates, git, assignments, llm));
+        list.Add(new AssignTaskTool(agents, personas, templates, assignments, llm, scope));
+        list.Add(new SubagentGroupTool(agents, personas, templates, assignments, llm, scope));
         return list;
     }
 }
 
-public static class AgentExecutor
+/// <summary>单个子代理的执行器(提示词构建 + 派发 + 输出压缩 + 工具卡数据)。
+///
+/// <para>原为 <c>static class</c>, 内部 6 处反向读 <c>CommanderRuntime.Instance</c>(人格文本 /
+/// Plan 授权 / 会话 roster)。改为实例类并把这份全局状态经 <see cref="AgentExecutionScope"/>
+/// 显式注入: 工具执行不再依赖进程单例, 独立 Worker 进程里也能正确装配。</para>
+///
+/// <para><see cref="ResolvePersonaText"/> / <see cref="BuildFinalPrompt"/> / <see cref="ResolveWorkingDir"/>
+/// 刻意**保持 public static**: 它们是纯函数(不读任何全局状态), 且 GUI 的
+/// <c>AppShell.Dispatch</c>(Agent 面板手动分派)直接静态调用这两个; 改成实例私有会打破
+/// 那条 UI 入口。它们"不碰单例"本身就是这次解耦要达到的状态。</para>
+/// </summary>
+public sealed class AgentExecutor
 {
+    private readonly IReadOnlyList<Persona> _personas;
+    private readonly IReadOnlyList<AgentTemplate> _templates;
+    private readonly AssignmentManager _assignments;
+    private readonly LlmService? _llm;
+    private readonly AgentExecutionScope? _scope;
+
+    public AgentExecutor(
+        IReadOnlyList<Persona> personas,
+        IReadOnlyList<AgentTemplate> templates,
+        AssignmentManager assignments,
+        LlmService? llm,
+        AgentExecutionScope? scope = null)
+    {
+        _personas = personas;
+        _templates = templates;
+        _assignments = assignments;
+        _llm = llm;
+        _scope = scope;
+    }
+
+    /// <summary>工具层的人格解析入口: personaId / templateId 恒为 null, useCommanderPersona 恒 false
+    /// (LLM 无法指定专家, 只能吃用户配置), 指挥官人格兜底文本取自 <see cref="AgentExecutionScope"/>。
+    ///
+    /// <para>scope 为 null ⇒ 指挥官人格兜底文本为 null, 等价于改动前读不到单例时的行为
+    /// (最终仍可由「Agent 推荐专家」兜底, 与今天一致)。</para></summary>
+    public string ResolveToolPersonaText(CliAgentDefinition def, bool planMode)
+        => ResolvePersonaText(def, _personas, _templates, null, null,
+            _scope?.CommanderPersonaText, false, planMode);
+
     /// <summary>解析注入子代理提示词的人格/模板文本。
     /// ⚠️ <paramref name="personaId"/> / <paramref name="templateId"/> / <paramref name="useCommanderPersona"/>
     /// 只可能来自 UI 侧入口(AppShell.Dispatch 等), LLM 可调用的三个子代理工具**恒传 null / false** ——
@@ -154,14 +212,18 @@ public static class AgentExecutor
     /// 额外留出落盘截断标记的长度; 此处仍是必要的兜底, 防止 TailOf 上限被调大后无闸门地灌爆主上下文。</summary>
     private const int MaxSubagentOutputChars = AssignmentManager.MaxOutputTailChars + 64;
 
-    public static async Task<ToolResult> ExecuteAsync(
+    /// <summary>派发并执行单个子代理: Plan 授权兜底 → 建 Assignment → 跑 CLI →(可选)压缩输出 → 工具卡数据。
+    ///
+    /// <para>实例方法: personas / templates / assignments / llm / scope 均已在构造期注入,
+    /// 不再从参数逐次传入。<paramref name="personaText"/> 仍由调用方(工具层)传入 ——
+    /// 它由工具从外部(推荐专家 / 指挥官人格)解析后得到, 放在这里比让执行器反向去查更清晰。</para>
+    /// </summary>
+    public async Task<ToolResult> ExecuteAsync(
         CliAgentDefinition agent,
         string task,
         string personaText,
         string? workDirAbs,
         ToolContext ctx,
-        AssignmentManager assignments,
-        LlmService? llm,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(task))
@@ -170,9 +232,12 @@ public static class AgentExecutor
         }
 
         // Plan 模式执行层兜底: 仅允许配置了 plan_args 且开启"在 Plan 模式中使用"的子代理,
-        // 防止 AI 通过 assign_task / run_subagents 的 agentId 参数绕过工具注册过滤
-        if (ctx.IsPlanMode &&
-            CommanderRuntime.Instance is { } runtime && !runtime.IsAgentAllowedInPlanMode(agent))
+        // 防止 AI 通过 assign_task / run_subagents 的 agentId 参数绕过工具注册过滤。
+        // 短路条件保留原样: 判据缺失(scope 或其 PlanAuthorizer 为 null, 含旧版"单例不可用"的场景)
+        // 时**不拒绝** —— 原式是 `CommanderRuntime.Instance is { } runtime && !runtime.IsAgentAllowed…`,
+        // 单例缺失即短路放行; 这里若改成"恒拒绝", 未注入判据的调用方(自检 / 半接线环境)会突然
+        // 一个子代理都跑不了, 属于比原行为更苛刻的静默变更。
+        if (ctx.IsPlanMode && _scope?.PlanAuthorizer is { } authorizer && !authorizer(ctx.SessionId, agent))
         {
             return ToolResult.Error($"[agent:{agent.Id}] 拒绝执行: 该子代理未开启\"在 Plan 模式中使用\", Plan 模式下不可调用。");
         }
@@ -185,7 +250,7 @@ public static class AgentExecutor
             ? ctx.WorkspaceRoot
             : workDirAbs;
 
-        var assignment = assignments.Create(agent, task, workingDirectory: workDir,
+        var assignment = _assignments.Create(agent, task, workingDirectory: workDir,
             planMode: ShouldRunInPlanMode(agent, ctx));
 
         var progress = ctx.OnToolOutput is not null
@@ -194,7 +259,7 @@ public static class AgentExecutor
 
         try
         {
-            var (completed, run) = await assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
+            var (completed, run) = await _assignments.RunSyncAsync(assignment, finalPrompt, progress, ct);
             // OutputTail 由 RunSyncAsync 无条件赋值(TailOf), 恒非 null。旧代码写的是 "?? run.Output",
             // 那是个不可达分支, 且 run.Output 未截断 —— 真走到会绕过上限直接灌进主上下文, 故只留空串兜底。
             var tail = Truncate(completed.OutputTail ?? string.Empty, MaxSubagentOutputChars);
@@ -203,6 +268,8 @@ public static class AgentExecutor
             // 之前是 llm! 空 forgiving —— null 会在 CompactIfNeededAsync 内 NRE, 被下面的
             // catch(Exception) 吞成"执行失败", 把一次成功的子代理调用报成失败。
             // provider/model 转发当前回合快照, 避免用户切了非默认模型后压缩落到另一个模型。
+            // 取局部量再做 null 判定: 字段的可空状态窄化跨 await 不可靠, 用局部量与改动前写法一致。
+            var llm = _llm;
             var body = llm is null
                 ? tail
                 : await SubagentCompactService.CompactIfNeededAsync(
@@ -261,40 +328,46 @@ public static class AgentExecutor
 
     /// <summary>主对话处于 Plan 模式且该子代理被会话配置允许时, 以 Plan 模式启动
     /// (需 Agent 配置了 plan_args, 或开启"无 plan 参数也可在 Plan 模式使用"开关)。</summary>
-    private static bool ShouldRunInPlanMode(CliAgentDefinition agent, ToolContext ctx)
+    private bool ShouldRunInPlanMode(CliAgentDefinition agent, ToolContext ctx)
     {
-        // Plan 授权判据统一收敛到 CommanderRuntime(与工具注册/执行兜底同一份规则),
-        // 避免这里再抄一遍「plan_args 非空 + Roster.UseInPlanMode」而与注册侧漂移。
+        // Plan 授权判据统一收敛到一处(与工具注册/执行兜底同一份规则),
+        // 避免这里再抄一遍「plan_args 非空 + Roster.UseInPlanMode」而与注册侧漂移;
+        // 判据本体仍在 CommanderRuntime.IsAgentPlanModeAuthorized, 这里只经 scope 委托调用。
         if (!ctx.IsPlanMode)
         {
             return false;
         }
 
-        return CommanderRuntime.Instance?.IsAgentRegisteredInPlanMode(agent) ?? false;
+        // 判据缺失 ⇒ 恒 false: 与改动前 `CommanderRuntime.Instance?.IsAgentRegisteredInPlanMode(agent) ?? false`
+        // 在单例不可用时的结果一致(不启动 Plan 模式, 即子代理按普通模式跑)。
+        return _scope?.PlanAuthorizer?.Invoke(ctx.SessionId, agent) ?? false;
     }
 
     /// <summary>解析该子代理在**发起本回合的会话**里的输出压缩开关
     /// (右侧栏会话子代理配置, roster.json 持久化)。按会话读取而非"当前活动会话",
     /// 否则后台会话的子代理会读到用户在别处切过的开关。</summary>
-    private static bool IsCompactEnabled(string agentId, ToolContext ctx)
+    private bool IsCompactEnabled(string agentId, ToolContext ctx)
     {
         return RosterOf(ctx).FirstOrDefault(
             e => string.Equals(e.AgentId, agentId, StringComparison.OrdinalIgnoreCase))?.CompactEnabled ?? false;
     }
 
-    /// <summary>取本回合所属会话的 Roster 条目。ctx.SessionId 由引擎注入; 未注入(旧引擎/自检)
-    /// 时回退到活动会话, 行为与改动前一致。</summary>
-    private static IReadOnlyList<AgentRosterEntry> RosterOf(ToolContext ctx)
+    /// <summary>取本回合所属会话的 Roster 条目(经 scope 委托)。ctx.SessionId 由引擎注入;
+    /// 未注入(旧引擎/自检)时是否回退到活动会话由 <c>AgentExecutionScope.RosterResolver</c>
+    /// 的实现方决定, 行为与改动前一致。</summary>
+    private IReadOnlyList<AgentRosterEntry> RosterOf(ToolContext ctx)
     {
-        var runtime = CommanderRuntime.Instance;
-        if (runtime is null)
+        // 解析器缺失 ⇒ 空表: 与改动前 `CommanderRuntime.Instance is null → return []` 一致
+        // (压缩开关因此恒 false, 不会因缺依赖而崩在空引用上)。
+        var resolver = _scope?.RosterResolver;
+        if (resolver is null)
         {
             return [];
         }
 
-        return string.IsNullOrEmpty(ctx.SessionId)
-            ? runtime.CurrentRosterEntries
-            : runtime.GetRosterEntriesFor(ctx.SessionId);
+        // 解析器返 null ⇒ 同样按空表处理: RosterBuilder 的 null=「无限制」只属于提示词注入语义,
+        // 泄漏到工具侧会把压缩开关退化成「总是压缩」, 与今天的 GetRosterEntriesFor 返回空表不一致。
+        return resolver(ctx.SessionId) ?? [];
     }
 
     private static string Truncate(string s, int max)
@@ -304,22 +377,14 @@ public static class AgentExecutor
 public class AgentExecutionTool : ITool
 {
     private readonly CliAgentDefinition _agent;
-    private readonly IReadOnlyList<Persona> _personas;
-    private readonly IReadOnlyList<AgentTemplate> _templates;
-    protected readonly GitService _git;
-    private readonly AssignmentManager _assignments;
-    private readonly LlmService? _llm;
+    private readonly AgentExecutor _executor;
 
     public AgentExecutionTool(CliAgentDefinition agent, IReadOnlyList<Persona> personas,
-        IReadOnlyList<AgentTemplate> templates, GitService git, AssignmentManager assignments,
-        LlmService? llm = null)
+        IReadOnlyList<AgentTemplate> templates, AssignmentManager assignments,
+        LlmService? llm = null, AgentExecutionScope? scope = null)
     {
         _agent = agent;
-        _personas = personas;
-        _templates = templates;
-        _git = git;
-        _assignments = assignments;
-        _llm = llm;
+        _executor = new AgentExecutor(personas, templates, assignments, llm, scope);
     }
 
     public string Name => $"run_{_agent.Id}";
@@ -351,15 +416,11 @@ public class AgentExecutionTool : ITool
         var workDir = Get(args, "workingDirectory");
 
         // 专家由用户配置决定(agents.toml 推荐专家 / 面板设置), AI 不可指定人格/模板
-        var personaText = AgentExecutor.ResolvePersonaText(
-            _agent, _personas, _templates, null, null,
-            CommanderRuntime.Instance?.CurrentPersonaText,
-            false,
-            planMode: ctx.IsPlanMode);
-        return AgentExecutor.ExecuteAsync(
+        var personaText = _executor.ResolveToolPersonaText(_agent, ctx.IsPlanMode);
+        return _executor.ExecuteAsync(
             _agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-            ctx, _assignments, _llm, ct);
+            ctx, ct);
     }
 
     private static string? Get(JsonElement args, string name)
@@ -371,22 +432,14 @@ public class AgentExecutionTool : ITool
 public class AssignTaskTool : ITool
 {
     private readonly IReadOnlyList<CliAgentDefinition> _agents;
-    private readonly IReadOnlyList<Persona> _personas;
-    private readonly IReadOnlyList<AgentTemplate> _templates;
-    protected readonly GitService _git;
-    private readonly AssignmentManager _assignments;
-    private readonly LlmService? _llm;
+    private readonly AgentExecutor _executor;
 
     public AssignTaskTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitService git, AssignmentManager assignments, LlmService? llm = null)
+        AssignmentManager assignments, LlmService? llm = null, AgentExecutionScope? scope = null)
     {
         _agents = agents;
-        _personas = personas;
-        _templates = templates;
-        _git = git;
-        _assignments = assignments;
-        _llm = llm;
+        _executor = new AgentExecutor(personas, templates, assignments, llm, scope);
     }
 
     public string Name => "assign_task";
@@ -426,15 +479,11 @@ public class AssignTaskTool : ITool
         }
 
         // 专家由用户配置决定, AI 不可指定人格/模板
-        var personaText = AgentExecutor.ResolvePersonaText(
-            agent, _personas, _templates, null, null,
-            CommanderRuntime.Instance?.CurrentPersonaText,
-            false,
-            planMode: ctx.IsPlanMode);
-        return AgentExecutor.ExecuteAsync(
+        var personaText = _executor.ResolveToolPersonaText(agent, ctx.IsPlanMode);
+        return _executor.ExecuteAsync(
             agent, task ?? string.Empty, personaText,
             AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-            ctx, _assignments, _llm, ct);
+            ctx, ct);
     }
 
     private CliAgentDefinition? ResolveAgent(string? agentId, string task)
@@ -472,22 +521,14 @@ public class AssignTaskTool : ITool
 public class SubagentGroupTool : ITool
 {
     private readonly IReadOnlyList<CliAgentDefinition> _agents;
-    private readonly IReadOnlyList<Persona> _personas;
-    private readonly IReadOnlyList<AgentTemplate> _templates;
-    private readonly GitService _git;
-    private readonly AssignmentManager _assignments;
-    private readonly LlmService? _llm;
+    private readonly AgentExecutor _executor;
 
     public SubagentGroupTool(IReadOnlyList<CliAgentDefinition> agents,
         IReadOnlyList<Persona> personas, IReadOnlyList<AgentTemplate> templates,
-        GitService git, AssignmentManager assignments, LlmService? llm = null)
+        AssignmentManager assignments, LlmService? llm = null, AgentExecutionScope? scope = null)
     {
         _agents = agents;
-        _personas = personas;
-        _templates = templates;
-        _git = git;
-        _assignments = assignments;
-        _llm = llm;
+        _executor = new AgentExecutor(personas, templates, assignments, llm, scope);
     }
 
     public string Name => "run_subagents";
@@ -615,17 +656,14 @@ public class SubagentGroupTool : ITool
             }
 
             // 专家由用户配置决定, AI 不可指定人格/模板
-            var personaText = AgentExecutor.ResolvePersonaText(
-                agent, _personas, _templates, null, null,
-                CommanderRuntime.Instance?.CurrentPersonaText, false,
-                planMode: ctx.IsPlanMode);
+            var personaText = _executor.ResolveToolPersonaText(agent, ctx.IsPlanMode);
 
             // 不再伪造空 args 往下传: AgentExecutor 不读 templateId/personaId(AI 不可指定专家),
             // 之前这份空对象只会让 GetOpt 恒返回 null, 与 AppShell.Dispatch 的真实路径行为不一致。
-            var result = await AgentExecutor.ExecuteAsync(
+            var result = await _executor.ExecuteAsync(
                 agent, scopedTask, personaText,
                 AgentExecutor.ResolveWorkingDir(workDir, ctx.WorkspaceRoot),
-                ctx, _assignments, _llm, ct);
+                ctx, ct);
 
             var entry = (result.Detail as SubagentsDetail)?.Subagents.FirstOrDefault()
                 ?? new SubagentResultEntry
@@ -873,8 +911,15 @@ public class GitCreateCheckpointTool : ITool
     private const int KeepAllConversationCutoff = int.MaxValue;
 
     private readonly GitService _git;
+    private readonly AgentExecutionScope? _scope;
 
-    public GitCreateCheckpointTool(GitService git) => _git = git;
+    /// <summary><paramref name="scope"/> 仅用于「工具卡归属会话」的兜底(见 <see cref="ExecuteAsync"/>);
+    /// 为 null 时只按 <c>ToolContext.SessionId</c> 归属, 取不到即空串。</summary>
+    public GitCreateCheckpointTool(GitService git, AgentExecutionScope? scope = null)
+    {
+        _git = git;
+        _scope = scope;
+    }
 
     public string Name => "git_create_checkpoint";
 
@@ -893,6 +938,26 @@ public class GitCreateCheckpointTool : ITool
         """);
 
     public bool RequiresApproval => true;
+
+    /// <summary>解析这条检查点记录应归属的会话 id。
+    ///
+    /// <para><b>为什么优先用 <c>ToolContext.SessionId</c> 而非「全局活动会话」</b>:
+    /// 工具卡的回滚 / Fork 是**会话内**操作(按 SessionId 找会话、按 ConversationCutoff 裁剪对话),
+    /// 而「活动会话」是用户当前正在看的那个 —— 多会话并发(后台会话在跑子代理)时两者根本不是同一个,
+    /// 挂错会话会让检查点卡片出现在无关会话里, 回滚时裁错对话。
+    /// 引擎每个回合都会注入 SessionId, 发起这次工具调用的会话就是权威答案。</para>
+    ///
+    /// <para>ctx.SessionId 为空(旧引擎路径 / 自检 / 未注入)时才回退到 scope 的兜底来源;
+    /// 两者都没有则留空串(等价于改动前读不到单例时的行为)。</para></summary>
+    private string ResolveSessionId(ToolContext ctx)
+    {
+        if (!string.IsNullOrEmpty(ctx.SessionId))
+        {
+            return ctx.SessionId;
+        }
+
+        return _scope?.ActiveSessionIdResolver?.Invoke() ?? string.Empty;
+    }
 
     public Task<ToolResult> ExecuteAsync(JsonElement args, ToolContext ctx, CancellationToken ct = default)
     {
@@ -919,7 +984,7 @@ public class GitCreateCheckpointTool : ITool
                 BranchName = gctx.BranchName,
                 CommitSha = head,
                 TagName = $"ai-shikikan/checkpoint/{id}",
-                SessionId = CommanderRuntime.Instance?.Sessions.ActiveSessionId ?? string.Empty,
+                SessionId = ResolveSessionId(ctx),
                 ConversationCutoff = KeepAllConversationCutoff,
                 Source = GitCheckpointSource.AiTool,
                 Label = string.IsNullOrWhiteSpace(label) ? "AI 检查点" : label,
