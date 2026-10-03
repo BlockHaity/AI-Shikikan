@@ -372,7 +372,11 @@ NO_BUILD=1 ./debug.sh --version  # --no-build 的环境变量写法
 ./build.sh aot
 
 # Linux 系统包（deb / rpm / pacman）
-VERSION=$(cat VERSION) VARIANTS=dotnet ./Packagers/linux/package.sh   # 需先 ./build.sh dotnet
+# ⚠️ STAGE_DIR 必须与 ./build.sh 的输出一致（build.sh 写 artifacts/，不是 stage/）。
+#    漏掉它会在前置校验处明确报错，不会装出坏包，但不如一开始就对。
+#    WORKER_STAGE_DIR 默认从 STAGE_DIR 派生，无需显式传。
+VERSION=$(cat VERSION) VARIANTS=dotnet STAGE_DIR=artifacts \
+  FORMATS=pacman ./Packagers/linux/package.sh   # 需先 ./build.sh dotnet
 
 # 修改版本号（一键同步 VERSION / PKGBUILD / app.manifest / AGENTS.md 版本标注 / 脚本与 CI 回退值）
 ./set-version.sh 0.9.1-vibe   # 改版本（GitHub tag 会自动补 v 前缀）

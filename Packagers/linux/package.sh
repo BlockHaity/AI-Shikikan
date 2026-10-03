@@ -20,9 +20,11 @@ set -euo pipefail
 #   <root>/usr/bin/<PKG> -> ../lib/<PKG>/AIShikikan.Gui
 #
 # 常见组合:
-#   VERSION=$(cat VERSION) VARIANTS=dotnet ./Packagers/linux/package.sh
-#   STAGE_DIR=artifacts WORKER_STAGE_DIR=artifacts/worker \
-#   VERSION=$(cat VERSION) ./Packagers/linux/package.sh  # 复用 ./build.sh 产物
+#   ⚠️ STAGE_DIR **必须**与 ./build.sh 的输出一致 —— build.sh 写 artifacts/, 而不是 stage/。
+#      漏掉它会在前置校验处报错(而不是装出坏包), 但报错信息不如一开始就对。
+#   VERSION=$(cat VERSION) VARIANTS=dotnet STAGE_DIR=artifacts \
+#     FORMATS=pacman ./Packagers/linux/package.sh      # 复用 ./build.sh 产物
+#   # CI 里 STAGE_DIR=stage, WORKER_STAGE_DIR 随之派生为 stage/worker, 无需显式传。
 #
 # 环境变量契约:
 #   VERSION      必填。版本号, 如 1.0.0-vibe; 缺失或格式非法立即退出。
@@ -32,7 +34,7 @@ set -euo pipefail
 #   RID          默认按 uname -m 探测; 只接受 linux-x64 / linux-arm64。
 #   STAGE_DIR    GUI 发布产物根目录, 默认 stage (相对仓库根); 每个变体在 $STAGE_DIR/<variant>。
 #   WORKER_STAGE_DIR
-#                Worker 发布产物根目录, 默认 stage/worker (相对仓库根);
+#                Worker 发布产物根目录, **默认 ${STAGE_DIR}/worker** (相对仓库根);
 #                每个变体在 $WORKER_STAGE_DIR/<variant>。与 STAGE_DIR 分开是因为
 #                Worker 与 GUI 是两个独立可执行项目, 由 build.sh / CI 分别 publish,
 #                不共用同一个输出根 —— 见「Worker 产物闸门」一节。
@@ -77,7 +79,11 @@ VARIANTS="${VARIANTS:-dotnet selfcontained}"
 FORMATS="${FORMATS:-deb rpm pacman}"
 RID="${RID:-}"
 STAGE_DIR="${STAGE_DIR:-stage}"
-WORKER_STAGE_DIR="${WORKER_STAGE_DIR:-stage/worker}"
+# ⚠️ Worker 产物根默认**从 STAGE_DIR 派生**, 不是硬编码 "stage/worker":
+# 两个默认值必须联动, 否则 `STAGE_DIR=artifacts ./package.sh` 会去找 stage/worker 而扑空 ——
+# 而 build.sh 产出的恰恰是 artifacts/<variant> 与 artifacts/worker/<variant> 这一对。
+# CI 传 STAGE_DIR=stage 时派生结果仍是 stage/worker, 行为与改造前逐字一致。
+WORKER_STAGE_DIR="${WORKER_STAGE_DIR:-${STAGE_DIR}/worker}"
 OUT_DIR="${OUT_DIR:-dist}"
 PKG="${PKG:-ai-shikikan}"
 HOMEPAGE="${HOMEPAGE:-}"
