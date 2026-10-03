@@ -401,19 +401,29 @@ build_rpm() {
     # 是整目录条目, worker/ 落在其下, 无需为 Worker 单独加 %files 行。
     # 片段里直接写真实路径而不是 @WORKERBINDIR@ 占位符: 占位符替换发生在注入
     # 之前, 注入进来的占位符不会再被替换, rpmbuild 会把它当字面量路径而失败。
-    local wline1 wline2
-    if [ "$variant" = "dotnet" ]; then
-        wline1="mkdir -p %{buildroot}%{_prefix}/lib/$PKG/worker"
-        wline2="cp -a $worker_bindir/. %{buildroot}%{_prefix}/lib/$PKG/worker/"
-    else
-        wline1="install -Dm755 $worker_bindir/AIShikikan.Worker %{buildroot}%{_prefix}/lib/$PKG/worker/AIShikikan.Worker"
-        wline2="if ls $worker_bindir/*.so >/dev/null 2>&1; then install -m 755 $worker_bindir/*.so %{buildroot}%{_prefix}/lib/$PKG/worker/; fi"
-    fi
     local wsnippet="$WORK_TMP/rpm_worker_$variant.snippet"
     {
-        echo "# --- AIShikikan.Worker (独立进程执行器; 由 package.sh 注入, 别手改 spec) ---"
-        echo "$wline1"
-        echo "$wline2"
+        echo "# ===== 以下两段由 package.sh 注入, 别手改 spec 模板 ====="
+        if [ "$variant" != "dotnet" ]; then
+            # GUI 侧: 单文件变体的卫星资源目录 (en/ = 英文语言包 Strings.en.resx,
+            # **并未内嵌进单文件**)。spec 模板的 %install 只装 apphost + *.so, 漏掉它
+            # → 英文界面**静默**回退为中文(不崩溃、不报错、没有任何日志)。
+            # deb/pacman 走 install_app_tree, 那里有对应的子目录循环, 所以只有 rpm 会漏。
+            # 这里按变体生成同一段循环, 让 package.sh 继续是「变体布局」的唯一权威。
+            echo "# --- GUI 卫星资源目录 (与 install_app_tree 的同名循环对齐) ---"
+            echo "for gd in $bindir/*/; do [ -d \"\$gd\" ] || continue; cp -a \"\$gd\" %{buildroot}%{_prefix}/lib/$PKG/; done"
+        fi
+        echo "# --- AIShikikan.Worker (独立进程执行器) ---"
+        if [ "$variant" = "dotnet" ]; then
+            # 框架依赖多文件: 必须整目录安装(只拷 apphost 会装出起不来的包)
+            echo "mkdir -p %{buildroot}%{_prefix}/lib/$PKG/worker"
+            echo "cp -a $worker_bindir/. %{buildroot}%{_prefix}/lib/$PKG/worker/"
+        else
+            echo "install -Dm755 $worker_bindir/AIShikikan.Worker %{buildroot}%{_prefix}/lib/$PKG/worker/AIShikikan.Worker"
+            echo "if ls $worker_bindir/*.so >/dev/null 2>&1; then install -m 755 $worker_bindir/*.so %{buildroot}%{_prefix}/lib/$PKG/worker/; fi"
+            # Worker 侧的卫星目录(目前无, 但与 GUI 侧同构, 将来加了语言包不用再改 spec)
+            echo "for wd in $worker_bindir/*/; do [ -d \"\$wd\" ] || continue; cp -a \"\$wd\" %{buildroot}%{_prefix}/lib/$PKG/worker/; done"
+        fi
     } > "$wsnippet"
     if ! awk -v snippet="$wsnippet" '
             /^%files/ && !done {
@@ -438,10 +448,18 @@ build_rpm() {
     local r
     for r in "$HOME"/rpmbuild/RPMS/*/*.rpm; do
         [ -e "$r" ] || continue
-        mv -f "$r" "${r%.rpm}_${variant}.rpm"
-        cp -f "${r%.rpm}_${variant}.rpm" "$OUT_ABS/"
-        PRODUCED+=("$OUT_ABS/${r##*/}")
-        ok "rpm:  ${r##*/}"
+        # ⚠️ 必须**先算出最终文件名再动文件**。
+        # 原实现先 mv 再用 ${r##*/} 记 PRODUCED, 而 $r 在 mv 之后仍指向旧名 ——
+        # 于是 PRODUCED 里存的是一个磁盘上根本不存在的路径, 末尾的
+        # ls "${PRODUCED[@]}" 必然报 "No such file or directory",
+        # 让 package.sh 以退出码 2 失败(CI 实测踩到)。同一个 bug 还让上面那行
+        # ok 日志打印出没有变体后缀的假文件名, 排障时被带偏。
+        local renamed="${r%.rpm}_${variant}.rpm"
+        local out="$OUT_ABS/${renamed##*/}"
+        mv -f "$r" "$renamed"
+        cp -f "$renamed" "$out"
+        PRODUCED+=("$out")
+        ok "rpm:  ${out##*/}"
     done
 }
 
