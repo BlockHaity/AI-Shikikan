@@ -36,6 +36,12 @@ public sealed class WorkerClient : IAsyncDisposable
     private readonly object _sinkGate = new();
 
     private readonly object _faultGate = new();
+
+    /// <summary>在飞调用数; 见 <see cref="ActiveCallCount"/>。</summary>
+    private int _activeCalls;
+
+    /// <summary>最近活动时刻(TickCount64 毫秒); 见 <see cref="LastActivityTicks"/>。</summary>
+    private long _lastActivityTicks = Environment.TickCount64;
     private string? _lastFault;
 
     private int _disposed;
@@ -112,12 +118,26 @@ public sealed class WorkerClient : IAsyncDisposable
     public event Action<string>? Faulted;
 
     /// <summary>握手: 协商协议版本并交换身份信息。</summary>
-    public Task<WorkerHelloResponse> HandshakeAsync(WorkerHelloRequest request, CancellationToken ct) =>
-        _transport.HandshakeAsync(request, ct);
+    public async Task<WorkerHelloResponse> HandshakeAsync(WorkerHelloRequest request, CancellationToken ct)
+    {
+        Touch();
+        try
+        {
+            return await _transport.HandshakeAsync(request, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            Touch();
+        }
+    }
 
     /// <summary>拉取/同步该 Worker 暴露的工具清单。</summary>
-    public Task<WorkerToolsResponse> SyncToolsAsync(WorkerToolsSyncRequest request, CancellationToken ct) =>
-        _transport.SyncToolsAsync(request, ct);
+    public Task<WorkerToolsResponse> SyncToolsAsync(WorkerToolsSyncRequest request, CancellationToken ct)
+    {
+        // 同步是一次真实活动(证明进程还活着且在响应), 故计入活动时间。
+        Touch();
+        return _transport.SyncToolsAsync(request, ct);
+    }
 
     /// <summary>
     /// 调用一个 Worker 工具。异常原样上抛(<see cref="OperationCanceledException"/> 也一样),
@@ -125,6 +145,7 @@ public sealed class WorkerClient : IAsyncDisposable
     /// </summary>
     public async Task<WorkerToolCallResponse> CallToolAsync(WorkerToolCallRequest request, CancellationToken ct)
     {
+        NotifyCallStarted();
         try
         {
             return await _transport.CallToolAsync(request, ct).ConfigureAwait(false);
@@ -140,6 +161,56 @@ public sealed class WorkerClient : IAsyncDisposable
             ReportFault($"工具 {(request is null ? "?" : request.Name)} 调用失败: {ex.Message}");
             throw;
         }
+        finally
+        {
+            // ⚠️ 必须放 finally: 取消 / 传输故障 / 正常返回三条路径都要减计数,
+            // 漏一条就会让 ActiveCallCount 永久大于 0 → 该 Worker **永远**不会被空闲回收,
+            // 而症状是"空闲关闭功能看起来完全没生效", 极难归因。
+            NotifyCallEnded();
+        }
+    }
+
+    // ─────────────────── 活动度观测（空闲回收的唯一依据） ───────────────────
+    //
+    // 为什么必须在这里观测、而不是让 WorkerPool 去数:
+    //   WorkerPool 只在 Acquire/Release 这些"拉起与记账"路径上被调用, 它**看不到**
+    //   一次工具调用从开始到结束的整个区间。而子代理工具合法跑 30 分钟 ——
+    //   若空闲判定只看"最后一次 Acquire 距今多久", 一个正在跑子代理的 Worker
+    //   会在超时点被当成空闲杀掉, 子代理进程随之变孤儿。所以"有没有在飞调用"
+    //   必须由真正发起调用的这一层(本类)来报。
+    //
+    // ⚠️ 关于只靠 LastActivityTicks 的另一种错误做法: 子代理可能连续十几分钟
+    //   不吐一行输出(在内部思考/跑长命令), 那段时间既没有调用开始也没有输出,
+    //   只有 ActiveCallCount 能证明它还活着。所以两者缺一不可。
+
+    /// <summary>当前在飞的工具调用数。空闲回收的第一判据: 大于 0 即视为忙碌。</summary>
+    public int ActiveCallCount => Volatile.Read(ref _activeCalls);
+
+    /// <summary>是否有在飞调用。</summary>
+    public bool IsBusy => ActiveCallCount > 0;
+
+    /// <summary>
+    /// 最近一次活动时刻(<see cref="Environment.TickCount64"/> 毫秒)。
+    /// 空闲回收的第二判据: 与 <see cref="IsBusy"/> <b>同时</b>成立才算空闲。
+    /// </summary>
+    public long LastActivityTicks => Volatile.Read(ref _lastActivityTicks);
+
+    /// <summary>
+    /// 刷新活动时间。供"回合仍在进行但此刻没有工具调用"的场景由上层显式调用 ——
+    /// 否则一个正在流式输出 LLM 答案的回合, 会在两次工具调用之间的空档被误判为空闲。
+    /// </summary>
+    public void Touch() => Volatile.Write(ref _lastActivityTicks, Environment.TickCount64);
+
+    private void NotifyCallStarted()
+    {
+        Interlocked.Increment(ref _activeCalls);
+        Touch();
+    }
+
+    private void NotifyCallEnded()
+    {
+        Interlocked.Decrement(ref _activeCalls);
+        Touch();
     }
 
     /// <summary>通知 Worker 放弃某个 callId(取消传播)。</summary>
@@ -192,6 +263,11 @@ public sealed class WorkerClient : IAsyncDisposable
     private void OnTransportToolOutput(WorkerToolOutputNotification notification)
     {
         if (notification is null) return;
+
+        // 收到输出本身就是"这个 Worker 还活着"的证据, 故计入活动时间。
+        // 这条对空闲回收很关键: 子代理可能整段命令执行期间都不吐一行, 但只要它在吐字,
+        // 就不该被判成空闲(即便调用计数因某种原因已经归零)。
+        Touch();
 
         // 先放行原始事件(诊断旁挂), 再做 callId 路由。
         RaiseSafe(ToolOutputReceived, notification);

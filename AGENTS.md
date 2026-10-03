@@ -77,14 +77,14 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 
 ### Worker 架构（速览）
 
-完整的方案、决策理由与取舍在 **`docs/plans/worker-architecture.md`**（863 行）。本节只给导航：
+完整的方案、决策理由与取舍在 **`docs/plans/worker-architecture.md`**（约 940 行；L6 空闲回收的口径见其 4.3.1）。本节只给导航：
 
 | 概念 | 一句话 |
 |---|---|
 | 进程边界 | 非 MCP 的工具（4 个文件工具 + 5 个 git 工具 + 3 个子代理工具）与子代理执行搬到 `AIShikikan.Worker` |
 | 传输 | stdio 匿名管道 + **NDJSON（一行一帧）** 的 JSON-RPC 2.0 子集，与 `McpClientBase` 手写的 stdio JSON-RPC 同构 |
 | 抽象 | `IToolTransport`（一次工具调用怎么执行）之上有两个实现：`PipeTransport`（真子进程）与 `InlineTransport`（进程内降级） |
-| 生命周期 | 实例粒度 = **（工作目录 × 会话）**；懒启动 / 引用计数 / 崩溃重拉 / 指数退避，全部由 `WorkerPool` 编排 |
+| 生命周期 | 实例粒度 = **（工作目录 × 会话）**；懒启动 / 引用计数 / 崩溃重拉 / 指数退避 / **空闲回收**，全部由 `WorkerPool` 编排（空闲回收的**判据由 `WorkerClient` 观测、槽位处置由 `WorkerDirectoryGroup` 执行**，详见下方「Worker 生命周期规则」） |
 | 可见性 | 降级**绝不静默**：状态栏常驻标记 + `doctor` 的「Worker 定位」/「Worker 端到端」两项 + `Log.Warn("Worker", …)` 三处同时透出 |
 
 `src/AIShikikan.Core/Services/Worker/` 逐文件职责：
@@ -102,13 +102,13 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 | `IWorkerToolHost.cs` | Worker 侧纯契约：`IWorkerToolHost`（工具快照 + 执行 + `BindHello`）与 `IWorkerToolHostSync`（`ApplyToolsSync`） |
 | `WorkerServer.cs` | Worker 侧服务端：接管 stdin/stdout、跑读循环、处理 `hello`/`tools/list`/`tools/sync`/`tools/call`、串行写出 `notify/*` |
 | `WorkerToolDescriptorFactory.cs` | **Core 内唯一的**工具分类落点（`Kind` / `RequiresGitWrite` / 空名剔除 / schema 降级）。Worker 侧与内联降级侧共用同一份，两边各写一份必然漂移 |
-| `WorkerClient.cs` | 主进程侧的连接句柄：持有 transport、按 `callId` 路由实时输出、故障可见性（`Faulted` / `LastFault`） |
+| `WorkerClient.cs` | 主进程侧的连接句柄：持有 transport、按 `callId` 路由实时输出、故障可见性（`Faulted` / `LastFault`）**+ 活动度观测**（`ActiveCallCount` / `IsBusy` / `LastActivityTicks` / `Touch()`，空闲回收的**唯一依据**；`CallToolAsync` 在 `finally` 里减计数） |
 | `WorkerProxyTool.cs` | `WorkerClient` → `ITool` 的进程外包装（形态照抄 `McpProxyTool`），**尚未有生产调用方**，见「已完成 vs 尚未接线」 |
 | `ToolCardDetailCodec.cs` | `ToolCardDetail` 多态卡片详情的判别符编解码（三张表：判别符 ↔ 具体类型 ↔ 序列化器）+ `SelfCheck()` |
-| `WorkerPool.cs` | 进程池与生命周期编排：`WorkerPoolOptions`（退避 / 对账 / `PipeEnabled`）+ `WorkerPool`（分组、Acquire、退避、崩溃重拉、健康聚合） |
-| `WorkerDirectoryGroup.cs` | 一个工作目录下的全部会话槽位：会话引用计数、`(会话 → WorkerClient)` 映射、`Reconcile` |
+| `WorkerPool.cs` | 进程池与生命周期编排：`WorkerPoolOptions`（退避 / **空闲阈值 `DirectoryIdleTimeout`（默认 1 分钟）** / 对账 / `PipeEnabled`）+ `WorkerPool`（分组、Acquire、退避、崩溃重拉、健康聚合、**`MarkTurnActive`**、**`ReconcileNowAsync` 的两段式回收**、**`EffectiveReconcileInterval` 自适应节拍**） |
+| `WorkerDirectoryGroup.cs` | 一个工作目录下的全部会话槽位：会话引用计数、`(会话 → WorkerClient)` 映射、`Reconcile`（**会话级**回收：摘整个槽位）、`DetachIdleClients`（**槽位级**空闲回收：摘句柄、**保留槽位**）、`MarkTurnActive` / `Slot.TurnActive` |
 | `WorkerHealth.cs` | 健康快照类型：`WorkerMode` 枚举 + `WorkerHealthEntry` + `WorkerHealth`，同时喂 doctor 与状态栏 |
-| `WorkerSelfCheck.cs` | **7 组端到端场景**的跨进程自检（协议编解码 / 工具执行 / 取消传播 / 身份键一致性 / 卡片编解码 / 降级可见性 / 管道真起进程） |
+| `WorkerSelfCheck.cs` | **12 组端到端场景**的自检（前 7 组：协议编解码 / 工具执行 / 取消传播 / 身份键一致性 / 卡片编解码 / 降级可见性 / 管道真起进程；**S8–S12 为空闲回收**：空闲被摘句柄而槽位保留 / 有在飞调用绝不回收 / 回合进行中不回收且置 false 后恢复 / 活动度刷新 / 阈值置 Zero 时不回收）。⚠️ S8–S12 用的是**专用探针池**（内联传输 + 手动 `ReconcileNowAsync` + 200ms 阈值），不是生产配置 |
 
 ### Core/Services 内部结构
 
@@ -232,7 +232,7 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 > ⚠️ **Worker 绝不允许调用 `CommanderRuntime.Boot()`**。Boot 做三件对 Worker 是灾难的事：① 写出 6 类配置文件（Worker 是被派生出来执行工具的短命子进程，不是应用入口；让它去写用户配置，等于把"谁有权改配置"扩散到一个随时可能被杀、且主进程可能正并行读写同一文件的进程 —— `providers.toml` 里还有 API Key，覆盖 = 密钥丢失）；② 构造期扫 `checkpoints/` 与 `assignments/` 全量记录；③ **后台 `Task.Run(RefreshMcpToolsAsync)` 真的 spawn MCP 子进程**（Worker 若也连一遍，就变成"一次 git 工具调用顺带起了三个 MCP 进程"，且它们不随 Worker 的 kill 走 → 孤儿堆积）。
 > `WorkerSlimHost` 是瘦装配组合根，刻意**不** new：`McpService` / `ChatService` / `UsageStatsService` 的任何写入路径 / `SessionRuntimeRegistry` / `AgentEngine` / `WorkspaceExecutionCoordinator` / `EngineEventHub`。
 
-> ✅ **已完成 vs 尚未接线（最容易误读的一处）**：`WorkerPool` 已在 `CommanderRuntime.Boot` 装配、`doctor` 已能真起进程跨进程自检、`ChatPageViewModel` / `AppShell` / `App.axaml.cs` 已接上 Release 与 Shutdown —— **但聊天页发消息的路径上，工具仍走主进程内的 `ToolRegistry`**。全仓**没有任何 `new WorkerProxyTool(...)` 的生产调用方**，`WorkerPool.AcquireAsync` 的唯一调用方是 `WorkerSelfCheck`。把工具注册从本地 `Registry` 切到 Worker 代理是**下一阶段**的事（出口已备好：`CommanderRuntime.BuildWorkerToolsSyncRequest()` 供"刚 Acquire 完"的一方补发一次 sync，`PendingWorkerToolsSync` 给回合开头的确认钩子预留）。看到 `WorkerPool` 已装配就以为"工具已经全在子进程跑"是错的。
+> ✅ **已完成 vs 尚未接线（最容易误读的一处）**：`WorkerPool` 已在 `CommanderRuntime.Boot` 装配、`doctor` 已能真起进程跨进程自检、`ChatPageViewModel` / `AppShell` / `App.axaml.cs` 已接上 Release 与 Shutdown —— **但聊天页发消息的路径上，工具仍走主进程内的 `ToolRegistry`**。全仓**没有任何 `new WorkerProxyTool(...)` 的生产调用方**，`WorkerPool.AcquireAsync` 的唯一调用方是 `WorkerSelfCheck`。把工具注册从本地 `Registry` 切到 Worker 代理是**下一阶段**的事（出口已备好：`CommanderRuntime.BuildWorkerToolsSyncRequest()` 供"刚 Acquire 完"的一方补发一次 sync，`PendingWorkerToolsSync` 给回合开头的确认钩子预留）。看到 `WorkerPool` 已装配就以为"工具已经全在子进程跑"是错的。**同一条理由也适用于空闲回收**：`DirectoryIdleTimeout` 默认 1 分钟、判据与节拍都已就位，但生产里没有任何东西会往池里放 Worker 句柄，因此**空闲回收今天在真实会话里不会发生任何事**。
 
 ### Worker 生命周期规则
 
@@ -242,10 +242,25 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 |---|---|---|
 | **懒启动** | 首回合首次需要工具才 spawn，**不预热** | 预热意味着打开应用就 fork N 个进程；而绝大多数会话根本不会用到 git 工具 |
 | **目录级存活** | 目录内会话引用计数 ≥ 1 → 存活；**= 0 则关闭该目录下全部 Worker** | Worker 占着工作目录的 git 写锁，无人用却留着是纯负担 |
-| **换目录** | 会话 WorkDir 变更 → `Release` 旧目录（-1），下一次 `AcquireAsync` 自动挂进新目录 | 不释放的话旧目录引用计数永远归不了零（该会话还活着，60s 对账也回收不到） |
+| **换目录** | 会话 WorkDir 变更 → `Release` 旧目录（-1），下一次 `AcquireAsync` 自动挂进新目录 | 不释放的话旧目录引用计数永远归不了零（该会话还活着，定时对账也回收不到） |
 | **崩溃/僵死重拉** | 订阅 `WorkerClient.Faulted`，**只重拉那一个** (目录, 会话)，其余一概不动 | 全局重启会把无关会话正在跑的工具一起打断 |
-| **目录级长空闲超时** | 参数位保留，**默认关闭**（`WorkerPoolOptions.DirectoryIdleTimeout = TimeSpan.Zero`） | 有引用计数兜底，再叠一层超时只会制造"用着正着 Worker 没了"的诡异现象 |
+| **空闲回收（槽位级，默认 1 分钟）** | `WorkerPoolOptions.DirectoryIdleTimeout` **默认 `TimeSpan.FromMinutes(1)`、已启用**：某个 (目录, 会话) 的 Worker **连续 1 分钟既没有在飞工具调用、又没有任何新活动**就关掉它 —— **只摘句柄、保留槽位**，该会话仍留在目录组里，下次 `AcquireAsync` 走懒重建。置 `TimeSpan.Zero` 即完全关闭，退回"只有 L3 回收" | 每个 Worker 是一份独立的 Core 运行时（JIT 后的代码页 + 常驻堆，AOT 下可执行映像约 12MB），**空闲的既不产出价值又占内存、还持着工作目录的 git 上下文**；而下次调用本来就是懒重建（约 100~300ms），重建成本远低于长期占着的内存。⚠️ **与「目录级存活」叠加，不是替代**：L3 管"没人要的目录"（会话数归零 → 整组退役，**不等超时**），本条管"有人要但一直闲着的 Worker"。改造前它只是把 L3 推迟到超时点、且只作用于已归零的组，因此**从来不会**关闭"会话还活着但空闲"的 Worker |
 | **同步** | 按目录分组 + **每组一把短锁**，绝不用一把全局锁 | 全局锁会把"A 目录的 Worker 握手慢（最坏 30s）"传导成"B 目录的新会话也起不来" |
+
+**空闲回收（L6）的判据与接线**（实现落在 `WorkerDirectoryGroup.DetachIdleClients` + `WorkerPool.ReconcileNowAsync`）：
+
+- **判据是合取式，两条缺一不可**：
+  1. `WorkerClient.ActiveCallCount == 0`（等价于 `IsBusy == false`，**没有在飞工具调用**）—— 这是**正确性底线**。子代理工具合法跑 30 分钟（`CliAgentDefinition.TimeoutMinutes` 默认 30），只看"距上次活动多久"会在它跑到 1 分钟时被当成空闲杀掉：子代理进程随即变孤儿，且它持有的仓库 git 写锁要等到超时才释放。⚠️ 因此"有没有在飞调用"**必须由真正发起调用的那一层报**（`WorkerClient.CallToolAsync` 的 `NotifyCallStarted` / `NotifyCallEnded`）—— 池只在 `AcquireAsync` / `Release` 这些记账路径上被调用，它**看不到**一次调用从开始到结束的整个区间。
+  2. `now - WorkerClient.LastActivityTicks >= DirectoryIdleTimeout`。活动时间由 `WorkerClient` 在**调用开始/结束**（减计数必须放在 `finally`：取消 / 传输故障 / 正常返回三条路径都要走到，漏一条会让 `ActiveCallCount` 永久大于 0 → 该 Worker **永远**不被回收，而症状只是"空闲关闭看起来完全没生效"）、**实时输出到达**（`OnTransportToolOutput`）、**握手与工具集同步**（`HandshakeAsync` / `SyncToolsAsync`）时刷新。
+  > ⚠️ 两条都要的理由：子代理可能连续十几分钟不吐一行输出（内部思考 / 跑长命令），那段时间既没有调用开始也没有输出，**只有 `ActiveCallCount` 能证明它还活着**。
+- **额外跳过两种槽位**：`InFlight != null`（正在拉起，句柄还没交付 —— 此时 `slot.Client` 可能仍是上一个、且已判空闲的句柄，不跳过就会把"即将交付的新 Worker"收掉）；`Slot.TurnActive`（回合进行中，见下）。
+- **`WorkerPool.MarkTurnActive(sessionId, workDir, active)` 是纯性能优化，不是正确性要求**：回合的 LLM 流式阶段恒定"没有在飞调用"，不通知的话这个回合的**下一个**工具调用要额外付一次重建（约 100~300ms）。1 分钟阈值大于绝大多数单回合耗时，正常不会命中；长上下文 + 慢模型的长回合会命中。
+  > ⚠️ **调用方必须 `try/finally` 成对**。漏掉 `active: false` → 该会话的 Worker **永远**不参与回收，症状是"有的会话的 Worker 一直关不掉"，而它是按会话发生的、极难定位。重复置同一个值是幂等的。
+  > ⚠️ 它**只作用于已存在的槽位**：会话还没 `Acquire` 过（尚未挂进目录组）时调用是 no-op，标记不会留到后来。因此接线位置应在**回合开始处**（与 `SessionRuntime` 已有的 `TryBeginTurn` / `EndTurn` 同一对生命周期），而不是"每回合第一次工具调用之后"。⚠️ 该方法目前**零生产调用方**。
+- **回收节拍自适应**（`WorkerPool.EffectiveReconcileInterval`）：取**空闲阈值的 1/4**，夹在 `[2s, ReconcileInterval]` → 默认配置（阈值 1 分钟 + 对账 60s）下**每 15s 一轮**。不这么做的话"空闲 1 分钟就关"实际会变成 1~2 分钟（tick 落在超时点哪一侧）；下界 2s 是因为阈值被配得极小时每次 tick 都要遍历全部目录组，太密只是白烧 CPU；上界取 `ReconcileInterval` 保证**空闲回收未启用时行为与改造前完全一致**（仍是 60s 的会话对账节拍）。
+- ⚠️ **空闲回收寄生在对账循环上**：`StartReconcileLoop` 在 `liveSessionProvider == null` 或 `ReconcileInterval <= TimeSpan.Zero` 时直接不启动，`ReconcileNowAsync` 在拿不到比对基准时**静默跳过整轮**（误回收比不回收糟得多）。`CommanderRuntime.Boot` 注入了 `liveSessionProvider` 且用默认 options，所以主进程里它默认开着。
+- 回收动作复用 `CloseClientsAwaitedAsync`（并发、`ShutdownAsync` 限时 → `DisposeAsync` 限时），日志是**一条汇总 `Log.Info`**（记数量与阈值，不逐个记）—— 用户报"我的 Worker 怎么老重启"时这一行是唯一线索。
+- ⚠️ **空闲回收尚未在生产路径生效**（与上方「已完成 vs 尚未接线」同源）：聊天页发消息的路径上工具仍走主进程内的 `ToolRegistry`，全仓没有任何 `new WorkerProxyTool(...)` 的生产调用方 → **生产里池内压根没有 Worker 句柄可回收**。判据与节拍本身**已被 `WorkerSelfCheck` 的 S8–S12 覆盖**（专用探针池：内联传输 + 手动 `ReconcileNowAsync` + 200ms 阈值 + `ReconcileInterval = TimeSpan.Zero` 关掉后台循环，让每一轮回收都由场景显式触发）—— 但那验的是**探针配置**下的判据，生产默认的「真管道 + 15s 自适应节拍 + 1 分钟阈值」这一组合**没有任何自动验证**，见技术债 #21。
 
 **退避**：指数 `2s → 4s → … → 60s` 封顶 + **±20% 抖动**，连续 **3** 次失败后**永久降级**为进程内执行（对该 `(目录, 会话)` 粘滞，直到它被 Release）。
 - 不退避时"起不来 → 立刻重拉 → 又起不来"是 CPU 与日志双重打爆的循环，且失败根因通常在用户下一次干预前不会自己变好。
@@ -256,7 +271,7 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 
 > ⚠️ **生命周期的前提接线**：`WorkerPool.Release` 只有在"每次减一都被正确调用"时才成立。两个原本**零生产调用方**的入口现已接上：① `SessionRuntimeRegistry.RemoveSession` ← `AppShell.ReleaseSessionResources`（GUI 的删除入口，聊天页与会话面板都走这一个，**先 `Release` 再 `RemoveSession`，顺序不能反** —— 后者会把运行时摘掉并 Dispose，那时 `SessionRuntime.WorkDir` 就再也取不到了）；② `SessionRuntimeRegistry.Dispose` ← `App.axaml.cs` 的 `OnDesktopExit`（先 `Workers.ShutdownAllAsync` 同步等，预算 = `ShutdownTimeout × 2 + 1`，**宁可超时也不抛**）。
 > 「换目录」另有一条独立路径：`ChatPageViewModel.ReleaseWorkerOnWorkDirChange` 直接调 `Workers.Release(sessionId, previous)`，不经过 `AppShell`。判据是「会话上已持久化的目录仍等于被替换掉的那个值」，所以**切会话时不会误减**。
-> 第三层兜底是池内**每 60s 与实际会话集合对账**（`WorkerPoolOptions.ReconcileInterval`，基准集合由 `Boot` 注入的 `liveSessionProvider` 提供；传 null 会把整个对账关掉）。
+> 第三层兜底是池内**与实际会话集合定时对账**（`WorkerPoolOptions.ReconcileInterval`，基准集合由 `Boot` 注入的 `liveSessionProvider` 提供；传 null 会把整个对账关掉）。⚠️ **实际节拍是 `EffectiveReconcileInterval` 而不是 `ReconcileInterval`**：启用空闲回收时取"空闲阈值的 1/4"并夹在 `[2s, ReconcileInterval]`，默认即 **15s**；空闲回收关闭时才回到 60s。同一轮对账里做三件事：摘掉"会话已不存在"的整个槽位（`Reconcile`）→ 摘掉"空闲"的句柄但保留槽位（`DetachIdleClients`）→ 计数归零的目录整组退役（L3 兜底）。
 > ⚠️ 已知交互：本会话**正在跑回合**时改目录，旧目录的 Worker 会被立刻关闭，此刻正在旧目录执行的那次工具调用会以一条明确的工具错误收场（而不是静默挂起）。这是「立即释放」的代价。
 
 ### Worker 新增铁律
@@ -287,6 +302,7 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 | `WorkerProtocol.HeartbeatInterval` / `HeartbeatTimeout` | 5 秒 / 60 秒 | 心跳发送间隔 / 僵死判定。⚠️ 心跳由**独立定时器**发，**不能**用来判断"Worker 卡在某个工具上" |
 | `WorkerProtocol.ShutdownTimeout` / `CancelTimeout` | 5 秒 / 5 秒 | 优雅关闭 / 取消通知送达 |
 | **Worker 工具执行** | **无超时**（`ToolCallTimeout = Timeout.InfiniteTimeSpan`） | 见下 |
+| `WorkerPoolOptions.DirectoryIdleTimeout` | **1 分钟**（`TimeSpan.Zero` = 关闭） | 空闲回收阈值。⚠️ 它**不是**"多久之后一定杀掉"的承诺：实际关闭时刻 = 首次满足判据的 tick，因此上界是"阈值 + 一个节拍"（默认 15s → 最迟 75s）。判据与接线见「Worker 生命周期规则」 |
 
 > ⚠️ **Worker 侧工具执行刻意不加时间上限**：子代理**合法**跑 30 分钟（`CliAgentDefinition.TimeoutMinutes` 默认 30、上界 `MaxTimeoutMinutes` = 1440），而三个子代理工具都是**阻塞式**的。沿用 MCP 的 300s 会把正常跑满上下文的长任务**误杀**成超时失败 —— 而且是**间歇性**的（只在任务偏长时炸），极难与真实失败区分。长任务的闸门应该由**它自己**（`timeout_minutes`）管，传输层只负责"出事了不要让我永久等待"：靠**取消通道 + 崩溃完结 + 心跳僵死**三者兜底，而不是"到点就杀"。
 
@@ -319,13 +335,13 @@ MCP 工具在 `CommanderRuntime.Boot` 后台连接，桥接为 `mcp_<serverId>_<
 ### 其他
 
 - **MCP 服务器**：配置于 `mcp-servers.toml`，支持 stdio（command/args/env）、`http`（Streamable HTTP）与 `sse`（HTTP+Server-Sent Events）三种传输。设置页可增删/开关/重连，调用 `Runtime.RefreshMcpToolsAsync()`。协议版本 "2025-06-18"。⚠️ `RefreshMcpToolsAsync` 里那条 `Registry.UnregisterWhere(t => t is McpProxyTool)` 是 Worker 工具的护栏所在，见「工具分层与 Worker 边界」。
-- **Worker 状态栏**：`StatusPanelViewModel` 用 500ms 轮询（`DispatcherPriority.Background`，与聊天页的排队计数轮询同款）读 `WorkerPool.GetHealth()`，显示 `Status_WorkerPipe` / `Status_WorkerInline`。⚠️ **降级没有任何事件可订阅**（池是在别的线程上把某个槽位钉死成内联的，不经 `EngineEventHub` 也不经 `AppShell.DataChanged`），只能轮询；轮询处理器内不允许抛异常，否则会沿 `DispatcherTimer` 冒到 UI 循环卡死整个界面。文案按 `WorkerMode` 枚举自行映射到 resx（不用 `WorkerHealth.ModeText`，那是 Core 里的硬编码中文）。
+- **Worker 状态栏**：`StatusPanelViewModel` 用 500ms 轮询（`DispatcherPriority.Background`，与聊天页的排队计数轮询同款）读 `WorkerPool.GetHealth()`，显示 `Status_WorkerPipe` / `Status_WorkerInline`。⚠️ **降级没有任何事件可订阅**（池是在别的线程上把某个槽位钉死成内联的，不经 `EngineEventHub` 也不经 `AppShell.DataChanged`），只能轮询；轮询处理器内不允许抛异常，否则会沿 `DispatcherTimer` 冒到 UI 循环卡死整个界面。文案按 `WorkerMode` 枚举自行映射到 resx（不用 `WorkerHealth.ModeText`，那是 Core 里的硬编码中文）。⚠️ **空闲回收后的槽位在 `SnapshotHealth` 里呈现为 `NotConnected`**（句柄已摘、尚未重建；`Degraded` 为假且 `SpawnAttempts == 0`，所以不会被误报成 `Inline`）—— 这与"会话还没开过第一回合"的懒启动状态在数据上**不可区分**。模式本身只说明"此刻有没有存活实例"，判断依据得看该会话是否用过工具；且 `NotConnected` 被状态栏判为**非降级**（`IsWorkerDegraded` 只认 `Inline` / `NotFound`），所以空闲回收不会让状态栏翻成"降级"标记。
 - **工具结果出口**：所有 Agent 执行工具统一走 `AgentExecutor.ExecuteAsync(..., llm, ct)`，压缩在该出口生效。
 - **聊天页**：支持手动停止按钮 + 双击 ESC（600ms 内两次）终止生成、「继续输出」续写。
 - **首页**：用量统计含 ScottPlot 折线图（固定坐标轴 + 标尺 + 折点悬浮详情）与活跃热力图。趋势图与热力图**共用全局时间范围**（近 7 / 14 / 30 天 / 全部，默认近 14 天），热力图周列数按范围动态计算；选「全部」且无数据时回退近 26 周。配色全部跟随主题资源。
 - **设置页**：卡片使用自绘 `Views/WaterfallPanel.cs` 自适应瀑布流布局。
 - **日志**：`Log` 是**两个进程共写同一份**（文件名按日滚动，全部 append），所以每行都带 `[pid:<pid> <标签>]` 段（`Environment.ProcessId` + `Log.ProcessLabel`）。Worker 在 `Log.Initialize()` **之前**先 `Log.SetProcessLabel("worker")` —— 顺序不能反，否则最早那几行会顶着默认标签 `"gui"` 落盘，交错后无法归属。排 Worker 的问题时先按这个标签过滤。
-- **`doctor` 的 10 项检查**：配置目录 / Provider API Key / Agent 定义 / 专家+模板 / 工具装载 / Git 仓库 / 并发协调规则（`WorkspaceExecutionCoordinator.SelfCheck`）/ **工具卡片编解码**（`ToolCardDetailCodec.SelfCheck`）/ **Worker 定位**（`WorkerLocator.Locate`）/ **Worker 端到端**（`WorkerSelfCheck.RunDetailed`，7 组场景，**真的会 spawn Worker 进程**；定位未命中时跳过管道那一段并记一条说明，跳过不算失败但必须让用户看见"这次没验到跨进程那条路"）。只有「Git 仓库」失败降为 ⚠️，其余失败都计入退出码。
+- **`doctor` 的 10 项检查**：配置目录 / Provider API Key / Agent 定义 / 专家+模板 / 工具装载 / Git 仓库 / 并发协调规则（`WorkspaceExecutionCoordinator.SelfCheck`）/ **工具卡片编解码**（`ToolCardDetailCodec.SelfCheck`）/ **Worker 定位**（`WorkerLocator.Locate`）/ **Worker 端到端**（`WorkerSelfCheck.RunDetailed`，12 组场景，**真的会 spawn Worker 进程**；定位未命中时跳过管道那一段并记一条说明，跳过不算失败但必须让用户看见"这次没验到跨进程那条路"。⚠️ 空闲回收那 5 组走**专用探针池**（内联传输 + 手动对账 + 200ms 阈值），不 spawn 进程）。只有「Git 仓库」失败降为 ⚠️，其余失败都计入退出码。
 - **Linux 输入法**：Program.cs 的 `FixupLinuxImeEnvironment()` 启动时清洗 IME 环境变量弯引号、缺失时探测 fcitx/ibus 进程补写 `AVALONIA_IM_MODULE`，并显式启用 X11 IME。⚠️ **仅 GUI**：`AIShikikan.Worker/Program.cs` 刻意不调用它。
 
 ## 常用命令
@@ -535,7 +551,7 @@ ci: GitHub Actions 相关
 
 | # | 问题 | 位置 |
 |---|---|---|
-| 1 | **无测试、无 CI 门禁**：仓库无任何测试项目，两个 workflow 均需手动触发，push/PR 不做验证。`WorkerSelfCheck` 的 7 组端到端场景目前唯一的执行入口是 `doctor` | 全仓 |
+| 1 | **无测试、无 CI 门禁**：仓库无任何测试项目，两个 workflow 均需手动触发，push/PR 不做验证。`WorkerSelfCheck` 的 12 组端到端场景目前唯一的执行入口是 `doctor` | 全仓 |
 | 2 | **AOT 兼容性部分改善、门禁仍缺**：`AIShikikan.Worker` 的 `PublishAot=true` 让 `./build.sh aot` 第一次**真实编译** Core 里那批从未被验证的 `RequiresDynamicCode` 路径（git 服务、文件工具、`CliAgentRunner`、Tomlyn/YamlDotNet）—— 这是一个职责单一、体量小得多的 AOT 宿主，等于修掉了本条的一半。但：`SuppressTrimAnalysisWarnings` / `SuppressAotAnalysisWarnings` 仍把分析器全静音；`AIShikikan.Core.csproj` 仍需显式 `EnableAotAnalyzer=false`（且**不**会被 Worker 的 `PublishAot` 翻转）；一切仍靠人工跑 `./build.sh aot`，无 CI 门禁 | `Directory.Build.props` / `src/AIShikikan.Core/AIShikikan.Core.csproj` |
 | 3 | **UI 线程同步跑 git 进程**：发消息前会在 UI 线程拉起约 6 个 git 进程（`GitService.Run` 用 `GetAwaiter().GetResult()`），最坏可冻结数十秒。Worker 隔离**尚未覆盖到聊天路径**，所以这条在今天仍然成立 | `GitService.cs` |
 | 4 | **流式文本无时间节流**：每个 token 触发一次全量 Markdown 重解析，长回复呈 O(n²) | `ChatPageViewModel.cs` |
@@ -555,5 +571,6 @@ ci: GitHub Actions 相关
 | 18 | **i18n 自检未接线**：`Strings.FindMissingEnglishKeys()` 已写好但无调用方。（原先提到的 4 个 `ToolCard_Rollback*` 孤儿键**已删除**。）另有两处硬编码中文未收进 resx：排队徽标 `QueuedBadgeFormat`（代码里有 `TODO(i18n)`）、以及**全部 Worker 侧工具错误文案**（这是刻意的，见「Worker 新增铁律」第 2 条） | `Resources/Strings.cs` / `ChatPageViewModel.cs` |
 | 19 | **多进程共享数据的单写者原则只靠约定、没有强制**：`AtomicFile` 的路径锁明确只覆盖进程内；`usage.json` 是「内存全量快照 + 1.5s 防抖整文件覆盖」，两进程各写会互相吞掉增量；`GitCheckpointStore` 的每仓库 500 条淘汰计数在两进程间各算各的。当前 Worker 侧的写方是 `checkpoints/` 与 `assignments/`，主进程侧是 `usage.json` / `sessions/*.json` / 各配置 toml —— 这个分工**必须保持**，且 `ChatService` 在 Worker 侧**绝对不能**实例化。将来若引入第三个进程、或把 Worker 的写集扩大，需要的是文件级锁（fcntl / `FileShare.None` 跨进程语义）或更明确的写方归属 | `Serialization/AtomicFile.cs` / `src/AIShikikan.Worker/WorkerSlimHost.cs` |
 | 20 | **Worker 切换尚未接线（Worker 路线图上的下一步）**：`WorkerPool` 已装配、`doctor` 能跨进程自检、`Release`/`ShutdownAllAsync` 已接 GUI，但**聊天页发消息的路径上工具仍走主进程内的 `ToolRegistry`** —— 全仓没有任何 `new WorkerProxyTool(...)` 的生产调用方，`AcquireAsync` 的唯一调用方是 `WorkerSelfCheck`。出口已备好（`BuildWorkerToolsSyncRequest()` / `PendingWorkerToolsSync`），但"谁来 Acquire 并注册代理工具"这一层还没写 | `CommanderRuntime.cs` / `Services/Worker/WorkerProxyTool.cs` |
+| 21 | **空闲回收只被"探针配置"验过，且在生产里无事可做**：`DirectoryIdleTimeout` 默认 1 分钟、`DetachIdleClients` / `MarkTurnActive` / `EffectiveReconcileInterval` 都已就位，`WorkerSelfCheck` 的 S8–S12 也覆盖了判据本身 —— 但 ① 生产侧**池里压根没有 Worker 句柄**（#20 未接线，`AcquireAsync` 零生产调用方），规则今天**不会对任何真实会话生效**；② S8–S12 用的是专用探针池（内联传输 + `ReconcileInterval = TimeSpan.Zero` 手动对账 + 200ms 阈值），**生产默认的「真管道 + 15s 自适应节拍 + 1 分钟阈值」组合没有任何自动验证**。另有两处**代码内注释仍写"默认关闭"**（`WorkerPool` 类 remarks 的 L6 条目、`WorkerDirectoryGroup.LastActivityTicks` 的 remarks），与 `DirectoryIdleTimeout = 1 分钟` 矛盾，会误导后来者"这功能没启用"。修法：接线 #20 时补一组跑真管道 + 生产阈值的端到端场景（或至少在 doctor 里显式报告"空闲回收按探针阈值验过"），并把这两处注释改掉 | `Services/Worker/WorkerPool.cs` / `WorkerDirectoryGroup.cs` / `WorkerSelfCheck.cs` |
 
 更完整的分析与批次划分见 `docs/plans/`（Worker 方案见 `docs/plans/worker-architecture.md`）。

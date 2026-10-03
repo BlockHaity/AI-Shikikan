@@ -87,13 +87,29 @@ public sealed class WorkerPoolOptions
     public TimeSpan RespawnBackoffCap { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// 「目录级长空闲超时」(L6)。<b>默认 <see cref="TimeSpan.Zero"/> = 关闭。</b>
+    /// 空闲超时: **连续 1 分钟没有任何任务**就关掉该 (目录, 会话) 的 Worker。默认 1 分钟。
     /// </summary>
     /// <remarks>
-    /// <b>为什么默认关闭</b>: 它与 L3 语义重叠且方向相反 —— L3 说「没有会话就关」,
-    /// 空闲超时说「有会话但久不用也关」。两者并存会产生「目录刚被判定要关、又有会话切进来」的竞态。
-    /// 文档(worker-architecture.md 4.3 L6)明确要求保留参数位但默认关闭。</remarks>
-    public TimeSpan DirectoryIdleTimeout { get; init; } = TimeSpan.Zero;
+    /// <para><b>与 L3（会话数归零即关闭）是叠加关系，不是替代</b>：L3 管「没人要的目录」，
+    /// 本项管「有人要但一直闲着的 Worker」。两者都在时，先命中哪个关哪个。</para>
+    ///
+    /// <para><b>为什么要有这一条（性能）</b>：每个 Worker 是一份独立的 Core 运行时
+    /// （含 JIT 后的代码页、常驻堆、以及 AOT 下约 12MB 的可执行映像）。开着十个会话摆着不动
+    /// 就是十份常驻内存；而空闲的 Worker 既不产出价值，又持有工作目录的 git 上下文。
+    /// 空闲就关是纯收益 —— 下次调用本来就是懒重建，重建成本远低于长期占着的内存。</para>
+    ///
+    /// <para><b>空闲判据是合取式，这一条是正确性底线</b>：
+    /// <c>ActiveCallCount == 0</c>（<b>没有在飞工具调用</b>）**且**
+    /// 距上次活动 ≥ 本值。只看后者会在子代理跑到 1 分钟时误杀它 ——
+    /// 子代理工具合法跑 30 分钟，被杀会让子代理进程变孤儿、并拖到超时才释放 git 写锁。</para>
+    ///
+    /// <para><b>取值 1 分钟的依据</b>：短到能真正省下内存（分钟级而非十分钟级），
+    /// 长到不会在正常使用的间隙里反复重建 —— 一次重新拉起约 100~300ms，
+    /// 而"用户想了一下措辞再发下一条"通常超过 1 分钟。更短（如 15s）会让密集多轮对话
+    /// 每个回合都付一次重建；更长（如 10min）则空闲回收形同虚设。</para>
+    ///
+    /// <para><b>置 <see cref="TimeSpan.Zero"/> 即完全关闭</b>（退回到"只有 L3 回收"）。</para></remarks>
+    public TimeSpan DirectoryIdleTimeout { get; init; } = TimeSpan.FromMinutes(1);
 
     /// <summary>
     /// 单次 <c>AcquireAsync</c> 内因「组退役 / 在飞拉起被取消」而重新决策的最大次数。
@@ -132,7 +148,11 @@ public sealed class WorkerPoolOptions
 /// <c>AcquireAsync</c> 自动挂进新目录。</item>
 /// <item><b>L5 崩溃重拉</b>: 订阅 <see cref="WorkerClient.Faulted"/>, <b>只重拉那一个 (目录, 会话)</b>,
 /// 其它 Worker 一概不动。</item>
-/// <item><b>L6 目录级长空闲超时</b>: 保留参数位, <b>默认 0(关闭)</b>(见 <see cref="WorkerPoolOptions.DirectoryIdleTimeout"/>)。</item>
+/// <item><b>L6 空闲回收</b>: 某个 (目录, 会话) 的 Worker <b>连续 1 分钟没有任何任务</b>就关掉 ——
+/// <b>默认 1 分钟、已启用</b>(见 <see cref="WorkerPoolOptions.DirectoryIdleTimeout"/>)。
+/// 与 L3 叠加而非替代: L3 管「没人要的目录」(整组退役), L6 管「有人要但一直闲着的 Worker」
+/// (只摘句柄、保留槽位, 下次调用懒重建)。判据是「无在飞调用」<b>且</b>「距上次活动 ≥ 阈值」——
+/// 第一条是正确性底线(子代理合法跑 30 分钟, 只看时间会在第 1 分钟把它误杀)。</item>
 /// </list></para>
 ///
 /// <para><b>⚠️ 并发同步方案: 按目录分组 + 每组一把短锁, 绝不用一把全局锁。</b>
@@ -425,6 +445,36 @@ public sealed class WorkerPool : IAsyncDisposable
     }
 
     /// <summary>
+    /// 标记某个会话「有一个引擎回合正在进行」。回合期间该会话的 Worker **不参与空闲回收**。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么需要它（纯性能，不是正确性）</b>：空闲判据里"没有在飞工具调用"
+    /// 这一条在回合的 LLM 流式阶段恒为真 —— 那段时间根本没有工具在跑。
+    /// 若不通知本方法，一个正在吐字的回合会在两次工具调用之间的空档被当成空闲，
+    /// 于是这个回合的**下一个**工具调用要额外付一次重新拉起（约 100~300ms）。
+    /// 空闲阈值 1 分钟恰好大于绝大多数单回合耗时，所以正常情况下不会命中；
+    /// 但长上下文 + 慢模型的长回合会命中，故留这个口。</para>
+    ///
+    /// <para><b>⚠️ 调用方必须保证成对</b>（<c>try/finally</c>）。漏掉 <c>active: false</c> 会让
+    /// 该会话的 Worker 永远不参与空闲回收 —— 表现为"有的会话的 Worker 关不掉"，
+    /// 而这个偏差极难定位（它是按会话的，只有一个会话出问题）。
+    /// 重复置 <c>true</c> 是幂等的；重复置 <c>false</c> 同理。</para>
+    ///
+    /// <para>本方法<b>不抛异常</b>、也不创建任何东西：会话尚未 <c>Acquire</c> 过时会直接返回
+    /// （那时还没有 Worker，收不回收都无所谓）。</para>
+    /// </remarks>
+    /// <param name="sessionId">会话 Id。</param>
+    /// <param name="workDir">会话当前工作目录；解析不到就退化为按会话 Id 全组搜。</param>
+    /// <param name="active">true = 回合进行中；false = 回合已结束。</param>
+    public void MarkTurnActive(string sessionId, string workDir, bool active)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId)) return;
+
+        var group = ResolveGroupForRelease(sessionId, workDir);
+        group?.MarkTurnActive(sessionId, active);
+    }
+
+    /// <summary>
     /// 生成池的可展示快照, 给 doctor 与状态栏。
     /// </summary>
     /// <remarks>
@@ -499,7 +549,8 @@ public sealed class WorkerPool : IAsyncDisposable
 
         var reclaimed = new List<string>();
         var toClose = new List<WorkerClient>();
-        var idle = new List<WorkerDirectoryGroup>();
+        var idleGroups = new List<WorkerDirectoryGroup>();
+        var idleClients = new List<WorkerClient>();
         var now = Environment.TickCount64;
 
         foreach (var kv in _groups.ToArray())
@@ -512,14 +563,23 @@ public sealed class WorkerPool : IAsyncDisposable
                 toClose.Add(r.Client);
             }
 
+            // ── 槽位级空闲回收 ──
+            // 摘句柄但**保留槽位**, 所以会话仍登记在本组里: 下次 AcquireAsync 走懒重建,
+            // 既不会把会话当成外来者重新挂载, 也不会让这个目录被误判成"没人要"而退役。
+            if (IsIdleTimeoutArmed)
+            {
+                foreach (var client in group.DetachIdleClients(_options.DirectoryIdleTimeout, now))
+                {
+                    idleClients.Add(client);
+                }
+            }
+
             if (group.SessionCount == 0)
             {
                 // L3 的兜底: 计数归零但没走过 Release(漏计数)时, 对账负责收尾。
-                //
-                // L6 的长空闲超时只是把这一步**推迟**到超时点, 而不是加在"有会话"的组上:
-                // 它与 L3 同向(都指向关闭), 所以不会产生"刚要关又有会话切进来"的竞态,
-                // 也就守住了文档里要求的「有会话引用则永不因空闲关闭」。默认关闭。
-                if (!IsIdleTimeoutArmed || IsIdleTimedOut(group, now)) idle.Add(group);
+                // 会话已归零 → 整组退役(目录级关闭), 不再等空闲超时 ——
+                // "没有任何会话要这个目录"是比"空闲"更强的信号, 没有等待的理由。
+                idleGroups.Add(group);
             }
         }
 
@@ -529,7 +589,18 @@ public sealed class WorkerPool : IAsyncDisposable
                 $"目录对账回收了 {reclaimed.Count} 个已消失会话的 Worker: {string.Join(", ", reclaimed)}");
         }
 
-        foreach (var group in idle) RetireGroup(group);
+        if (idleClients.Count > 0)
+        {
+            // 记数量而不逐个记日志: 空闲回收是常规行为(不是异常), 但也不能完全静默 ——
+            // 用户报"我的 Worker 怎么老重启"时, 这一行就是唯一的线索。
+            Log.Info(LogCategory,
+                $"空闲超过 {_options.DirectoryIdleTimeout.TotalSeconds:0}s, 关闭 {idleClients.Count} 个 Worker " +
+                "(无在飞调用; 下次用到时按需重新拉起)");
+        }
+
+        // 空闲摘下的句柄与对账摘下的一起关: 并发关闭, 单个失败不影响其余(见 CloseClientsAsync 的 remarks)。
+        toClose.AddRange(idleClients);
+        foreach (var group in idleGroups) RetireGroup(group);
         if (toClose.Count > 0) await WorkerDirectoryGroup.CloseClientsAwaitedAsync(toClose, ct).ConfigureAwait(false);
     }
 
@@ -1102,16 +1173,36 @@ public sealed class WorkerPool : IAsyncDisposable
         _ = WorkerDirectoryGroup.CloseClientsAsync(clients, CancellationToken.None);
     }
 
-    /// <summary>L6 的长空闲超时是否启用(默认关闭)。</summary>
+    /// <summary>空闲回收是否启用。</summary>
     private bool IsIdleTimeoutArmed => _options.DirectoryIdleTimeout > TimeSpan.Zero;
 
-    private bool IsIdleTimedOut(WorkerDirectoryGroup group, long nowTicks)
+    /// <summary>
+    /// 对账循环的实际节拍: <b>必须比空闲阈值细</b>, 否则用户说的"空闲 1 分钟就关"
+    /// 会实际变成 1~2 分钟(取决于 tick 落在超时的哪一侧)。
+    /// </summary>
+    /// <remarks>
+    /// 取「空闲阈值的 1/4」并夹在 [2s, <see cref="WorkerPoolOptions.ReconcileInterval"/>] 之间:
+    /// <list type="bullet">
+    /// <item><b>1/4</b>: 关闭延迟的抖动上界是阈值的 1/4。1 分钟阈值 → 最迟 75 秒关闭,
+    /// 而抖动 15 秒对"省内存"这个目标完全够用(它不是延迟敏感的功能)。</item>
+    /// <item><b>下界 2s</b>: 阈值被配得极小(如 1s)时不能把节拍也压到 1s ——
+    /// 每次 tick 都要遍历全部目录组, 太密只是白烧 CPU。</item>
+    /// <item><b>上界取 <see cref="WorkerPoolOptions.ReconcileInterval"/></b>: 空闲回收不启用时
+    /// 行为与改造前完全一致(仍是那个 60s 的会话对账节拍), 不因为加了这个功能就改变
+    /// 已有用户在跑的节奏。</item>
+    /// </list></remarks>
+    private TimeSpan EffectiveReconcileInterval
     {
-        var timeout = _options.DirectoryIdleTimeout;
-        if (timeout <= TimeSpan.Zero) return false;
+        get
+        {
+            var configured = _options.ReconcileInterval;
+            if (configured <= TimeSpan.Zero) return configured;
+            if (!IsIdleTimeoutArmed) return configured;
 
-        var last = group.LastActivityTicks;
-        return last != 0 && nowTicks - last >= (long)timeout.TotalMilliseconds;
+            var quarter = TimeSpan.FromTicks(_options.DirectoryIdleTimeout.Ticks / 4);
+            if (quarter < TimeSpan.FromSeconds(2)) quarter = TimeSpan.FromSeconds(2);
+            return quarter < configured ? quarter : configured;
+        }
     }
 
     /// <summary>
@@ -1180,7 +1271,7 @@ public sealed class WorkerPool : IAsyncDisposable
         var token = _shutdownCts.Token;
         try
         {
-            using var timer = new PeriodicTimer(_options.ReconcileInterval);
+            using var timer = new PeriodicTimer(EffectiveReconcileInterval);
             while (await timer.WaitForNextTickAsync(token).ConfigureAwait(false))
             {
                 await ReconcileNowAsync(token).ConfigureAwait(false);

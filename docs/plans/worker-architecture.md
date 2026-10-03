@@ -2,6 +2,9 @@
 
 > 状态：**已定稿；B0 已在并行分支/工作树中开工**
 > 定稿日期：2026-10-02
+> 修订记录：**2026-10-03 —— 4.3 的 L6「目录级长空闲超时」语义反转并改为默认启用**（`DirectoryIdleTimeout` 由 `TimeSpan.Zero` 改为 `TimeSpan.FromMinutes(1)`，
+> 从"只推迟 L3、且仅作用于已归零的组"改为**独立的槽位级空闲回收**，判据为合取式，见 4.3.1；4.4 / 4.7 / 8.2 与附录 A 同步）。
+> 初版 4.3 里"L6 与 L3 互斥、有会话引用则永不因空闲关闭"的结论**已作废**，不要再引用。
 > 行号锚点：`git fb24185` + 定稿时的工作树（含**未提交**的 B0 前置解耦改动）
 > 适用范围：`src/AIShikikan.Core`、`src/AIShikikan.Gui`、新增 `src/AIShikikan.Worker`、构建与打包链路
 > 一句话结论：**把「非 MCP 的工具执行」与「子代理进程执行」搬进一个独立的 `AIShikikan.Worker` 进程；主进程保留 LLM 主循环、审批闸、事件总线、UI 与全部 MCP；两者之间用 stdio 匿名管道 + NDJSON 行协议通信；找不到 Worker 产物时静默降级回单进程内联执行，但降级必须可见。**
@@ -320,9 +323,66 @@ WorkerKey = SHA256(Normalize(worktreeRoot) + "\n" + sessionId)[..16]
 | L3 | **该目录完全没有会话时 → 关闭该目录下全部 Worker。** |
 | L4 | 会话 WorkDir 变更 → 旧目录计数 -1、加入新目录（旧目录归零则按 L3 关闭）。 |
 | L5 | Worker 崩溃 / 心跳僵死 → **仅重拉那一个 `(目录, 会话)`**，不动其他。 |
-| L6 | 备用「目录级长空闲超时」**默认 0（关闭）**。 |
+| L6 | **空闲回收（槽位级）**：某个 (目录, 会话) 的 Worker **连续 1 分钟没有任何任务**就关掉它 —— `WorkerPoolOptions.DirectoryIdleTimeout` **默认 `TimeSpan.FromMinutes(1)`、已启用**（置 `TimeSpan.Zero` 即完全关闭）。**只摘句柄、保留槽位**：会话仍登记在目录组里，下次 `AcquireAsync` 走懒重建。 |
 
-**关于 L6**：设过这个开关，但它与 L3 语义重叠且方向相反 —— L3 说「没有会话就关」，空闲超时说「有会话但久不用也关」。两者并存会产生「目录刚被判定要关、又有会话切进来」的竞态。因此**保留参数位但默认关闭**，只有将来出现「同一目录长期挂着 Worker 但一个会话都没有却没被正确 -1」这类具体问题时才启用，且启用时必须与 L3 互斥（有会话引用则永不因空闲关闭）。
+### 4.3.1 关于 L6（2026-10-03 修订：语义已反转）
+
+> ⚠️ **初版结论作废。** 早期版本把 L6 写成「备用、默认 0（关闭）」，理由是「它与 L3 语义重叠且方向相反，
+> 两者并存会产生『目录刚被判定要关、又有会话切进来』的竞态，因此启用时必须与 L3 互斥（有会话引用则永不因空闲关闭）」。
+> **该判断是错的，规则已按下面的口径重写。**
+
+| 维度 | 初版（作废） | 现状（`DirectoryIdleTimeout = 1 分钟`） |
+|---|---|---|
+| 作用对象 | 只作用于**引用计数已归零**的目录组 | **任何**有句柄的槽位，包括会话还活着、只是没在干活的那种 |
+| 与 L3 的关系 | 与 L3 **互斥**（"有会话引用则永不因空闲关闭"） | 与 L3 **叠加**：L3 管"没人要的目录"（会话数归零 → 整组退役，**不等超时**）；L6 管"有人要但一直闲着的 Worker"（**只摘句柄、保留槽位**）。两者都在，先命中哪个关哪个 |
+| 判据 | 组级 `LastActivityTicks` | 槽位级**合取式**：`WorkerClient.ActiveCallCount == 0` **且** `now - WorkerClient.LastActivityTicks >= 阈值`（外加跳过 `InFlight != null` 与 `Slot.TurnActive`） |
+| 回收粒度 | 整组 | 单个槽位的句柄；槽位本身（L3 的计数、退避字段、`Degraded` 粘滞标记）全部保留 |
+| 触发节拍 | 60s 对账 | `WorkerPool.EffectiveReconcileInterval` = `clamp(阈值 / 4, 2s, ReconcileInterval)`，默认 **15s** |
+
+**为什么反转（性能）**：每个 Worker 是一份独立的 Core 运行时（JIT 后的代码页 + 常驻堆，AOT 下可执行映像约 12MB）。
+十个开着不动的会话就是十份常驻内存，而空闲的 Worker 既不产出价值，又持着工作目录的 git 上下文。下次调用本来就是懒重建
+（约 100~300ms），**重建成本远低于长期占着的内存**。
+
+**初版担心的竞态并不存在**：竞态来自"整组关闭"这个动作，而 L6 只摘句柄、保留槽位 —— 会话不会因此从引用计数表里消失，
+`SessionCount` 仍 ≥ 1，L3 的判定不受影响；而 L3 触发时本来就会把整组的槽位连同计数一起清掉（`BeginRetire` → `_slots.Clear()`），
+两条路径的处置对象根本不同。
+
+**空闲判据为什么必须是合取式（`WorkerDirectoryGroup.DetachIdleClients`）**：
+
+1. `WorkerClient.ActiveCallCount == 0`（等价 `IsBusy == false`）—— **正确性底线**。子代理工具合法跑 30 分钟
+   （`CliAgentDefinition.TimeoutMinutes` 默认 30），只看"距上次活动多久"会在它跑到 1 分钟时被当成空闲杀掉：
+   子代理进程随即变孤儿，它持有的仓库 git 写锁要等到超时才释放，而在飞的那次 `tools/call` 会以工具错误收场
+   （父进程认为这一回合结束了，**真正在跑的却是另一个进程里的子代理**）。
+   ⚠️ 这条判据**必须由 `WorkerClient` 报**（`CallToolAsync` 的 `NotifyCallStarted` / `NotifyCallEnded`，减计数放在 `finally`），
+   不能由 `WorkerPool` 数：池只在 `AcquireAsync` / `Release` 这些记账路径上被调用，**看不到一次调用的整个区间**。
+2. `now - WorkerClient.LastActivityTicks >= 阈值` —— 这一条才对应用户说的"1 分钟无任务"。活动时间由 `WorkerClient` 在
+   **调用开始/结束**、**实时输出到达**（`OnTransportToolOutput`）、**握手与工具集同步**时刷新。
+   两条缺一不可：子代理可能连续十几分钟不吐一行输出（内部思考 / 跑长命令），那段时间既没有调用开始也没有输出，
+   **只有 `ActiveCallCount` 能证明它还活着**。
+
+**`WorkerPool.MarkTurnActive(sessionId, workDir, active)` 是纯性能优化，不是正确性要求**：回合的 LLM 流式阶段恒定
+"没有在飞调用"，不通知的话这个回合的**下一个**工具调用要额外付一次重建（约 100~300ms）。1 分钟阈值大于绝大多数单回合耗时，
+正常不会命中；长上下文 + 慢模型的长回合会命中。三条注意事项：
+
+- **调用方必须 `try/finally` 成对**。漏掉 `active: false` → 该会话的 Worker **永远**不参与回收，
+  症状是"有的会话的 Worker 一直关不掉"，而它是按会话发生的、极难定位。
+- **只作用于已存在的槽位**：会话还没 `Acquire` 过（未挂进目录组）时调用是 no-op，标记不会留到后来。
+  因此接线位置应在**回合开始处**（与 `SessionRuntime` 已有的 `TryBeginTurn` / `EndTurn` 同一对生命周期），
+  而不是"每回合第一次工具调用之后"。
+- 该方法目前**零生产调用方**。
+
+**节拍为什么必须自适应（`EffectiveReconcileInterval`）**：空闲回收寄生在 reconcile 循环上（`StartReconcileLoop` 在
+`liveSessionProvider == null` 或 `ReconcileInterval <= 0` 时直接不启动；`ReconcileNowAsync` 拿不到比对基准时静默跳过整轮）。
+若仍按 60s 对账，"空闲 1 分钟就关"实际会变成 **1~2 分钟**（取决于 tick 落在超时点哪一侧）。取阈值的 1/4 → 抖动上界是阈值的 1/4
+（默认最迟 75s），对"省内存"这个目标完全够用。夹在 `[2s, ReconcileInterval]` 的理由：下界 2s 是因为阈值被配得极小时每次 tick
+都要遍历全部目录组，太密只是白烧 CPU；上界取 `ReconcileInterval` 保证**空闲回收未启用时行为与初版完全一致**。
+
+> ⚠️ **这条规则尚未在生产路径生效**：聊天页发消息的路径上工具仍走主进程内的 `ToolRegistry`，全仓没有任何
+> `new WorkerProxyTool(...)` 的生产调用方（见 `AGENTS.md` 技术债 #20），所以生产里池内压根没有句柄可回收。
+> 判据本身**已被 `WorkerSelfCheck` 的 S8–S12 覆盖**（`ScenarioCount = 12`）：S8 空闲被摘句柄而槽位/目录组保留、
+> S9 有在飞调用绝不回收（正确性底线）、S10 回合进行中不回收且置 `false` 后恢复、S11 活动度刷新（`Touch()`）、
+> S12 阈值置 `TimeSpan.Zero` 时不回收。但那 5 组走的是**专用探针池**（内联传输 + `ReconcileInterval = TimeSpan.Zero`
+> 的手动对账 + 200ms 阈值），**生产默认的「真管道 + 15s 自适应节拍 + 1 分钟阈值」这一组合没有任何自动验证**。
 
 ### 4.4 前提条件（必须接线，否则规则不成立）
 
@@ -339,13 +399,23 @@ L3 依赖「目录内每个会话最终都会 -1」。但当前代码里：
 
 1. GUI 删除会话 → 调 `Sessions.RemoveSession(id)`；
 2. 主进程退出（Avalonia lifetime 结束 / `Program.cs` 的 `finally`，`Program.cs:43-50`）→ 调 `Sessions.Dispose()`；
-3. **每 60 秒与 `Sessions.All` 做一次 reconcile 兜底**：把「引用计数表里存在、但 `Sessions.All` 里已不存在的 (目录, 会话)」一律 -1 并关闭对应 Worker。
+3. **定时与 `Sessions.All` 做一次 reconcile 兜底**：把「引用计数表里存在、但 `Sessions.All` 里已不存在的 (目录, 会话)」一律 -1 并关闭对应 Worker。
    这条兜底不是可选项 —— 只要有任何一条路径漏掉 -1（异常吞掉、未来新增的删除入口、Worker 启动失败后计数未回滚），
    目录就永远不会归零，Worker 进程会一直残留，且没有任何现象提示。
 
 reconcile 的比对基准是 `SessionRuntimeRegistry.AllSessions`（`:305`，`All` 是其旧别名 `:312`）。
 注意它的语义：**只含「已按需创建」的运行时**，历史会话列表里从未打开过的会话不在其中 ——
 但那种会话本来就没有 Worker，所以不会造成误判。
+
+> **一处轮询、三段处置**（`WorkerPool.ReconcileNowAsync`，按此顺序）：
+> ① `WorkerDirectoryGroup.Reconcile(live)` —— **会话级**回收，摘掉整个槽位（会话已不存在）；
+> ② `WorkerDirectoryGroup.DetachIdleClients(timeout, now)` —— **槽位级**空闲回收，只摘句柄、保留槽位（4.3.1）；
+> ③ `SessionCount == 0` 的目录整组退役 —— L3 的兜底。「没有任何会话要这个目录」是比「空闲」更强的信号，**不等空闲超时**。
+>
+> ⚠️ 轮询**节拍是 `EffectiveReconcileInterval` 而不是 `ReconcileInterval`**：启用空闲回收时取「阈值 / 4」并夹在
+> `[2s, ReconcileInterval]`，默认 15s。拿不到比对基准时**静默跳过整轮**（误回收比不回收糟得多）。
+> ⚠️ `ReconcileNowAsync` 的调用方只有两处：**后台对账循环**，以及 `WorkerSelfCheck` 的 S8–S12（它们把
+> `ReconcileInterval` 设为 `TimeSpan.Zero` 关掉后台循环，改为自己显式调用，好让"是谁触发的这次回收"没有竞态）。
 
 ### 4.5 崩溃语义
 
@@ -388,6 +458,14 @@ Worker 进程退出（正常 `worker/shutdown`、崩溃、被强杀、父进程�
 | `worker/ping` | 5 秒 | 只探活性，不带业务语义 |
 | 心跳判僵死 | 60 秒无任何帧 | Worker 每 5 秒发 `notify/heartbeat`；60 秒无帧即视为僵死（12 倍余量，足以吸收 GC / 磁盘 IO 抖动） |
 | 引擎审批 | 5 分钟（不变） | `AgentEngine.ApprovalTimeout`，`:117` |
+| **空闲回收阈值**（`DirectoryIdleTimeout`） | **1 分钟**（`TimeSpan.Zero` = 关闭） | 判据是**合取式**：`ActiveCallCount == 0` **且** `now - LastActivityTicks >= 阈值`，另跳过 `InFlight != null` 与 `Slot.TurnActive`。见 4.3.1 |
+| **空闲回收节拍**（`EffectiveReconcileInterval`） | `clamp(阈值 / 4, 2s, ReconcileInterval)` → 默认 **15s** | ⚠️ 阈值**不是**"多久之后一定关"的承诺：实际关闭时刻 = 首次满足判据的 tick，上界是「阈值 + 一个节拍」（默认最迟 75s） |
+
+> ⚠️ **空闲回收与「`worker/tools/call` 无超时」是同一件事的两面**：正因为传输层刻意不给工具执行设上限
+> （子代理合法跑 30 分钟），空闲回收**绝不能**只看时间 —— 必须带上 `ActiveCallCount == 0` 这条正确性底线。
+> 反过来，心跳（`worker/ping`，5s/60s）**不能**拿来当"Worker 是否卡住"的判据：心跳由独立定时器发，
+> 一个正在跑长任务的 Worker 心跳照常。三个信号的职责必须分开：**心跳 = 连接是否僵死**、
+> **`ActiveCallCount` = 是否有在飞调用**、`LastActivityTicks` = 距上次真实活动多久。
 
 ---
 
@@ -711,7 +789,7 @@ UI 线程上不再有任何 git 进程 —— 不是改成 async（async 仍会�
 | **B4** | 4 个只读文件工具外置 | 在 5 GB 目录上 grep，**GUI 保持可交互**（可用 `xdotool`/截图或直接观察窗口响应）；`read_file`/`glob`/`list_directory`/`grep` 结果与 B2 逐字节一致 |
 | **B5** | 5 个 git 工具外置 + 检查点写权收口（8.1 推论 1 的 12 处一并路由）+ B0-7 的 async 化收尾 | **UI 线程上 0 个 git 进程**（用 `ps`/日志确认发送消息时主进程不起 `git`）；Reset / Revert / Fork 三条路径功能与行为不变；`checkpoints/` 单写者（两个进程同时运行时目录里不出现交错覆盖） |
 | **B6** | 3 个子代理工具 + `AgentExecutor` + `AssignmentManager` + `CliAgentRunner` 外置 | ① `run_subagents` 4 并发正常；② 点「停止」后**子代理进程树真的消失**（`ps` 确认）；③ Plan 模式下**授权子代理确实带上了 `plan_args`**（对比 B6 前后启动命令行）；④ **压缩开关生效**（开/关两次对比输出长度）；⑤ 子代理确实拿到了指挥官人格 |
-| **B7** | 工具集动态同步（`worker/tools/sync`）+ 生命周期（WorkerKey / 引用计数 / 4.4 接线 + 60s reconcile / 心跳 / 崩溃重拉） | ① 关右侧栏 → 子代理工具消失、Worker 侧同步注销；② Plan 模式切换 → 授权过滤在 **Worker 侧**生效；③ 删除会话 → 对应 Worker 退出（`ps` 确认）；④ 手工 `kill -9` Worker → 下一回合自动重拉；⑤ 目录内最后一个会话被删 → 该目录全部 Worker 退出 |
+| **B7** | 工具集动态同步（`worker/tools/sync`）+ 生命周期（WorkerKey / 引用计数 / 4.4 接线 + 自适应 reconcile（L3 兜底 + L6 空闲回收）/ 心跳 / 崩溃重拉） | ① 关右侧栏 → 子代理工具消失、Worker 侧同步注销；② Plan 模式切换 → 授权过滤在 **Worker 侧**生效；③ 删除会话 → 对应 Worker 退出（`ps` 确认）；④ 手工 `kill -9` Worker → 下一回合自动重拉；⑤ 目录内最后一个会话被删 → 该目录全部 Worker 退出；⑥ **空闲 >1 分钟（阈值配小以缩短观察时间）后 `ps` 里该 Worker 消失，但会话仍在、下一次工具调用能重新拉起（槽位保留而非会话被摘）**；⑦ **一个跑了 5 分钟以上的子代理不被空闲回收杀掉**（验证判据里真的有 `ActiveCallCount == 0` 这一条，而不是只看时间） |
 | **B8** | 构建 / 打包 / CI / 文档（7.4 清单全部落地） | `./build.sh all` 产出 3 个 GUI 变体 + 3 个 `worker/` 子目录；`VERSION=$(cat VERSION) VARIANTS=dotnet ./Packagers/linux/package.sh` 装出的包内 `/usr/lib/ai-shikikan/worker/AIShikikan.Worker` 存在且可执行；**故意删掉 Worker 产物后重跑 `package.sh` 必须失败**；`./debug.sh doctor` 报出 Worker 路径 |
 
 ---
@@ -858,6 +936,8 @@ Worker 记了 3 次子代理调用 → 1.5s 后写盘；主进程在这 1.5s 内
 | A8 | `package.sh` 的 `install_app_tree` 需要改拷贝逻辑才能带上 `worker/` | **三条安装分支已经能带上**：`dotnet` 走整目录 `cp -a "$tree_src/."`（`:229`）；`aot`/`selfcontained` 走 `for d in "$tree_src"/*/` 子目录拷贝（`:244-248`）。真正缺的是**显式参数化 + 前置校验** | 改动量比预期小，但前置校验（缺失即 `die`）不能省 |
 | A9 | （文档未提及） | **两个进程写同一个日志文件**。`Log` 用 `FileMode.Append` + `FileShare.Read` 打开按日滚动的单一文件（`Log.cs:183-186`），两个进程的 `LogDir` 相同。Windows 上后开的进程会因 `FileShare` 冲突抛 `IOException`，而消费循环的 catch 是**静默**的（`:195-198`）→ Worker 日志永久静默丢失 | 新增为风险 R7，对策含「Worker 日志写独立文件」与「把静默 catch 改为至少一条痕迹」 |
 | A10 | （文档未提及） | `AppShell.Dispatch`（`AppShell.cs:59-93`）是**第四条子代理执行路径**，与 `run_<agent>` 并行存在，且**不走审批、不申请工作区执行权、不做输出压缩**（其注释 `:54-58` 已自陈）。它同样调 `AgentExecutor.ResolvePersonaText` / `BuildFinalPrompt` 与 `AssignmentManager.RunSyncAsync` | B0-4 与 B6 必须把它一并纳入，否则 GUI 手动分派会与 Worker 侧行为不一致 |
+| A11 | 本文档初版 4.3 的 L6：「备用『目录级长空闲超时』**默认 0（关闭）**，启用时必须与 L3 互斥（有会话引用则永不因空闲关闭）」 | **已作废**。`WorkerPoolOptions.DirectoryIdleTimeout` 现为 `TimeSpan.FromMinutes(1)`（`WorkerPool.cs` 该属性），且是**独立的槽位级规则**（`WorkerDirectoryGroup.DetachIdleClients`）：判据为 `ActiveCallCount == 0` **且** `now - LastActivityTicks >= 阈值`，只摘句柄保留槽位，与 L3 叠加而非互斥 | 已按 4.3.1 全量重写；「有会话引用则永不因空闲关闭」这句话已从**现行规则**中删除（仅在 4.3.1 的作废对照与本行作为历史引述保留）。⚠️ **代码内还有两处未跟上的注释**：`WorkerPool` 类 remarks 的 L6 条目仍写「保留参数位, 默认 0(关闭)」，`WorkerDirectoryGroup.LastActivityTicks` 的 remarks 仍写「该超时默认关闭」 |
+| A12 | 「空闲回收没有任何验证入口」/ `WorkerSelfCheck` 只覆盖 7 组场景 | **已扩展为 12 组**（`WorkerSelfCheck.ScenarioCount = 12`），S8–S12 专测空闲回收：S8 空闲摘句柄但**保留槽位与目录组**、S9 有在飞调用绝不回收、S10 `MarkTurnActive` 期间不回收且置回 `false` 后恢复、S11 `Touch()` 刷新 `LastActivityTicks`、S12 `DirectoryIdleTimeout = TimeSpan.Zero` 时不回收。为让"是谁触发的这次回收"没有竞态，这 5 组用 `CreateIdleProbePool`：内联传输（不 spawn 进程）+ `ReconcileInterval = TimeSpan.Zero`（关掉后台循环）+ `liveSessionProvider` 返回**含本会话**的集合（否则 `ReconcileNowAsync` 会静默跳过整轮、场景全绿而空转）+ 200ms 阈值 | 空闲回收的**判据**已被自动验证；仍未验证的是**生产配置**（真管道 + 15s 自适应节拍 + 1 分钟阈值）与**生产路径**（无句柄可回收，见 `AGENTS.md` 技术债 #20/#21）。B7 验收锚点已补 ⑥⑦ 两条 |
 
 ---
 

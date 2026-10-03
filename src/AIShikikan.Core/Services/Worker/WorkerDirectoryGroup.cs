@@ -115,7 +115,13 @@ public sealed class WorkerDirectoryGroup
     /// <summary>
     /// 本组最近一次活动时刻(<see cref="Environment.TickCount64"/> 毫秒基准), 从未活动过为 0。
     /// </summary>
-    /// <remarks>只被 L6 的长空闲超时读;该超时默认关闭(见 <see cref="WorkerPoolOptions.DirectoryIdleTimeout"/>)。</remarks>
+    /// <remarks>
+    /// <b>⚠️ 它已不是空闲回收的判据了</b> —— 空闲回收判据在 <see cref="WorkerClient"/> 上
+    /// (<c>ActiveCallCount</c> / <c>LastActivityTicks</c>, 见 <see cref="DetachIdleClients"/>):
+    /// 本属性记的是「池侧记账动作」(Attach / BeginAcquire / Release)的时刻, 看不到一次工具调用
+    /// 从开始到结束的区间。若拿它判空闲, 一个正在跑子代理的 Worker 会在 1 分钟后被误杀。
+    /// 本属性现在只用于诊断展示(见 <see cref="SnapshotHealth"/>)。
+    /// </remarks>
     public long LastActivityTicks
     {
         get { lock (_gate) { return _lastActivityTicks; } }
@@ -531,6 +537,86 @@ public sealed class WorkerDirectoryGroup
         return reclaimed;
     }
 
+    // ── 槽位级空闲回收（与 Reconcile 是两件不同的事） ─────────────────────────
+
+    /// <summary>
+    /// 收集「连续空闲超过 <paramref name="timeout"/>」的槽位并<b>摘下它们的 Worker 句柄</b>。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>与 <see cref="Reconcile"/> 的区别（关键，别混为一谈）</b>：
+    /// Reconcile 处理的是「**会话已经不存在了**」，摘的是整个<b>槽位</b>；
+    /// 本方法处理的是「**会话还在，只是没在干活**」，只摘<b>Worker 句柄</b>，<b>保留槽位</b>。
+    /// 保留槽位意味着会话仍登记在本组里 —— 下次 <c>AcquireAsync</c> 会走"懒重建"路径
+    /// 拉起一个新的 Worker，而不是把会话当成外来者重新挂载。</para>
+    ///
+    /// <para><b>空闲判据是两个条件的合取，缺一不可</b>：
+    /// <list type="number">
+    /// <item><c>client.IsBusy == false</c>（<c>ActiveCallCount == 0</c>）——
+    /// 这一条是<b>正确性底线</b>。子代理工具合法跑 30 分钟，只看"距上次 Acquire 多久"
+    /// 会在它跑到 1 分钟时把它当成空闲杀掉，子代理进程随之变孤儿、
+    /// 且它持有的仓库 git 写锁要等到超时才释放。</item>
+    /// <item><c>now - client.LastActivityTicks &gt;= timeout</c>——
+    /// 这一条才对应用户说的"1 分钟无任务"。活动时间由 <c>WorkerClient</c> 在
+    /// 调用开始/结束、实时输出到达、工具集同步时刷新。</item>
+    /// </list></para>
+    ///
+    /// <para><b>为什么还要额外判「拉起中」</b>：<c>InFlight != null</c> 表示有人正在 spawn。
+    /// 那句柄还没拿到，<c>Client</c> 仍是上一次那个（可能已被判空闲）——
+    /// 不跳过就会在拉起窗口里把"即将交付的新 Worker"误收。</para>
+    /// </remarks>
+    /// <param name="timeout">空闲阈值；<c>&lt;= TimeSpan.Zero</c> 表示不启用（由调用方保证）。</param>
+    /// <param name="now">当前 <see cref="Environment.TickCount64"/>。</param>
+    /// <returns>被摘下的句柄，<b>由调用方在锁外关闭</b>。</returns>
+    internal List<WorkerClient> DetachIdleClients(TimeSpan timeout, long now)
+    {
+        var detached = new List<WorkerClient>();
+        if (timeout <= TimeSpan.Zero) return detached;
+
+        var threshold = (long)timeout.TotalMilliseconds;
+        lock (_gate)
+        {
+            foreach (var slot in _slots.Values)
+            {
+                var client = slot.Client;
+                if (client is null) continue;          // 本来就没有 Worker(内联降级 / 已摘过)
+                if (slot.InFlight is not null) continue; // 正在拉起: 别动
+                if (slot.TurnActive) continue;          // 回合仍在进行(见 MarkTurnActive)
+
+                if (client.IsBusy) continue;           // 有在飞调用: 绝不关
+                if (now - client.LastActivityTicks < threshold) continue;
+
+                // 摘句柄但**保留槽位**: 会话仍归属本组, 下次 Acquire 会懒重建。
+                slot.Client = null;
+                slot.ProcessId = null;
+                detached.Add(client);
+            }
+        }
+
+        return detached;
+    }
+
+    /// <summary>
+    /// 标记某个会话「当前有一个引擎回合在跑」。回合进行期间即使没有在飞工具调用,
+    /// 也不参与空闲回收 —— 否则一个正在流式输出 LLM 答案的回合, 会在两次工具调用之间的
+    /// 空档被当成空闲, 于是这一回合的下一次工具调用要付一次重新拉起的代价。
+    /// </summary>
+    /// <remarks>
+    /// 这是<b>性能优化而非正确性要求</b>：不接它最多是「首个工具调用慢几百毫秒」；
+    /// 接错的代价更大（把正在跑的回合标记成不活动 → 回合中途 Worker 被回收）。
+    /// 调用方应在回合开始时置 true、结束时置 false，且必须保证成对（<c>try/finally</c>）。
+    /// </remarks>
+    internal void MarkTurnActive(string sessionId, bool active)
+    {
+        lock (_gate)
+        {
+            if (_slots.TryGetValue(sessionId, out var slot))
+            {
+                slot.TurnActive = active;
+                TouchLocked(nowTicks: Environment.TickCount64);
+            }
+        }
+    }
+
     /// <summary>
     /// 并发关闭一批 Worker 句柄: 每个都走「<c>ShutdownAsync</c>(限时) → <c>DisposeAsync</c>(限时)」。
     /// 返回的已完成任务<b>不代表已关完</b>(见 remarks); 需要等待请用 <see cref="CloseClientsAwaitedAsync"/>。
@@ -729,6 +815,12 @@ public sealed class WorkerDirectoryGroup
         public int RestartCount;
 
         public long LastActivity;
+
+        /// <summary>
+        /// 该会话当前是否有引擎回合在跑(见 <see cref="MarkTurnActive"/>)。
+        /// 回合进行期间不参与空闲回收。
+        /// </summary>
+        public bool TurnActive;
 
         public string? LastFault;
 

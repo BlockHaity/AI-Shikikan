@@ -24,7 +24,8 @@ public sealed record WorkerSelfCheckResult(IReadOnlyList<string> Failures, IRead
 }
 
 /// <summary>
-/// Worker 方案的端到端自检: 协议编解码 + 工具执行 + 取消传播 + 跨进程往返 + 身份键一致性。
+/// Worker 方案的端到端自检: 协议编解码 + 工具执行 + 取消传播 + 跨进程往返 + 身份键一致性
+/// + <b>进程池生命周期(空闲回收)</b>。
 ///
 /// <para><b>为什么必须有它(以及为什么必须是"真跨进程"的)</b>: 本仓无测试(技术债 #1), 现有的验证手段只有
 /// <c>WorkspaceExecutionCoordinator.SelfCheck()</c> 那种纯内存自检, 而 Worker 这条路的每一处失效都是
@@ -53,7 +54,7 @@ public sealed record WorkerSelfCheckResult(IReadOnlyList<string> Failures, IRead
 public static class WorkerSelfCheck
 {
     /// <summary>自检覆盖的场景组数。doctor 的输出文案引用本常量, 不要在调用方写死数字。</summary>
-    public const int ScenarioCount = 7;
+    public const int ScenarioCount = 12;
 
     /// <summary>日志 category(与 Worker 其余部分一致)。</summary>
     private const string Category = "Worker";
@@ -84,6 +85,20 @@ public static class WorkerSelfCheck
 
     /// <summary>等待 Worker 进程退出的上限(自检自己的闸门; 传输层另有 <c>ShutdownTimeout</c>)。</summary>
     private static readonly TimeSpan ExitProbeTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>S8–S11 用的空闲阈值。生产默认是 1 分钟, 自检里换成 200ms —— 否则每组场景都要真等一分钟。</summary>
+    private static readonly TimeSpan IdleProbeTimeout = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>S8–S10 / S12 里「等空闲超时真的过去」的时长。</summary>
+    /// <remarks>
+    /// 取阈值的 3 倍: <c>Task.Delay</c> 只可能偏晚(那正是我们要的方向), 不会偏早, 因此 3 倍裕量足够;
+    /// 而裕量太小会在机器繁忙时随机假失败 —— 一条会随机红的断言等于没有断言。
+    /// </remarks>
+    private static readonly TimeSpan IdleProbeWait = TimeSpan.FromMilliseconds(600);
+
+    /// <summary>S11 需要的最小静置时长。<see cref="Environment.TickCount64"/> 是<b>毫秒</b>分辨率:
+    /// 不先睡够, <see cref="WorkerClient.Touch"/> 写进去的值可能与前一次读数完全相同, 断言随机假失败。</summary>
+    private static readonly TimeSpan TouchProbeWait = TimeSpan.FromMilliseconds(30);
 
     // ───────────────────────────── 公开入口 ─────────────────────────────
 
@@ -148,6 +163,11 @@ public static class WorkerSelfCheck
             failures.AddRange(CheckCardCodec(probe));
             failures.AddRange(CheckWorkerKey(workDir, notes));
             failures.AddRange(await CheckPoolAsync(registry, workDir, ct).ConfigureAwait(false));
+            failures.AddRange(await CheckIdleReclaimAsync(registry, workDir, ct).ConfigureAwait(false));
+            failures.AddRange(await CheckInFlightNoReclaimAsync(registry, workDir, ct).ConfigureAwait(false));
+            failures.AddRange(await CheckTurnActiveNoReclaimAsync(registry, workDir, ct).ConfigureAwait(false));
+            failures.AddRange(await CheckActivityRefreshAsync(registry, workDir, ct).ConfigureAwait(false));
+            failures.AddRange(await CheckIdleTimeoutDisabledAsync(registry, workDir, ct).ConfigureAwait(false));
         }
         catch (OperationCanceledException)
         {
@@ -863,6 +883,371 @@ public static class WorkerSelfCheck
         return failures;
     }
 
+    // ── S8: 空闲回收(只摘句柄, 保留槽位与目录组) ──────────────────────────────
+
+    /// <summary>
+    /// S8: 连续空闲超过阈值后, 该 (目录, 会话) 的 Worker <b>句柄</b>应被摘下,
+    /// 而<b>槽位与目录组必须留着</b>(会话还在, 下次 Acquire 走懒重建)。
+    /// </summary>
+    private static async Task<List<string>> CheckIdleReclaimAsync(
+        ToolRegistry registry, string workDir, CancellationToken ct)
+    {
+        var failures = new List<string>();
+        var workerKey = WorkerProtocol.MakeWorkerKey(workDir, SelfCheckSessionId);
+
+        void Check(bool ok, string name)
+        {
+            if (!ok) failures.Add(name);
+        }
+
+        await using var pool = CreateIdleProbePool(registry, IdleProbeTimeout);
+
+        try
+        {
+            var client = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+
+            // 前提断言: 下面每一条"应当被回收"的判断都以"此刻确实空闲"为前提。
+            // 前提不成立时它们会**假通过**(忙着的句柄当然不会被回收), 所以必须先把前提钉住。
+            Check(client.ActiveCallCount == 0 && !client.IsBusy,
+                "S8 刚 Acquire 到的句柄应当是空闲的(前提不成立时本组断言全是假通过)");
+            Check(ReferenceEquals(FindPoolClient(pool, workerKey), client),
+                "S8 Acquire 之后槽位应持有刚拿到的那个句柄(否则后面验的不是它)");
+
+            await Task.Delay(IdleProbeWait, ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+
+            // 8.1 挡住"空闲回收根本没接线": 症状是每开一个会话就常驻一份独立运行时,
+            //     而所有报表(健康快照/状态栏)都完全正常, 没有任何报错。
+            Check(FindPoolClient(pool, workerKey) is null,
+                "S8 空闲超过阈值并对账后, 槽位里的 Worker 句柄应被摘下(否则空闲回收完全没生效: 每开一个会话白养一份运行时)");
+
+            var entry = pool.GetHealth().Entries.FirstOrDefault(e => e.SessionId == SelfCheckSessionId);
+
+            // 8.2 ⚠ 槽位必须还在 —— 这是"槽位级空闲回收"与 Reconcile("会话已不存在 → 摘整个槽位")的
+            //     关键区别。槽位被误删的后果是连锁的: 会话被当成不存在 → 组计数归零 → 组被 L3 退役 →
+            //     下次 Acquire 重新挂载并新建一个组 —— 而"目录里明明还有会话"这件事在任何报表上
+            //     都看不出来, 只会表现为 Worker 莫名其妙地反复重启。
+            Check(entry is not null,
+                "S8 空闲回收只应摘 Worker 句柄, 不应摘掉会话槽位(条目消失说明与 Reconcile 的「会话已不存在」混为一谈, 会连带把目录组误退役)");
+
+            if (entry is not null)
+            {
+                Check(!entry.IsConnected, "S8 回收之后健康快照里的 IsConnected 应为 false");
+
+                // 空闲回收只该摘句柄, 不该动降级痕迹。这两条与传输类型无关, 是"可见性"底线:
+                // 抹掉它们之后, 一个**永久降级**(工具一直在主进程里跑)的会话会在空闲回收后
+                // 翻成「未连接」, 用户与 doctor 都无从知道真相。
+                Check(!string.IsNullOrWhiteSpace(entry.LastSpawnError),
+                    "S8 空闲回收不得抹掉降级原因 LastSpawnError(抹掉后用户只剩「未连接」, 看不到工具其实一直在主进程里跑)");
+
+                // ⚠ 本组跑的是 PipeEnabled=false 的槽位, 它**本来就**是 Degraded, 所以句柄被摘后
+                //   Mode 仍是 Inline; 生产里被空闲回收的是**已连上**的管道句柄, 那时 Mode 是 NotConnected
+                //   —— 两者都只表示"此刻没有存活实例"。这条断言真正挡的是: 空闲回收顺手把 Degraded 清掉,
+                //   于是永久降级的会话也跟着翻成 NotConnected(降级可见性被抹掉)。
+                Check(entry.Mode == WorkerMode.Inline,
+                    "S8 空闲回收不得抹掉「已降级」标记(否则永久降级的会话在空闲回收后会被谎报为「未连接」)");
+            }
+
+            Check(pool.GroupCount == 1, "S8 空闲回收不得退役目录组(会话还在, 组归零即误退役)");
+
+            // 8.3 回收之后再 Acquire: 必须"懒重建"出一个可用句柄, 且仍落进**同一个**组。
+            //     这条同时挡住"组被摘掉后重建出第二个组"(GroupCount 变 2)与"回收之后再也拿不到句柄"。
+            var again = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+            Check(again.IsConnected, "S8 回收之后再次 Acquire 必须拿到可用句柄(空闲回收后是懒重建, 不是失效)");
+            Check(pool.GroupCount == 1,
+                "S8 回收后重新 Acquire 仍应落进同一个目录组(变成 2 说明组被误退役后又重建了一个)");
+
+            // 8.4 幂等: 对账是常驻循环(默认 15s 一轮), 重复调用必须无害。
+            //     少这两句的话, "重复对账把目录组摘掉"这类缺陷会一路活到生产才炸。
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+            Check(pool.GroupCount == 1, "S8 重复对账应幂等(不应把目录组摘掉)");
+            Check(pool.GetHealth().Entries.Any(e => e.SessionId == SelfCheckSessionId),
+                "S8 重复对账之后槽位应仍在(幂等的另一半)");
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 调用方取消原样上抛, 由 RunCoreAsync 收敛
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"S8 空闲回收自检异常({ex.GetType().Name}): {ex.Message}");
+        }
+
+        return failures;
+    }
+
+    // ── S9: 有在飞调用时绝不回收(正确性底线) ──────────────────────────────────
+
+    /// <summary>
+    /// S9: 有<b>在飞工具调用</b>时, 空闲回收必须跳过该槽位。本组是整个空闲回收功能的正确性底线,
+    /// 不是性能项。
+    /// </summary>
+    private static async Task<List<string>> CheckInFlightNoReclaimAsync(
+        ToolRegistry registry, string workDir, CancellationToken ct)
+    {
+        var failures = new List<string>();
+        var workerKey = WorkerProtocol.MakeWorkerKey(workDir, SelfCheckSessionId);
+
+        void Check(bool ok, string name)
+        {
+            if (!ok) failures.Add(name);
+        }
+
+        // ⚠⚠ 构造"在飞调用"的方式(本组最容易写错的地方, 复核请看这里):
+        //   把内联传输的**执行器**换成一道受控的门 —— 被调用即说明 WorkerClient.CallToolAsync
+        //   已经进到传输层(NotifyCallStarted 已执行), 而它 await 的那个 Task 由 release 把闸,
+        //   于是这次调用真的**悬在半空**直到我们放行。
+        //   为什么必须真悬空: 空闲判据读的是 client.ActiveCallCount, 调用一旦返回计数就归零,
+        //   那时它与"空闲"不可区分 —— 断言会假通过。而生产事故(子代理合法跑 30 分钟, 在第 1 分钟
+        //   被当成空闲杀掉)恰恰**只**发生在悬空的那段时间里, 悬空之外复现不出来。
+        //   为什么能塞进内联传输: IdleProbeTimeout 场景里 PipeEnabled=false, Acquire 必然走
+        //   CreateInlineClient → 用的就是下面这个 executor 委托(池的降级路径本来就靠它执行工具)。
+        var entered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource<WorkerToolCallResponse>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        InlineToolExecutor gated = async (_, _) =>
+        {
+            entered.TrySetResult(true);
+            return await release.Task.ConfigureAwait(false);
+        };
+
+        await using var pool = CreateIdleProbePool(registry, IdleProbeTimeout, gated);
+        Task<WorkerToolCallResponse>? pending = null;
+
+        try
+        {
+            var client = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+
+            // 刻意不 await: 这就是"在飞"本身。
+            pending = client.CallToolAsync(
+                new WorkerToolCallRequest
+                {
+                    CallId = NewCallId(),
+                    Name = "read_file",
+                    Arguments = ProbeArguments,
+                    SessionId = SelfCheckSessionId
+                },
+                ct);
+
+            // 等执行器真的进了门再往下走: 否则"在飞"可能只是"我调了方法", 而 NotifyCallStarted
+            // 还没执行 —— 那一刻 ActiveCallCount 仍是 0, 后面整组断言都会假通过。
+            if (await Task.WhenAny(entered.Task, Task.Delay(ProbeTimeout, ct)).ConfigureAwait(false) != entered.Task)
+            {
+                failures.Add("S9 受控执行器没有被进入(在飞状态没成立, 本组断言无意义)");
+                return failures;
+            }
+
+            Check(client.ActiveCallCount == 1,
+                $"S9 在飞调用期间 ActiveCallCount 应为 1(实际 {client.ActiveCallCount})");
+            Check(client.IsBusy, "S9 在飞调用期间 IsBusy 应为 true");
+
+            await Task.Delay(IdleProbeWait, ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+
+            // ⚠ 失败即事故, 文案里写清后果: 一个合法跑 30 分钟的子代理在第 1 分钟被当成空闲杀掉 →
+            //   Worker 被关 → 子代理进程树变孤儿(没人再给它发 cancel) → 它持有的仓库 git 写锁
+            //   要拖到超时才释放, 而用户在界面上只看到"这一回合莫名其妙停了"。
+            Check(ReferenceEquals(FindPoolClient(pool, workerKey), client),
+                "S9 有在飞工具调用时 Worker 被当成空闲回收了 —— 后果是子代理进程变孤儿, 且它持有的 git 写锁要拖到超时才释放");
+            Check(client.IsBusy,
+                "S9 对账之后这次调用仍应在飞(计数被提前清零会让 IsBusy 这个判据整体失效)");
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 调用方取消原样上抛, 由 RunCoreAsync 收敛
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"S9 在飞调用自检异常({ex.GetType().Name}): {ex.Message}");
+        }
+        finally
+        {
+            // ⚠ 必须无条件收尾: InlineTransport.DisposeAsync **刻意不打断**在飞调用(它没有那些调用的
+            //   句柄, 见它的 remarks), 于是没人放闸的话 pending 会永远挂着 —— 既会拖住后续场景,
+            //   也会把"自检卡住"变成下一次 doctor 的症状。顺序也重要: 先放闸再让 await using 释放池。
+            release.TrySetResult(new WorkerToolCallResponse { Content = "S9 收尾: 放行在飞调用" });
+
+            var call = pending;
+            if (call is not null)
+            {
+                try
+                {
+                    // 用 Task.WhenAny 而不是直接 await: 自检的收尾自己也要有闸门,
+                    // 免得"执行器没真正挂在那道门上"这类实现变更把 doctor 永久挂住。
+                    if (await Task.WhenAny(call, Task.Delay(ProbeTimeout, CancellationToken.None)).ConfigureAwait(false) != call)
+                    {
+                        failures.Add("S9 放闸后在飞调用仍未结束(自检自身的收尾失败, 会污染后续场景)");
+                    }
+                    else
+                    {
+                        _ = await call.ConfigureAwait(false);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // 收尾失败不算"被测逻辑失败"(调用方取消 / 传输已释放都会走到这里), 但也不静默: 留一条 Debug。
+                    Log.Debug(Category, $"S9 收尾时在飞调用以 {ex.GetType().Name} 结束: {ex.Message}");
+                }
+            }
+        }
+
+        return failures;
+    }
+
+    // ── S10: 回合进行中不回收(且置 false 后必须真的能回收) ──────────────────────
+
+    /// <summary>
+    /// S10: <c>MarkTurnActive(sessionId, workDir, true)</c> 期间不参与空闲回收;
+    /// 置回 <c>false</c> 之后<b>必须</b>恢复可回收。
+    /// </summary>
+    private static async Task<List<string>> CheckTurnActiveNoReclaimAsync(
+        ToolRegistry registry, string workDir, CancellationToken ct)
+    {
+        var failures = new List<string>();
+        var workerKey = WorkerProtocol.MakeWorkerKey(workDir, SelfCheckSessionId);
+
+        void Check(bool ok, string name)
+        {
+            if (!ok) failures.Add(name);
+        }
+
+        await using var pool = CreateIdleProbePool(registry, IdleProbeTimeout);
+
+        try
+        {
+            var client = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+
+            pool.MarkTurnActive(SelfCheckSessionId, workDir, true);
+
+            await Task.Delay(IdleProbeWait, ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+
+            // 挡住"回合进行中也回收": 回合的 LLM 流式阶段恒定"没有在飞调用",
+            // 那一刻这个 Worker 正被本回合独占使用 —— 被回收等于让下一个工具调用多付一次重建,
+            // 更糟的是把这一回合正在用的句柄从槽位上摘走。
+            Check(ReferenceEquals(FindPoolClient(pool, workerKey), client),
+                "S10 回合进行中不得回收 —— 否则正在流式输出答案的这一回合会在两次工具调用之间的空档被摘掉 Worker");
+
+            // ⚠ 这半段不能省, 否则本场景会**假通过**: 把 MarkTurnActive 整个改成 no-op 也能过上面那条,
+            //   而生产里真实的事故方向恰恰相反 —— 调用方漏置 active:false(没写 try/finally),
+            //   症状是"有的会话的 Worker 永远关不掉"。只有验证 false 真的解锁, 才能发现它。
+            pool.MarkTurnActive(SelfCheckSessionId, workDir, false);
+
+            await Task.Delay(IdleProbeWait, ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+
+            Check(FindPoolClient(pool, workerKey) is null,
+                "S10 MarkTurnActive(false) 之后必须真的能被空闲回收(不回收说明 false 从未生效: 生产里漏置 false 的会话其 Worker 将永远常驻)");
+            Check(pool.GroupCount == 1, "S10 回收不应退役目录组(会话还在)");
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 调用方取消原样上抛, 由 RunCoreAsync 收敛
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"S10 回合活跃标记自检异常({ex.GetType().Name}): {ex.Message}");
+        }
+
+        return failures;
+    }
+
+    // ── S11: 活动时间的刷新入口(实时输出走的就是它) ────────────────────────────
+
+    /// <summary>S11: <see cref="WorkerClient.Touch"/> 必须真的刷新 <c>LastActivityTicks</c>。</summary>
+    private static async Task<List<string>> CheckActivityRefreshAsync(
+        ToolRegistry registry, string workDir, CancellationToken ct)
+    {
+        var failures = new List<string>();
+
+        void Check(bool ok, string name)
+        {
+            if (!ok) failures.Add(name);
+        }
+
+        await using var pool = CreateIdleProbePool(registry, IdleProbeTimeout);
+
+        try
+        {
+            var client = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+
+            var before = client.LastActivityTicks;
+            await Task.Delay(TouchProbeWait, ct).ConfigureAwait(false);
+
+            // 前提: 这段时间里没有任何路径**应该**动活动时间(GetHealth / 对账都不动句柄)。
+            //     若它自己变了, "Touch 有没有生效"就无从判断 —— 明确报出来而不是让下面那条随机红。
+            Check(client.LastActivityTicks == before,
+                "S11 静置期间活动时间不应自行变化(变了说明有别的路径在偷偷 Touch, 本条断言的前提不成立)");
+
+            // ⚠ 为什么用 Touch 而不是去触发 ToolOutputReceived: 内联传输**刻意**不发 toolOutput 通知
+            //   (见 InlineTransport 的「事件恒不触发」), 公开 API 里也没有 raise 的口子;
+            //   而 WorkerClient.OnTransportToolOutput 的第一件事就是调 Touch —— 同一个方法。
+            //   所以这里验的正是那条路径上的写入动作本身。
+            client.Touch();
+
+            Check(client.LastActivityTicks > before,
+                "S11 Touch() 必须刷新 LastActivityTicks —— 实时输出到达时走的正是它(WorkerClient.OnTransportToolOutput); 断了它, 正在吐输出的 Worker 会在下一次吐字之前被当成空闲回收");
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 调用方取消原样上抛, 由 RunCoreAsync 收敛
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"S11 活动时间刷新自检异常({ex.GetType().Name}): {ex.Message}");
+        }
+
+        return failures;
+    }
+
+    // ── S12: 空闲阈值关闭时行为不变 ───────────────────────────────────────────
+
+    /// <summary>S12: <c>DirectoryIdleTimeout = TimeSpan.Zero</c> 时不得回收(退回「只有 L3 回收」)。</summary>
+    private static async Task<List<string>> CheckIdleTimeoutDisabledAsync(
+        ToolRegistry registry, string workDir, CancellationToken ct)
+    {
+        var failures = new List<string>();
+        var workerKey = WorkerProtocol.MakeWorkerKey(workDir, SelfCheckSessionId);
+
+        void Check(bool ok, string name)
+        {
+            if (!ok) failures.Add(name);
+        }
+
+        await using var pool = CreateIdleProbePool(registry, TimeSpan.Zero);
+
+        try
+        {
+            var client = await pool.AcquireAsync(SelfCheckSessionId, workDir, null, null, false, ct)
+                .ConfigureAwait(false);
+
+            await Task.Delay(IdleProbeWait, ct).ConfigureAwait(false);
+            await pool.ReconcileNowAsync(ct).ConfigureAwait(false);
+
+            // 挡住"关不掉的开关": 该项是用户可见的开关(置零 = 完全关闭), 而对账循环本身照跑,
+            // 于是"阈值判断写错成永远成立"会表现为关不掉 —— 一个没人能自己绕开的常驻进程。
+            Check(ReferenceEquals(FindPoolClient(pool, workerKey), client),
+                "S12 DirectoryIdleTimeout=TimeSpan.Zero 时不得回收(该项是开关: 关掉后必须回到「只有 L3 回收」的改造前语义)");
+            Check(pool.GroupCount == 1, "S12 阈值关闭时目录组不应被摘掉");
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // 调用方取消原样上抛, 由 RunCoreAsync 收敛
+        }
+        catch (Exception ex)
+        {
+            failures.Add($"S12 阈值关闭自检异常({ex.GetType().Name}): {ex.Message}");
+        }
+
+        return failures;
+    }
+
     // ───────────────────────────── 内联侧的对端实现 ─────────────────────────────
 
     /// <summary>造一个内联传输。<paramref name="executor"/> 为 null 时用标准实现(跑本地注册表)。</summary>
@@ -963,6 +1348,70 @@ public static class WorkerSelfCheck
         }).ToList();
 
     // ───────────────────────────── 小工具 ─────────────────────────────
+
+    /// <summary>
+    /// 造一个「专测空闲回收」的池: 内联传输(不 spawn 任何进程)、给定的空闲阈值、
+    /// <b>手动</b>对账(关掉后台循环, 让每一轮回收都由场景显式触发)。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么必须给 <c>liveSessionProvider</c>(S7 传的是 null)</b>:
+    /// <see cref="WorkerPool.ReconcileNowAsync"/> 拿不到比对基准时<b>静默跳过整轮</b>(它宁可漏回收也不误回收),
+    /// 于是本组场景会全部"跑完且全绿", 却什么都没验到 —— 这是最坏的一种覆盖: 看起来有断言,
+    /// 实际是空转。所以这里给的集合里含本会话: "会话还在"这条前提被显式固定,
+    /// 场景测的才是空闲回收, 而不是 <c>Reconcile</c> 那条「会话已不存在 → 摘整个槽位」的路径。</para>
+    ///
+    /// <para><b>为什么关掉后台对账循环</b>(<c>ReconcileInterval = TimeSpan.Zero</c>): 生产里节拍会被
+    /// 空闲阈值拉细到「阈值/4」(本组 200ms → 撞 2s 下界), 那个后台循环会在断言中途抢先回收,
+    /// 于是"是谁触发的"变成竞态、失败无法复现。这里让每一轮回收都只由 <c>ReconcileNowAsync</c> 驱动。
+    /// 代价: 这个池不会自动回收"已消失的会话", 而本组场景不测那条, 所以没有覆盖损失。</para>
+    ///
+    /// <para><b>为什么用内联传输也等于覆盖了管道的判据</b>: <c>DetachIdleClients</c> 只读槽位字段与句柄的
+    /// 活动度(<c>IsBusy</c> / <c>LastActivityTicks</c>), 与传输类型无关; 真实管道那一侧由 S4 单独覆盖
+    /// (它验的是握手/编解码/退出, 不是空闲判据)。同时本自检的副作用纪律禁止在这几组场景里
+    /// 额外 spawn 进程。</para>
+    /// </remarks>
+    private static WorkerPool CreateIdleProbePool(
+        ToolRegistry registry, TimeSpan idleTimeout, InlineToolExecutor? executor = null)
+    {
+        IToolTransport InlineFactory(string sessionId, string dir, string workspaceRoot,
+            string? commanderPersonaText, IReadOnlyList<AgentRosterEntry>? rosterEntries, bool planMode)
+            => CreateInline(registry, new ToolContext
+            {
+                WorkspaceRoot = dir,
+                SessionId = sessionId,
+                IsPlanMode = planMode,
+                CommanderPersonaText = commanderPersonaText,
+                RosterEntries = rosterEntries
+            }, executor);
+
+        var live = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { SelfCheckSessionId };
+
+        return new WorkerPool(
+            // 同 S7: 必须用纯内存解析器(生产实现会起 2 个 git 进程)。
+            new SelfCheckResolver(),
+            InlineFactory,
+            liveSessionProvider: () => live,
+            options: new WorkerPoolOptions
+            {
+                PipeEnabled = false,
+                DirectoryIdleTimeout = idleTimeout,
+                ReconcileInterval = TimeSpan.Zero
+            });
+    }
+
+    /// <summary>在池当前持有的句柄里按 worker key 找; 返回 null = 该槽位的 <c>Client</c> 已是 null。</summary>
+    /// <remarks>刻意用 <see cref="WorkerPool.EnumerateClients"/> 而不是 <c>GetHealth</c>: 后者是纯数据快照,
+    /// 按设计就不持句柄, 只能间接推断; 前者直接回答"槽位里此刻有没有句柄", 而且支持<b>引用相等</b>断言 ——
+    /// 「还是原来那个句柄」比「有个句柄」强得多(被换成一个新句柄同样意味着当前这次调用被打断了)。</remarks>
+    private static WorkerClient? FindPoolClient(WorkerPool pool, string workerKey)
+    {
+        foreach (var client in pool.EnumerateClients())
+        {
+            if (string.Equals(client.WorkerKey, workerKey, StringComparison.Ordinal)) return client;
+        }
+
+        return null;
+    }
 
     /// <summary>自检用固定解析器: 目录即工作区根、无分支。纯内存, 不起任何进程。</summary>
     private sealed class SelfCheckResolver : IWorkspaceResolver
