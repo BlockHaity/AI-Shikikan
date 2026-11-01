@@ -157,7 +157,10 @@ jobs:
             -p:PublishAot=false \
             -p:Version=${{ needs.check.outputs.version }} -o stage/worker/dotnet
 
+      # Linux 不再产出自带运行时的 selfcontained 变体: 系统包通过 apt/rpm/pacman
+      # 依赖 dotnet-runtime 来提供运行时, 归档里再塞一份等于重复占用磁盘。
       - name: Publish self-contained (with .NET runtime)
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
@@ -168,6 +171,7 @@ jobs:
             -p:Version=${{ needs.check.outputs.version }} -o stage/selfcontained
 
       - name: Publish Worker self-contained (with .NET runtime)
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           dotnet publish src/AIShikikan.Worker/AIShikikan.Worker.csproj \
@@ -207,7 +211,10 @@ jobs:
           # 不排除会让 AOT 归档体积翻倍 (实测 73.4MB -> 47.5MB)
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/aot" .
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/dotnet" .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/selfcontained" .
+          # Linux 无 selfcontained 变体 (运行时由系统包依赖提供)
+          if [ -d "$PACK/selfcontained" ]; then
+            tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/selfcontained" .
+          fi
 
       - name: Package artifacts (Windows)
         if: runner.os == 'Windows'
@@ -255,6 +262,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload selfcontained artifact
+        if: runner.os != 'Linux'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.rid }}-selfcontained
@@ -334,7 +342,7 @@ jobs:
             exit 1
           fi
           cp CHANGELOG.md release_body.md
-          printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n\n发布资产含 `index.json`: 记录每个归档内文件来自哪个模块 (worker / core / gui) 及模块依赖链。Linux 系统包 (deb/rpm/pacman) 由独立的软件源仓库 `app-source` 基于本索引构建并发布。\n' >> release_body.md
+          printf '\n构建版本:\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用 (仅 Windows / macOS)\n\nLinux 不提供 selfcontained 变体: deb/rpm/pacman 包已将 `dotnet-runtime` 声明为依赖, 由系统包管理器安装运行时。\n\n发布资产含 `index.json`: 记录每个归档内文件来自哪个模块 (worker / core / gui) 及模块依赖链。Linux 系统包 (deb/rpm/pacman) 由独立的软件源仓库 `app-source` 基于本索引构建并发布。\n' >> release_body.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v3.0.3

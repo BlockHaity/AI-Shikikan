@@ -90,6 +90,8 @@ Windows 对应 `.\debug.ps1 [-NoBuild] [-Configuration Debug] [app arguments...]
 
 主仓库只产出 `zip` / `tar.gz` 完整应用归档，并附带 `index.json` —— 记录归档内每个文件来自哪个模块（`worker` / `core` / `gui`）及模块依赖链（`worker ← core ← gui`）。apt / rpm / pacman 系统包由独立的软件源仓库 [BlockHaity/AI-Shikikan-App-Source](https://github.com/BlockHaity/AI-Shikikan-App-Source) 基于该索引构建，并发布到其 `gh-pages` 分支。
 
+Linux 归档只有 `AOT` 与 `dotnet` 两种变体，不再自带 .NET 运行时；系统包将 `dotnet-runtime` 声明为依赖，由包管理器安装运行时。Windows / macOS 仍保留 `selfcontained`。
+
 ```
 主仓库 Release（zip/tar + index.json）
         │ repository_dispatch

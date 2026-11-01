@@ -64,7 +64,7 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 | `Directory.Build.props` | 三项目共用属性：TFM / Nullable / ImplicitUsings / `IsAotCompatible` / 裁剪与 AOT 静音开关 / 从 VERSION 注入版本 |
 | `build.sh` / `build.ps1` | 发布构建脚本（**仅当前平台**：命令 `all`（默认，三变体）/ `aot` / `selfcontained` / `dotnet` / `clean`，环境变量 `CONFIGURATION` / `VERSION`；无 `ARCH`、无 `AOT_MODE`）。**每个变体同时产出 GUI 与 Worker** |
 | `debug.sh` / `debug.ps1` | 本地调试：`dotnet run --project src/AIShikikan.Gui/AIShikikan.Gui.csproj`，余下参数原样透传给程序；`--no-build`（或 `NO_BUILD=1`）跳过编译。启动前先编译 Worker（框架依赖）并 `export AISHIKIKAN_WORKER_PATH` |
-| `.github/workflows/release.yml` | 手动触发的 Release 发布流程（三种变体的归档里都含 `worker/` 子目录），只产出 zip / tar.gz + `index.json`，并可通过 API 触发软件源仓库 app-source |
+| `.github/workflows/release.yml` | 手动触发的 Release 发布流程（Linux 产出 AOT / dotnet 两种变体，Windows / macOS 产出三种；归档里都含 `worker/` 子目录），只产出 zip / tar.gz + `index.json`，并可通过 API 触发软件源仓库 app-source |
 | `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow（只产出 zip / tar.gz + 索引，不做系统包） |
 | `scripts/gen_index.py` | 扫描归档并生成 `index.json`：记录每个归档文件来自哪个模块（worker / core / gui）及模块依赖链（worker ← core ← gui） |
 | `set-version.sh` | 一键修改版本号（同步 VERSION / `src/AIShikikan.Gui/app.manifest` / AGENTS.md / 脚本与 CI 回退值） |
@@ -533,7 +533,7 @@ ci: GitHub Actions 相关
 ## 发布
 
 - 版本：更新根目录 `VERSION` 文件。
-- 发布流程：`.github/workflows/release.yml`（手动触发），按 `v<版本>` 标签去重构建并发布 GitHub Release（含 AOT / dotnet / selfcontained 三种包，**每种包里都含 `worker/` 子目录的对应变体 Worker**）。发布前确认 `VERSION` 已更新且对应 tag 不存在。
+- 发布流程：`.github/workflows/release.yml`（手动触发），按 `v<版本>` 标签去重构建并发布 GitHub Release（Linux 为 AOT / dotnet 两种包，Windows / macOS 另含 selfcontained；**每种包里都含 `worker/` 子目录的对应变体 Worker**）。Linux 不产出自带运行时的变体，deb/rpm/pacman 包把 `dotnet-runtime` 声明为依赖。发布前确认 `VERSION` 已更新且对应 tag 不存在。
 - ⚠️ **两个 workflow 在缺 Worker 产物时都只 `warn` 不 fail**（归档会缺 `worker/`，用户拿到的是"工具静默退回进程内执行"）。若改了产物布局，这条 warn 就是唯一的提示，别当成可以忽略的噪声。
 - 本地构建辅助：`.github/workflows/debug.yml`（手动触发；产出 zip / tar.gz 归档与 `index.json` 并上传为 workflow artifacts，不发布 GitHub Release，也不做系统包）。
 - 系统包来源：本仓库只产出 zip / tar.gz 完整应用归档 + `index.json`；apt / rpm / pacman 系统包与软件源元数据由 app-source 仓库消费该索引后构建并发布到 gh-pages。

@@ -134,7 +134,9 @@ jobs:
             -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained false \
             -p:PublishAot=false -o stage/worker/dotnet
 
+      # Linux 不再产出自带运行时的 selfcontained 变体 (运行时由系统包依赖提供)
       - name: Publish self-contained (with .NET runtime)
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           dotnet publish src/AIShikikan.Gui/AIShikikan.Gui.csproj \
@@ -144,6 +146,7 @@ jobs:
             -p:IncludeNativeLibrariesForSelfExtract=true -o stage/selfcontained
 
       - name: Publish Worker self-contained (with .NET runtime)
+        if: runner.os != 'Linux'
         shell: bash
         run: |
           dotnet publish src/AIShikikan.Worker/AIShikikan.Worker.csproj \
@@ -196,7 +199,9 @@ jobs:
           done
           # 排除调试符号 (*.pdb / *.dbg), AOT 变体的 .dbg 体积可与主程序相当
           tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-dotnet.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/dotnet" .
-          tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/selfcontained" .
+          if [ -d "$PACK/selfcontained" ]; then
+            tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/selfcontained" .
+          fi
           if [ "${{ inputs.aot }}" = "true" ]; then
             tar czf dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.tar.gz --exclude='*.pdb' --exclude='*.dbg' -C "$PACK/aot" .
           fi
@@ -269,6 +274,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload selfcontained artifact
+        if: runner.os != 'Linux'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained
