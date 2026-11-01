@@ -33,6 +33,7 @@ namespace AIShikikan.Core.Serialization;
 [JsonSerializable(typeof(ThemeService.Preferences))]
 [JsonSerializable(typeof(McpConfigFile))]
 [JsonSerializable(typeof(McpServerDefinition))]
+[JsonSerializable(typeof(AIShikikan.Core.Services.Worker.WorkerConfig))]
 [JsonSerializable(typeof(ModelConfigFile))]
 [JsonSerializable(typeof(ModelPriceConfig))]
 internal sealed partial class TomlJsonContext : JsonSerializerContext;

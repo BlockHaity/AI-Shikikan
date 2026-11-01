@@ -139,3 +139,14 @@ public interface IWorkerToolHostSync
     /// </remarks>
     void ApplyToolsSync(WorkerToolsSyncRequest request);
 }
+
+/// <summary>
+/// <see cref="IWorkerToolHost"/> 的可选扩展: 暴露实时输出出口。
+/// <para>stdio 入口在 Worker 项目里直接把 <c>host.OutputSink</c> 接到 <see cref="WorkerServer"/> 上;
+/// WebSocket 服务端位于 Core, 不认识 Worker 项目的具体宿主类型, 因此用这个接口完成同样的接线。</para>
+/// </summary>
+public interface IWorkerToolHostOutput
+{
+    /// <summary>工具实时输出出口。为 null 时宿主只落日志。</summary>
+    Action<WorkerToolOutputNotification>? OutputSink { get; set; }
+}
