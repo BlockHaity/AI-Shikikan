@@ -86,6 +86,29 @@ Windows 对应 `.\debug.ps1 [-NoBuild] [-Configuration Debug] [app arguments...]
 ./artifacts/dotnet/AIShikikan.Gui doctor
 ```
 
+## 打包与软件源
+
+主仓库只产出 `zip` / `tar.gz` 完整应用归档，并附带 `index.json` —— 记录归档内每个文件来自哪个模块（`worker` / `core` / `gui`）及模块依赖链（`worker ← core ← gui`）。apt / rpm / pacman 系统包由独立的软件源仓库 [BlockHaity/AI-Shikikan-Source](https://github.com/BlockHaity/AI-Shikikan-Source) 基于该索引构建，并发布到其 `gh-pages` 分支。
+
+```
+主仓库 Release（zip/tar + index.json）
+        │ repository_dispatch
+        ▼
+app-source：按索引拆包 → 生成仓库元数据 → gh-pages
+```
+
+### 仓库配置
+
+软件源仓库地址已写死在 [release.yml](.github/workflows/release.yml) 的 `SOURCE_REPOSITORY`（默认 `BlockHaity/AI-Shikikan-Source`），更换时直接改这一行。
+
+1. 创建软件源仓库 `BlockHaity/AI-Shikikan-Source`（公开），把本地 `app-source/` 目录推送上去。
+2. 软件源仓库 Settings → Pages → Source 选择 `gh-pages` 分支。
+3. 在本仓库 Settings → Secrets and variables → Actions 新建 Secret `SOURCE_REPO_TOKEN`：一个有软件源仓库 `contents: write` 权限的 Personal Access Token。跨仓库 `repository_dispatch` 必须用 PAT，`GITHUB_TOKEN` 只作用于当前仓库。
+4. 未配置该 Secret 时发布仍会成功，只跳过自动触发；此时到软件源仓库 Actions 页面手动 Run workflow 并填版本号即可重建。
+5. 两个仓库均为公开仓库，软件源仓库读取本仓库 Release 资产无需额外令牌。
+
+安装方式（apt / rpm / pacman）见软件源仓库 README。
+
 ## 配置
 
 配置文件存放在用户目录：

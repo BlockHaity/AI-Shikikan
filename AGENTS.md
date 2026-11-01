@@ -20,7 +20,7 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
   build.sh build.ps1           - 发布构建（publish + 打包归档，GUI 与 Worker 同时产出）
   debug.sh debug.ps1           - 本地调试（dotnet run，不 publish）
   set-version.sh               - 一键改版本号
-  Packagers/                   - Linux 系统包打包（deb / rpm / pacman），CI 引用
+  scripts/gen_index.py         - 生成发布索引（归档内文件 → 模块归属 / 依赖链）
   templates/                   - 面向用户的 example 文件
   static/                      - README 插图
   docs/plans/                  - 方案与决策归档
@@ -64,10 +64,10 @@ AI-Shikikan 是一个用 **.NET 10 / C#** 开发的「Agent 指挥官」：把 C
 | `Directory.Build.props` | 三项目共用属性：TFM / Nullable / ImplicitUsings / `IsAotCompatible` / 裁剪与 AOT 静音开关 / 从 VERSION 注入版本 |
 | `build.sh` / `build.ps1` | 发布构建脚本（**仅当前平台**：命令 `all`（默认，三变体）/ `aot` / `selfcontained` / `dotnet` / `clean`，环境变量 `CONFIGURATION` / `VERSION`；无 `ARCH`、无 `AOT_MODE`）。**每个变体同时产出 GUI 与 Worker** |
 | `debug.sh` / `debug.ps1` | 本地调试：`dotnet run --project src/AIShikikan.Gui/AIShikikan.Gui.csproj`，余下参数原样透传给程序；`--no-build`（或 `NO_BUILD=1`）跳过编译。启动前先编译 Worker（框架依赖）并 `export AISHIKIKAN_WORKER_PATH` |
-| `.github/workflows/release.yml` | 手动触发的 Release 发布流程（三种变体的归档里都含 `worker/` 子目录） |
-| `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow |
-| `Packagers/` | Linux 系统包打包：`linux/package.sh`（deb/rpm/pacman 构建脚本）+ deb(control) / rpm(spec) / pacman(PKGBUILD) / .desktop 模板，两个 workflow 均调用 `package.sh`。Worker 装到 `<prefix>/lib/<pkg>/worker/` |
-| `set-version.sh` | 一键修改版本号（同步 VERSION / PKGBUILD / `src/AIShikikan.Gui/app.manifest` / AGENTS.md / 脚本与 CI 回退值） |
+| `.github/workflows/release.yml` | 手动触发的 Release 发布流程（三种变体的归档里都含 `worker/` 子目录），只产出 zip / tar.gz + `index.json`，并可通过 API 触发软件源仓库 app-source |
+| `.github/workflows/debug.yml` | 手动触发的构建产物辅助 workflow（只产出 zip / tar.gz + 索引，不做系统包） |
+| `scripts/gen_index.py` | 扫描归档并生成 `index.json`：记录每个归档文件来自哪个模块（worker / core / gui）及模块依赖链（worker ← core ← gui） |
+| `set-version.sh` | 一键修改版本号（同步 VERSION / `src/AIShikikan.Gui/app.manifest` / AGENTS.md / 脚本与 CI 回退值） |
 
 > ✅ 根目录只有 `.slnx` 一个解决方案文件，裸 `dotnet build` 可直接用（重组前根目录同时有 csproj 与 slnx，会报 MSB1011）。
 >
@@ -371,14 +371,14 @@ NO_BUILD=1 ./debug.sh --version  # --no-build 的环境变量写法
 # AOT / 自包含 / 单文件产物只能走发布链路验证
 ./build.sh aot
 
-# Linux 系统包（deb / rpm / pacman）
-# ⚠️ STAGE_DIR 必须与 ./build.sh 的输出一致（build.sh 写 artifacts/，不是 stage/）。
-#    漏掉它会在前置校验处明确报错，不会装出坏包，但不如一开始就对。
-#    WORKER_STAGE_DIR 默认从 STAGE_DIR 派生，无需显式传。
-VERSION=$(cat VERSION) VARIANTS=dotnet STAGE_DIR=artifacts \
-  FORMATS=pacman ./Packagers/linux/package.sh   # 需先 ./build.sh dotnet
+# 发布索引（记录归档内文件来自哪个模块，供软件源仓库拆分系统包）
+VERSION=$(cat VERSION) python3 scripts/gen_index.py \
+  --version "$VERSION" --dir artifacts --out artifacts/index.json
 
-# 修改版本号（一键同步 VERSION / PKGBUILD / app.manifest / AGENTS.md 版本标注 / 脚本与 CI 回退值）
+# Linux 系统包（deb / rpm / pacman）由独立仓库 app-source 基于上方索引构建，
+# 本仓库不再产出系统包。
+
+# 修改版本号（一键同步 VERSION / app.manifest / AGENTS.md 版本标注 / 脚本与 CI 回退值）
 ./set-version.sh 0.9.1-vibe   # 改版本（GitHub tag 会自动补 v 前缀）
 ./set-version.sh current      # 查看当前版本
 
@@ -535,7 +535,8 @@ ci: GitHub Actions 相关
 - 版本：更新根目录 `VERSION` 文件。
 - 发布流程：`.github/workflows/release.yml`（手动触发），按 `v<版本>` 标签去重构建并发布 GitHub Release（含 AOT / dotnet / selfcontained 三种包，**每种包里都含 `worker/` 子目录的对应变体 Worker**）。发布前确认 `VERSION` 已更新且对应 tag 不存在。
 - ⚠️ **两个 workflow 在缺 Worker 产物时都只 `warn` 不 fail**（归档会缺 `worker/`，用户拿到的是"工具静默退回进程内执行"）。若改了产物布局，这条 warn 就是唯一的提示，别当成可以忽略的噪声。
-- 本地构建辅助：`.github/workflows/debug.yml`（手动触发；产出上传为 workflow artifacts，含 Linux deb/rpm/pacman 打包，但不发布 GitHub Release）。
+- 本地构建辅助：`.github/workflows/debug.yml`（手动触发；产出 zip / tar.gz 归档与 `index.json` 并上传为 workflow artifacts，不发布 GitHub Release，也不做系统包）。
+- 系统包来源：本仓库只产出 zip / tar.gz 完整应用归档 + `index.json`；apt / rpm / pacman 系统包与软件源元数据由 app-source 仓库消费该索引后构建并发布到 gh-pages。
 
 ## 注意事项
 

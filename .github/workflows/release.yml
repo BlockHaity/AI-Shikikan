@@ -17,6 +17,10 @@ on:
         type: boolean
         default: false
 
+# 创建 Release 与推送标签需要写权限
+permissions:
+  contents: write
+
 env:
   DOTNET_VERSION: '10.0.x'
 
@@ -118,11 +122,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang zlib1g-dev
 
-      - name: Install Linux packaging tools
-        if: startsWith(matrix.rid, 'linux')
-        run: |
-          sudo apt-get install -y rpm zstd imagemagick
-
       - name: Publish AOT (Native AOT)
         shell: bash
         run: |
@@ -177,17 +176,6 @@ jobs:
             -p:PublishTrimmed=true -p:TrimMode=partial \
             -p:IncludeNativeLibrariesForSelfExtract=true \
             -p:Version=${{ needs.check.outputs.version }} -o stage/worker/selfcontained
-
-      - name: Build Linux packages (deb / rpm / pacman)
-        if: startsWith(matrix.rid, 'linux')
-        shell: bash
-        env:
-          VERSION: ${{ needs.check.outputs.version }}
-          RID: ${{ matrix.rid }}
-          VARIANTS: "dotnet selfcontained aot"
-          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
-          MAINTAINER: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
-        run: ./Packagers/linux/package.sh
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
@@ -273,17 +261,6 @@ jobs:
           path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-selfcontained.*
           if-no-files-found: error
 
-      - name: Upload Linux packages (deb/rpm/pacman)
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-packages
-          path: |
-            dist/*.deb
-            dist/*.rpm
-            dist/*.pkg.tar.zst
-          if-no-files-found: error
-
   release:
     name: Publish GitHub Release
     needs: [check, build]
@@ -327,8 +304,18 @@ jobs:
       - name: List downloaded files
         run: find artifacts -type f | sort
 
-      # 产物完整性校验: 一次性列出本次 Release 全部资产 (归档 + 系统包) 的
-      # sha256, 供下游分发方校验, 也便于事后核对某次发布的文件是否被改动。
+      # 发布索引: 主仓库只负责 zip / tar.gz 完整应用归档, 每个归档内文件按来源
+      # 模块 (worker / core / gui) 归类, 并记录模块依赖链 (worker <- core <- gui)。
+      # app-source 仓库据此拆分出独立的 deb / rpm / pacman 包。
+      - name: Generate distribution index
+        run: |
+          python3 scripts/gen_index.py \
+            --version "${{ needs.check.outputs.version }}" \
+            --dir artifacts \
+            --out artifacts/index.json
+
+      # 产物完整性校验: 一次性列出本次 Release 全部资产的 sha256,
+      # 供下游分发方校验, 也便于事后核对某次发布的文件是否被改动。
       - name: Generate SHA256SUMS
         run: |
           set -euo pipefail
@@ -347,7 +334,7 @@ jobs:
             exit 1
           fi
           cp CHANGELOG.md release_body.md
-          printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n\nLinux 系统包 (deb/rpm/pacman):\n- **.deb**: Debian / Ubuntu\n- **.rpm**: Fedora / RHEL / dnf 系\n- **.pkg.tar.zst**: Arch Linux / Manjaro\n' >> release_body.md
+          printf '\n包含三种构建版本 (每平台):\n- **AOT**: Native AOT 编译, 无需 .NET 运行时, 启动最快\n- **dotnet**: 常规发布, 需要安装 .NET 10 运行时\n- **selfcontained**: 自带 .NET 运行时, 开箱即用\n\n发布资产含 `index.json`: 记录每个归档内文件来自哪个模块 (worker / core / gui) 及模块依赖链。Linux 系统包 (deb/rpm/pacman) 由独立的软件源仓库 `app-source` 基于本索引构建并发布。\n' >> release_body.md
 
       - name: Create Release
         uses: softprops/action-gh-release@v3.0.3
@@ -366,3 +353,23 @@ jobs:
             artifacts/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 通过 GitHub API 触发软件源仓库 (app-source) 构建系统包。
+      # 软件源仓库地址已写死; 未配置密钥 SOURCE_REPO_TOKEN 时仅告警跳过,
+      # 不影响主仓库发布本身 (软件源可随时用 workflow_dispatch 手动重建)。
+      - name: Trigger software source repository
+        env:
+          SOURCE_REPOSITORY: BlockHaity/AI-Shikikan-Source
+          SOURCE_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SOURCE_TOKEN:-}" ]; then
+            echo "::warning::未配置 SOURCE_REPO_TOKEN, 跳过软件源仓库触发"
+            exit 0
+          fi
+          curl -sS -f -X POST \
+            -H "Authorization: Bearer ${SOURCE_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${SOURCE_REPOSITORY}/dispatches" \
+            -d "{\"event_type\":\"release\",\"client_payload\":{\"version\":\"${{ needs.check.outputs.version }}\",\"tag\":\"v${{ needs.check.outputs.version }}\",\"repository\":\"${GITHUB_REPOSITORY}\"}}"
+          echo "已触发软件源仓库: ${SOURCE_REPOSITORY} (version=${{ needs.check.outputs.version }})"

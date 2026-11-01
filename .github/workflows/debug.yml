@@ -20,6 +20,10 @@ on:
         type: boolean
         default: false
 
+# 调试构建只读取仓库内容并上传 workflow artifacts
+permissions:
+  contents: read
+
 env:
   DOTNET_VERSION: '10.0.x'
 
@@ -114,11 +118,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang zlib1g-dev
 
-      - name: Install Linux packaging tools
-        if: startsWith(matrix.rid, 'linux')
-        run: |
-          sudo apt-get install -y rpm zstd imagemagick
-
       - name: Publish regular dotnet (framework-dependent)
         shell: bash
         run: |
@@ -170,17 +169,6 @@ jobs:
             -c ${{ inputs.configuration }} -r ${{ matrix.rid }} --self-contained true \
             -p:PublishAot=true -p:PublishSingleFile=true -p:StripSymbols=true \
             -o stage/worker/aot
-
-      - name: Build Linux packages (deb / rpm / pacman)
-        if: startsWith(matrix.rid, 'linux')
-        shell: bash
-        env:
-          VERSION: ${{ needs.check.outputs.version }}
-          RID: ${{ matrix.rid }}
-          VARIANTS: ${{ inputs.aot && 'dotnet selfcontained aot' || 'dotnet selfcontained' }}
-          HOMEPAGE: ${{ github.server_url }}/${{ github.repository }}
-          MAINTAINER: ${{ github.actor }} <${{ github.actor }}@users.noreply.github.com>
-        run: ./Packagers/linux/package.sh
 
       - name: Package artifacts (Unix)
         if: runner.os != 'Windows'
@@ -246,6 +234,33 @@ jobs:
             Compress-Archive -Path "$pack/aot/*" -DestinationPath dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.zip
           }
 
+      # 发布索引: 记录归档内每个文件来自哪个模块 (worker / core / gui) 与模块依赖链。
+      # 仅生成当前 runner 的归档索引, 供软件源仓库拆分系统包使用。
+      - name: Generate distribution index (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          python3 scripts/gen_index.py \
+            --version "${{ needs.check.outputs.version }}" \
+            --dir dist \
+            --out dist/index.json
+
+      - name: Generate distribution index (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          python scripts/gen_index.py `
+            --version "${{ needs.check.outputs.version }}" `
+            --dir dist `
+            --out dist/index.json
+
+      - name: Upload distribution index
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.rid }}-${{ inputs.configuration }}-index
+          path: dist/index.json
+          if-no-files-found: error
+
       - name: Upload dotnet artifact
         uses: actions/upload-artifact@v6
         with:
@@ -268,74 +283,3 @@ jobs:
           path: dist/AIShikikan-${{ needs.check.outputs.version }}-${{ matrix.rid }}-${{ inputs.configuration }}-AOT.*
           if-no-files-found: error
 
-      - name: Upload Linux dotnet deb
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-deb
-          path: dist/*_dotnet.deb
-          if-no-files-found: error
-
-      - name: Upload Linux dotnet rpm
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-rpm
-          path: dist/*_dotnet.rpm
-          if-no-files-found: error
-
-      - name: Upload Linux dotnet pacman
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-dotnet-pacman
-          path: dist/*_dotnet.pkg.tar.zst
-          if-no-files-found: error
-
-      - name: Upload Linux selfcontained deb
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-deb
-          path: dist/*_selfcontained.deb
-          if-no-files-found: error
-
-      - name: Upload Linux selfcontained rpm
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-rpm
-          path: dist/*_selfcontained.rpm
-          if-no-files-found: error
-
-      - name: Upload Linux selfcontained pacman
-        if: startsWith(matrix.rid, 'linux')
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-selfcontained-pacman
-          path: dist/*_selfcontained.pkg.tar.zst
-          if-no-files-found: error
-
-      - name: Upload Linux aot deb
-        if: startsWith(matrix.rid, 'linux') && inputs.aot
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-deb
-          path: dist/*_aot.deb
-          if-no-files-found: error
-
-      - name: Upload Linux aot rpm
-        if: startsWith(matrix.rid, 'linux') && inputs.aot
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-rpm
-          path: dist/*_aot.rpm
-          if-no-files-found: error
-
-      - name: Upload Linux aot pacman
-        if: startsWith(matrix.rid, 'linux') && inputs.aot
-        uses: actions/upload-artifact@v6
-        with:
-          name: ${{ matrix.rid }}-${{ inputs.configuration }}-aot-pacman
-          path: dist/*_aot.pkg.tar.zst
-          if-no-files-found: error
