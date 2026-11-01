@@ -359,7 +359,7 @@ jobs:
       # 不影响主仓库发布本身 (软件源可随时用 workflow_dispatch 手动重建)。
       - name: Trigger software source repository
         env:
-          SOURCE_REPOSITORY: BlockHaity/AI-Shikikan-Source
+          SOURCE_REPOSITORY: BlockHaity/AI-Shikikan-App-Source
           SOURCE_TOKEN: ${{ secrets.SOURCE_REPO_TOKEN }}
         run: |
           set -euo pipefail
