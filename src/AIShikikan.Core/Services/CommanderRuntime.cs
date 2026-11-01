@@ -256,6 +256,10 @@ public sealed class CommanderRuntime
         // ⚠ liveSessionProvider 必须接: 它是对账(每 60s)的比对基准, 传 null 会把对账整个关掉,
         // 于是 L3("目录完全没有会话 → 关掉全部 Worker")就只能依赖每一次 Release 都被正确调用,
         // 而那两条路径(GUI 删会话 / 主进程退出)目前都还没接 —— 漏一次就是进程永久残留, 且无任何现象。
+        //
+        // worker.toml 在这里只读一次: 传输模式(stdio / websocket)在一次运行内不切换,
+        // 池据此决定"定位并派生子进程"还是"连远程 Worker"。改配置需要重启应用。
+        var workerConfig = WorkerConfigService.Load();
         Instance.Workers = new WorkerPool(
             workspaceResolver,
             // ⚠ 形参刻意不叫 personaText: Boot 上方已有一个同名局部变量(personaText),
@@ -271,7 +275,8 @@ public sealed class CommanderRuntime
                         request, token, workspaceRoot, commanderPersonaText, rosterEntries, planMode),
                     lister: (request, _) => Instance.ListWorkerToolsInlineAsync(
                         request, workspaceRoot, commanderPersonaText, rosterEntries, planMode)),
-            liveSessionProvider: () => WorkerPool.LiveSessionIdsFrom(sessions.AllSessions));
+            liveSessionProvider: () => WorkerPool.LiveSessionIdsFrom(sessions.AllSessions),
+            workerConfig: workerConfig);
 
         // 分派状态经 Hub 广播一次(替代旧的每引擎订阅, 避免多会话重复触发)
         assignments.AssignmentChanged += a => hub.Publish(new EngineAssignmentChanged(a));
@@ -280,9 +285,17 @@ public sealed class CommanderRuntime
         var runtime = Instance;
         _ = Task.Run(async () => await runtime.RefreshMcpToolsAsync().ConfigureAwait(false));
 
+        // 启动日志带上 Worker 传输模式: 远程连接失败与本地产物缺失的表现完全不同,
+        // 排障时第一眼要能分清"这次到底有没有派生子进程"。
+        var workerModeText = workerConfig.IsWebSocket
+            ? $"websocket({workerConfig.ResolveClientUrl() ?? "未配置 url"}, " +
+              $"远端目录={workerConfig.EffectiveRemoteWorkDir ?? "沿用调用方工作目录"})"
+            : "stdio(本地子进程)";
+
         Log.Info("Boot",
             $"装配完成: 工作区={Path.GetFullPath(root)}, Agent={agentsList.Count}, 专家={personasList.Count}, " +
-            $"模板={templatesList.Count}, 工具={registry.All.Count}, 人格字符数={personaText?.Length ?? 0}");
+            $"模板={templatesList.Count}, 工具={registry.All.Count}, 人格字符数={personaText?.Length ?? 0}, " +
+            $"Worker 传输={workerModeText}");
 
         return Instance;
     }

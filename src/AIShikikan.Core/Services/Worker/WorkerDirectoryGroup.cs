@@ -44,6 +44,13 @@ public sealed class WorkerDirectoryGroup
 
     private readonly object _gate = new();
 
+    /// <summary>
+    /// 池是否允许「Worker 不可用 → 主进程内联执行」。<b>只影响健康快照的口径</b>:
+    /// 不允许时, 退避期与钉死态的槽位都只是「Worker 不可用」, 必须报 <c>NotConnected</c> 而不是 <c>Inline</c>
+    /// (否则状态栏会显示一条根本不存在的"主进程执行"路径, 见 <see cref="SnapshotHealth"/>)。
+    /// </summary>
+    private readonly bool _allowInlineFallback;
+
     /// <summary>会话 Id → 槽位。<b>所有读写都在 <c>_gate</c> 内</b>(锁纪律见类型 remarks)。</summary>
     private readonly Dictionary<string, Slot> _slots = new(StringComparer.Ordinal);
 
@@ -61,7 +68,11 @@ public sealed class WorkerDirectoryGroup
     /// 本类不做规范化, 只按传入值建键 —— 因为"规范化责任在唯一上游"是本仓
     /// <c>GitCheckpointStore.GetRepoHash</c> 已确立的风格, 两处各规范化一次迟早会漂移。
     /// </param>
-    public WorkerDirectoryGroup(string directoryKey)
+    /// <param name="allowInlineFallback">
+    /// 所属池是否允许内联兜底(<see cref="WorkerPoolOptions.AllowInlineFallback"/>)。
+    /// 默认 true 只为兼容既有构造点; <see cref="WorkerPool"/> 总是显式传入自己的配置。
+    /// </param>
+    public WorkerDirectoryGroup(string directoryKey, bool allowInlineFallback = true)
     {
         if (string.IsNullOrWhiteSpace(directoryKey))
         {
@@ -69,6 +80,7 @@ public sealed class WorkerDirectoryGroup
         }
 
         DirectoryKey = directoryKey;
+        _allowInlineFallback = allowInlineFallback;
     }
 
     /// <summary>规范化后的目录路径(分组键)。</summary>
@@ -333,9 +345,15 @@ public sealed class WorkerDirectoryGroup
     }
 
     /// <summary>
-    /// 拉起失败后发布<b>进程内降级</b>句柄: 本回合仍然有工具可用(行为等同引入 Worker 之前),
-    /// 只是失去崩溃隔离。同时记录失败原因、按 <paramref name="backoffFor"/> 设置退避截止。
+    /// 拉起失败后发布兜底句柄。默认发布的是「不可用」句柄(本回合的工具调用会返回明确错误,
+    /// <b>不再退回主进程内联执行</b>); 只有 <paramref name="isInline"/>=true(自检)时才是内联句柄。
+    /// 同时记录失败原因、按 <paramref name="backoffFor"/> 设置退避截止。
     /// </summary>
+    /// <param name="isInline">
+    /// 本次兜底句柄是否真的是<b>主进程内联</b>句柄。生产默认 false(句柄是「不可用」的),
+    /// 只有 self-check 的 <see cref="WorkerPoolOptions.AllowInlineFallback"/>=true 时才为 true。
+    /// <b>不能无条件置 <c>IsInline = true</c></b>: 那会让健康快照把"Worker 不可用"谎报成"主进程在跑"。
+    /// </param>
     /// <param name="backoffFor">
     /// 按「累计失败次数」算退避时长的委托(见 <see cref="WorkerPool"/> 的「退避策略」)。
     /// 传委托而不是算好的毫秒数, 是为了让退避曲线与失败计数<b>始终一致</b> ——
@@ -348,6 +366,7 @@ public sealed class WorkerDirectoryGroup
         WorkerClient inlineClient,
         string error,
         bool terminal,
+        bool isInline,
         Func<int, long> backoffFor,
         int maxAttempts,
         long nowTicks,
@@ -394,7 +413,10 @@ public sealed class WorkerDirectoryGroup
             // ④⑤ —— 「Worker 第一次没起来」就会变成"这个会话永远不再重试", L5 与退避全部失效。
             // 钉死之后入槽则相反是必要的: 避免每回合都新建一个 InlineTransport。
             slot.Client = slot.Degraded ? inlineClient : null;
-            slot.IsInline = slot.Degraded;
+            // ⚠️ IsInline 必须同时满足「已钉死降级」与「句柄真的是内联实现」:
+            // 生产默认发布的是 UnavailableTransport(IsConnected 恒 false), 若在这里无条件置 true,
+            // 健康快照就会把「Worker 不可用」报成 Inline(状态栏显示一条不存在的主进程执行路径)。
+            slot.IsInline = slot.Degraded && isInline;
             slot.ProcessId = slot.Degraded ? inlineClient.ProcessId : null;
 
             slot.LastActivity = nowTicks;
@@ -733,11 +755,14 @@ public sealed class WorkerDirectoryGroup
                 var connected = client is { IsConnected: true };
 
                 // ⚠️ "工具此刻在主进程里跑"有两种形态, 都必须报成 Inline:
-                // ① 已钉死降级(slot 里存着内联句柄); ② 退避期内(内联句柄是一次性的, 不入槽)。
+                // ① 已钉死降级且槽位里存的是内联句柄(slot.IsInline); ② 退避期内(内联句柄是一次性的, 不入槽)。
                 // 只报 ① 会造成一个可见性缺口: 第一次拉起失败之后、真正钉死之前的那段时间里,
-                // 工具已经在主进程里跑了, 而状态栏与 doctor 都说"没连上" —— 那正是
-                // 「悄悄退回单进程」这个最需要被看见的回归。
-                var servingInline = s.Degraded || (!connected && s.SpawnAttempts > 0);
+                // 工具已经在主进程里跑了, 而状态栏与 doctor 都说"没连上"。
+                // ⚠️ 但生产默认**不允许**内联兜底: 那时退避期与钉死态都只是「Worker 不可用」,
+                // 必须报 NotConnected —— 谎报 Inline 会让状态栏显示一个根本不存在的主进程执行路径。
+                var servingInline = s.Degraded
+                    ? s.IsInline
+                    : (!connected && s.SpawnAttempts > 0 && _allowInlineFallback);
                 var mode = servingInline ? WorkerMode.Inline
                     : connected ? WorkerMode.Pipe
                     : WorkerMode.NotConnected;

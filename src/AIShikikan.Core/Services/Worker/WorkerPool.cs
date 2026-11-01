@@ -52,6 +52,25 @@ public delegate IToolTransport PipeTransportFactory(
     WorkerHelloRequest hello);
 
 /// <summary>
+/// 构造一个<b>远程 WebSocket</b> 传输(<c>WebSocketTransport</c>)。
+/// </summary>
+/// <param name="url">客户端连接地址(<see cref="WorkerConfig.ResolveClientUrl"/> 的结果, 调用前已确认非空)。</param>
+/// <param name="token">共享鉴权令牌(远程模式必填, 调用前已确认非空)。</param>
+/// <param name="hello">
+/// 握手载荷。<b>远程模式下池传入的 <c>ParentPid</c> 为 0</b>(表示"本池不提供父进程 pid"):
+/// 远端的 pid 空间与本机无关, 传一个本机 pid 只会让远端去探测一个不属于自己的进程。
+/// 传输实现可以按自己的需要补齐该字段(例如只当作诊断归属)。
+/// </param>
+/// <remarks>
+/// 与 <see cref="PipeTransportFactory"/> 分开而不是合并成一个带模式的委托: 两者的输入里
+/// 「可执行文件路径」与「url」互斥且语义完全不同, 合并只会让每个实现都要判空另一侧的参数。
+/// </remarks>
+public delegate Task<IToolTransport> WebSocketTransportFactory(
+    string url,
+    string? token,
+    WorkerHelloRequest hello);
+
+/// <summary>
 /// <see cref="WorkerPool"/> 的可调参数。默认值即产品要求的默认行为, 绝大多数情况<b>不需要</b>改动。
 /// </summary>
 public sealed class WorkerPoolOptions
@@ -71,13 +90,16 @@ public sealed class WorkerPoolOptions
     public TimeSpan ReconcileInterval { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>
-    /// 连续拉起失败多少次后<b>永久</b>降级为进程内执行(对该 (目录, 会话) 粘滞, 直到它被 Release)。
+    /// 连续拉起失败多少次后<b>永久钉死兜底</b>(对该 (目录, 会话) 粘滞, 直到它被 Release)。
     /// </summary>
     /// <remarks>
     /// <b>为什么是 3 而不是 1 或 10</b>: 1 次会把瞬时故障(Worker 启动瞬间撞上 <c>git</c> 锁、
     /// 进程创建瞬时失败)直接判成永久降级, 用户必须重开会话才恢复;
     /// 10 次意味着退避要走到 60s 上限, 那一分多钟里用户一直在无隔离状态下运行而不自知。
-    /// 3 次 + 2s/4s 的退避刚好覆盖「瞬时抖动」与「稳定失败」两类, 总代价约 6s。</remarks>
+    /// 3 次 + 2s/4s 的退避刚好覆盖「瞬时抖动」与「稳定失败」两类, 总代价约 6s。
+    /// <para>钉死之后返回的是兜底句柄: 生产为「不可用」(工具调用返回明确错误),
+    /// 自检配置下才是内联句柄。</para>
+    /// </remarks>
     public int MaxSpawnAttemptsBeforeInline { get; init; } = 3;
 
     /// <summary>重拉退避的起始时长。默认 2s。</summary>
@@ -127,11 +149,27 @@ public sealed class WorkerPoolOptions
     /// 用途是 <c>IToolTransport</c> 类注释里说的「分步验证」: 先在不引入进程的前提下
     /// 跑通协议编解码与全部工具(doctor 的自检场景)。</remarks>
     public bool PipeEnabled { get; init; } = true;
+
+    /// <summary>
+    /// 是否允许「Worker 不可用 → 退回主进程内联执行」。<b>默认 false, 仅 doctor 自检可置 true, 生产禁用。</b>
+    /// </summary>
+    /// <remarks>
+    /// <para><b>为什么生产不再退回内联</b>: 内联执行会把工具与子代理重新搬回主进程 ——
+    /// <c>grep</c> 又能卡 UI、子代理又能拖住主循环; 更糟的是它<b>掩盖了真实原因</b>:
+    /// 用户与 doctor 看到的都是"工具能用", 于是「Worker 产物缺失 / 端口不通 / token 不符」
+    /// 这类可修复的启动失败永远没人去修。默认改为「日志写明原因 + 工具调用返回明确错误」。</para>
+    ///
+    /// <para>唯一允许置 true 的场景是 <c>WorkerSelfCheck</c> 的 S7–S12: 那几组刻意用
+    /// <c>PipeEnabled = false</c> 验证「内联降级句柄的记账与可见性」, 不 spawn 任何进程,
+    /// 必须有内联句柄才能把整条链路跑通。</para>
+    /// </remarks>
+    public bool AllowInlineFallback { get; init; }
 }
 
 /// <summary>
-/// Worker 进程池: 按「工作目录 × 会话」懒启动与回收独立进程, 在崩溃/僵死后重拉,
-/// 并在拉不起来时降级为进程内执行(且让降级可见)。
+/// Worker 进程池: 按「工作目录 × 会话」懒启动与回收独立进程, 在崩溃/僵死后重拉;
+/// 拉不起来时<b>不再退回主进程内联执行</b>, 而是让工具调用返回带真实原因的明确错误。
+/// 支持 stdio(本地子进程)与 websocket(远程 Worker)两种传输模式。
 /// </summary>
 /// <remarks>
 /// <para><b>实例粒度 = (工作目录 × 会话)</b>, 对应 worker-architecture.md 4.2。
@@ -177,8 +215,9 @@ public sealed class WorkerPoolOptions
 /// <b>CPU 与日志双重打爆</b>的循环: 每次失败都要真的 fork 一个进程、跑一遍握手(还会失败),
 /// 并且写两条日志。而失败的根因(产物缺失 / 版本不符 / 权限不足)通常在用户下一次干预之前<b>不会自己变好</b>。</item>
 /// <item><b>为什么退避只约束"再次拉起"、不阻塞"这一回合用工具"</b>: 等待退避窗口意味着把这一回合的工具调用挂起最多 60s,
-/// 用户看到的是「点了发送没反应」。所以退避期间 <c>AcquireAsync</c> <b>立刻</b>返回进程内句柄 ——
-/// 这一回合照常有工具可用, 只是没有隔离。这与「降级必须可见」不冲突: 它在 doctor/状态栏里是显式的。</item>
+/// 用户看到的是「点了发送没反应」。所以退避期间 <c>AcquireAsync</c> <b>立刻</b>返回兜底句柄 ——
+/// 默认是不可用句柄(工具调用当场返回一条带原因的明确错误), 只有自检配置下才是内联句柄。
+/// 二者都不会让这一回合挂起, 也不存在"悄悄退回单进程"这种看不见的回归。</item>
 /// <item><b>为什么指数</b>: 固定间隔对「短暂的资源争用」不够(2s 后可能仍在争用), 对「需要人工干预的故障」太吵
 /// (每 2s 一条日志, 一小时 1800 条)。指数是这两者之间唯一同时满足的形状。</item>
 /// <item><b>为什么 60s 封顶</b>: 再往上就没有实际收益 —— 用户不会在 2 分钟后重试同一个会话,
@@ -200,6 +239,17 @@ public sealed class WorkerPoolOptions
 /// 子代理又回到主进程、<c>grep</c> 又能卡 UI、git 又在 UI 线程排队, 用户<b>没有任何线索</b>。
 /// 因此每次「刚刚降级」都会打一条带定位来源与已尝试路径的 <c>Log.Warn</c>,
 /// 并由 <see cref="WorkerHealth"/> 同时喂给 doctor 与状态栏。</para>
+///
+/// <para><b>⚠️ 生产路径不再内联降级(用户决策)</b>: 上面那条"降级必须可见"之所以成立,
+/// 是因为内联路径还有日志与健康标记兜底; 但事实是用户几乎不会去看它们, 而内联带来的
+/// UI 卡顿与故障掩盖是<b>立刻发生</b>的。所以现在改为: Worker 不可用时返回
+/// <see cref="UnavailableTransport"/> 句柄 —— 日志写明原因, 工具调用返回带原因的明确错误。
+/// 内联句柄只保留给 <see cref="WorkerPoolOptions.AllowInlineFallback"/>=true 的 doctor 自检。</para>
+///
+/// <para><b>远程(websocket)模式</b>: 由 <see cref="WorkerConfig.IsWebSocket"/> 决定。此时
+/// <see cref="AcquireAsync"/> 用 <see cref="WorkerConfig.EffectiveRemoteWorkDir"/>(非空时)作为工作目录,
+/// <see cref="SpawnAsync"/> <b>跳过</b>「定位本地 Worker 可执行文件」与 <c>PipeEnabled</c>,
+/// 改为经 <see cref="_webSocketFactory"/> 连远端 —— 远端进程不归本池管, 也就没有 pid 与产物路径。</para>
 /// </remarks>
 public sealed class WorkerPool : IAsyncDisposable
 {
@@ -231,8 +281,12 @@ public sealed class WorkerPool : IAsyncDisposable
     private readonly IWorkspaceResolver _workspaceResolver;
     private readonly InlineTransportFactory _inlineFactory;
     private readonly PipeTransportFactory _pipeFactory;
+    private readonly WebSocketTransportFactory _webSocketFactory;
     private readonly Func<IReadOnlySet<string>?>? _liveSessionProvider;
     private readonly WorkerPoolOptions _options;
+
+    /// <summary>worker.toml 的强类型配置; 为 null 时按 stdio(本地子进程)模式运行。</summary>
+    private readonly WorkerConfig? _workerConfig;
 
     private readonly ConcurrentDictionary<string, WorkerDirectoryGroup> _groups =
         new(WorkerDirectoryGroup.PathComparer);
@@ -265,18 +319,30 @@ public sealed class WorkerPool : IAsyncDisposable
     /// <see cref="Release"/> 都被正确调用 —— 而 GUI 删除会话 / 主进程退出这两条路径目前都没有接。
     /// </param>
     /// <param name="options">可调参数; 为 null 时用 <see cref="WorkerPoolOptions.Default"/>。</param>
+    /// <param name="workerConfig">
+    /// worker.toml 的配置。传 null 或 <see cref="WorkerConfig.IsWebSocket"/> 为 false 时走本地 stdio 模式;
+    /// 为 true 时<b>不再定位/派生本地产物</b>, 改为连接远程 Worker(见 <see cref="SpawnAsync"/>)。
+    /// </param>
+    /// <param name="webSocketFactory">
+    /// 远程传输的构造委托。默认使用 <see cref="DefaultWebSocketFactory"/>(直接 <c>WebSocketTransport.StartAsync</c>)。
+    /// 自检 / 测试可注入假实现。
+    /// </param>
     public WorkerPool(
         IWorkspaceResolver workspaceResolver,
         InlineTransportFactory inlineFactory,
         PipeTransportFactory? pipeFactory = null,
         Func<IReadOnlySet<string>?>? liveSessionProvider = null,
-        WorkerPoolOptions? options = null)
+        WorkerPoolOptions? options = null,
+        WorkerConfig? workerConfig = null,
+        WebSocketTransportFactory? webSocketFactory = null)
     {
         _workspaceResolver = workspaceResolver ?? throw new ArgumentNullException(nameof(workspaceResolver));
         _inlineFactory = inlineFactory ?? throw new ArgumentNullException(nameof(inlineFactory));
         _pipeFactory = pipeFactory ?? DefaultPipeFactory;
+        _webSocketFactory = webSocketFactory ?? DefaultWebSocketFactory;
         _liveSessionProvider = liveSessionProvider;
         _options = options ?? WorkerPoolOptions.Default;
+        _workerConfig = workerConfig;
 
         if (_options.MaxSpawnAttemptsBeforeInline < 1)
         {
@@ -300,10 +366,11 @@ public sealed class WorkerPool : IAsyncDisposable
     /// <param name="planMode">本回合是否处于 Plan 模式(同上)。</param>
     /// <param name="ct">取消令牌。除调用方取消外, 本方法<b>不抛任何异常</b> —— 见 <see cref="WorkerPool"/> remarks。</param>
     /// <remarks>
-    /// <para><b>返回的句柄一定是「可用的」</b>: 要么是已握手的管道连接, 要么是一个内联句柄
-    /// (<c>InlineTransport.IsConnected</c> 恒为 true)。唯一例外是「拉起来之后会话已被 Release /
-    /// 组已退役」这条竞态, 此时返回的是一个已关闭的句柄, 由 <see cref="WorkerProxyTool"/> 的
-    /// 前置连通性检查转成一条明确的工具错误。</para>
+    /// <para><b>返回的句柄不保证「可干活」</b>: 要么是已握手的连接(本地管道或远程 WebSocket),
+    /// 要么是一个<b>不可用</b>的句柄(<see cref="UnavailableTransport.IsConnected"/> 恒 false,
+    /// 工具调用会返回带真实原因的明确错误) —— 生产路径<b>不再退回主进程内联执行</b>,
+    /// 见 <see cref="WorkerPoolOptions.AllowInlineFallback"/>。另一条例外是「拉起来之后会话已被
+    /// Release / 组已退役」的竞态, 此时返回一个已关闭的句柄。</para>
     ///
     /// <para><b>⚠️ 取消语义</b>: <paramref name="ct"/> 取消时本方法抛
     /// <see cref="OperationCanceledException"/>, 且已经拉起一半的 Worker 进程会被立即关闭
@@ -326,6 +393,15 @@ public sealed class WorkerPool : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(workDir);
         ct.ThrowIfCancellationRequested();
 
+        // 远程模式的工作目录由配置决定: Worker 在远端, 本机路径对它毫无意义。
+        // 配置了远程目录(WorkDir 或 Root)就整条链都用它 —— 下面的 dirKey / workerKey 以及
+        // 后续 hello.WorkDir 全部派生自这个值, 三处必须同源, 否则分组与握手会指向两个目录。
+        // 未配置时保留调用方传入的目录: 同机远程场景两侧项目根路径一致, 由 Worker 端校验 root。
+        if (IsRemoteMode && _workerConfig!.EffectiveRemoteWorkDir is { Length: > 0 } remoteWorkDir)
+        {
+            workDir = remoteWorkDir;
+        }
+
         // 目录键必须规范化: 同一个目录会以 /repo、/repo/、/repo/./sub/.. 三种形态出现
         // (引擎 Options.WorkDir / 会话配置 / 用户手输)。不规范化就会分裂成多个组,
         // 于是每个组都自认"我没有会话"而被 L3 关闭 —— 表现是 Worker 反复重启, 而计数表看起来正常。
@@ -336,9 +412,10 @@ public sealed class WorkerPool : IAsyncDisposable
         if (Volatile.Read(ref _disposed) != 0)
         {
             // 池已关闭(应用正在退出)。刻意不抛 ObjectDisposedException: 那会一路冒到引擎的
-            // 工具执行里, 把"进程正在退出"变成用户可见的回合失败。退回内联是零风险的收尾。
-            Log.Debug(LogCategory, $"池已关闭, 会话 {sessionId} 的工具退回进程内执行");
-            return CreateInlineClient(sessionId, dirKey, ResolveWorkspaceRoot(dirKey),
+            // 工具执行里, 把"进程正在退出"变成用户可见的回合失败。
+            // ⚠️ 也不再退回内联: 退出路径上让工具改跑主进程, 只会延长退出并掩盖关闭事实。
+            Log.Debug(LogCategory, $"池已关闭, 会话 {sessionId} 不再拉起 Worker");
+            return CreateFallbackClient(sessionId, dirKey, ResolveWorkspaceRoot(dirKey),
                 commanderPersonaText, rosterEntries, planMode, "Worker 池已关闭");
         }
 
@@ -378,17 +455,17 @@ public sealed class WorkerPool : IAsyncDisposable
                     }
                     catch (Exception ex)
                     {
-                        // 在飞任务理论上不会带异常(失败时我们会发布内联句柄而不是让任务失败),
-                        // 真发生了也不能把回合带崩: 退回内联。
-                        Log.Warn(LogCategory, ex, $"等待 Worker 拉起失败(会话 {sessionId}), 退回进程内执行");
-                        return CreateInlineClient(sessionId, dirKey, workspaceRoot,
+                        // 在飞任务理论上不会带异常(失败时会发布兜底句柄而不是让任务失败),
+                        // 真发生了也不能把回合带崩: 返回兜底句柄(默认即刻报错, 自检时才内联)。
+                        Log.Warn(LogCategory, ex, $"等待 Worker 拉起失败(会话 {sessionId}), Worker 不可用");
+                        return CreateFallbackClient(sessionId, dirKey, workspaceRoot,
                             commanderPersonaText, rosterEntries, planMode, "等待 Worker 拉起失败");
                     }
 
                 case WorkerAcquireState.Degrade:
                     Log.Debug(LogCategory,
-                        $"会话 {sessionId}(目录 {dirKey})本次不拉起 Worker, 退回进程内执行: {plan.Reason}");
-                    return CreateInlineClient(sessionId, dirKey, workspaceRoot,
+                        $"会话 {sessionId}(目录 {dirKey})本次不拉起 Worker: {plan.Reason}");
+                    return CreateFallbackClient(sessionId, dirKey, workspaceRoot,
                         commanderPersonaText, rosterEntries, planMode, plan.Reason ?? "已降级");
 
                 case WorkerAcquireState.Proceed:
@@ -400,9 +477,9 @@ public sealed class WorkerPool : IAsyncDisposable
             if (attempt >= _options.MaxAcquireAttempts)
             {
                 // 到达这里只可能是「组反复退役」这一种情况(理论不可达: 第 2 轮必然拿到全新组实例)。
-                // 退回内联而不是抛异常, 与本类型「生命周期不抛」的纪律一致。
-                Log.Warn(LogCategory, $"目录 {dirKey} 的 Worker 组反复退役(重试 {attempt} 次), 会话 {sessionId} 退回进程内执行");
-                return CreateInlineClient(sessionId, dirKey, workspaceRoot,
+                // 不抛异常, 与本类型「生命周期不抛」的纪律一致。
+                Log.Warn(LogCategory, $"目录 {dirKey} 的 Worker 组反复退役(重试 {attempt} 次), 会话 {sessionId} 的 Worker 不可用");
+                return CreateFallbackClient(sessionId, dirKey, workspaceRoot,
                     commanderPersonaText, rosterEntries, planMode, "目录组反复退役");
             }
         }
@@ -712,6 +789,25 @@ public sealed class WorkerPool : IAsyncDisposable
     private static IToolTransport DefaultPipeFactory(string executablePath, WorkerHelloRequest hello) =>
         PipeTransport.Start(executablePath, hello);
 
+    /// <summary>
+    /// 默认的远程传输构造: 直接 <c>WebSocketTransport.StartAsync</c>。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>⚠️ 与并行开发的 WebSocketTransport 的唯一耦合点, 实际签名如下</b>:</para>
+    /// <code>public static Task&lt;WebSocketTransport&gt; StartAsync(string url, string? token, WorkerHelloRequest hello, string? logPrefix, CancellationToken ct)</code>
+    /// <para>它是<b>异步</b>的(要建连接与鉴权), 与 <see cref="PipeTransport.Start"/> 不同。
+    /// 池只认识 <see cref="IToolTransport"/>, 连接/重连/心跳细节全在实现里 —— 若签名再变,
+    /// <b>只需要改下面这一行</b>, 其余代码零改动。</para>
+    /// <para><c>logPrefix</c> 传 null: 远端 Worker 有它自己的日志, 本进程侧的日志已由
+    /// <see cref="LogCategory"/> 覆盖。<c>ct</c> 传 <see cref="CancellationToken.None"/>:
+    /// 委托签名不带令牌(池无法把调用方取消传进连接阶段), 握手阶段仍有池侧的
+    /// <see cref="WorkerProtocol.HandshakeTimeout"/> 兜底。</para>
+    /// </remarks>
+    private static async Task<IToolTransport> DefaultWebSocketFactory(
+        string url, string? token, WorkerHelloRequest hello) =>
+        await WebSocketTransport.StartAsync(url, token, hello, logPrefix: null, CancellationToken.None)
+            .ConfigureAwait(false);
+
     // ── 内部实现 ─────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -779,13 +875,15 @@ public sealed class WorkerPool : IAsyncDisposable
             return connected;
         }
 
-        // ── 拉起失败: 降级为进程内执行 ───────────────────────────────────────
+        // ── 拉起失败: 发布「不可用」句柄(生产不再降级为进程内执行) ─────────────
+        // 默认的 UnavailableTransport 会让 WorkerProxyTool 的前置连通性检查直接把 reason
+        // 变成一条明确的工具错误 —— 比悄悄改跑主进程更能让用户与 LLM 知道"这次为什么不能用"。
         var error = outcome.Error ?? "未知原因";
-        var inline = CreateInlineClient(sessionId, dirKey, workspaceRoot,
+        var fallback = CreateFallbackClient(sessionId, dirKey, workspaceRoot,
             commanderPersonaText, rosterEntries, planMode, error);
 
-        group.PublishInline(sessionId, inline, error, outcome.Terminal, BackoffMsFor,
-            _options.MaxSpawnAttemptsBeforeInline, now,
+        group.PublishInline(sessionId, fallback, error, outcome.Terminal, _options.AllowInlineFallback,
+            BackoffMsFor, _options.MaxSpawnAttemptsBeforeInline, now,
             out var newlyDegraded, out var inlineSuperseded);
 
         if (inlineSuperseded is not null)
@@ -795,15 +893,18 @@ public sealed class WorkerPool : IAsyncDisposable
 
         if (newlyDegraded)
         {
-            // ⚠️ 整个方案的风险兜底: 降级必须留一条带定位线索的 Warn。
-            // 没有它, "悄悄退回单进程"就是一次用户看不见的性能回归。
+            // ⚠️ 整个方案的风险兜底: 失败必须留一条带定位线索的 Warn。
+            // 没有它, 用户只会看到"工具报错", 而不知道 Worker 到底为什么起不来。
             LogDegrade(sessionId, dirKey, error);
         }
 
-        // 内联句柄对汇合者同样有效: 它们只是想要一个"能干活"的连接, 不该被区分对待。
-        completion.TrySetResult(inline);
-        return inline;
+        // 兜底句柄对汇合者同样有效: 它们只是想要一个"能回答这次调用"的句柄, 不该被区分对待。
+        completion.TrySetResult(fallback);
+        return fallback;
     }
+
+    /// <summary>是否远程(WebSocket)模式: 此时不定位也不派生本地子进程, 只连远端 Worker。</summary>
+    private bool IsRemoteMode => _workerConfig?.IsWebSocket == true;
 
     /// <summary>真正的拉起与握手。<b>除调用方取消外不抛异常</b>, 失败以 <see cref="SpawnOutcome"/> 返回。</summary>
     private async Task<SpawnOutcome> SpawnAsync(
@@ -817,6 +918,16 @@ public sealed class WorkerPool : IAsyncDisposable
         WorkerDirectoryGroup group,
         CancellationToken ct)
     {
+        // ⚠️ 远程模式优先: 「定位本地产物」与「PipeEnabled」这两项只对 stdio 派生有意义 ——
+        // 远端 Worker 是别人已经跑起来的进程, 我们没有它的产物路径, 也不该因为本机没构建 Worker
+        // 就把一条本来可用的远程连接判成失败。
+        if (IsRemoteMode)
+        {
+            return await SpawnRemoteAsync(
+                sessionId, workerKey, workDir, workspaceRoot,
+                commanderPersonaText, rosterEntries, planMode, group, ct).ConfigureAwait(false);
+        }
+
         if (!_options.PipeEnabled)
         {
             return new SpawnOutcome(null, "管道模式已被配置关闭(自检/测试)", Terminal: true);
@@ -831,38 +942,143 @@ public sealed class WorkerPool : IAsyncDisposable
                 Terminal: true);
         }
 
+        // ⚠️ hello 必须**先**构造: 它同时是 PipeTransport 的启动上下文(工作目录 / key 计算输入)
+        // 与稍后下发的握手载荷。两处派生自同一个对象才不会出现"子进程跑在 A 目录、握手说 B 目录"。
+        var request = BuildHelloRequest(sessionId, workDir, workspaceRoot,
+            commanderPersonaText, rosterEntries, planMode, Environment.ProcessId);
+
+        IToolTransport transport;
+        try
+        {
+            transport = _pipeFactory(location.ExecutablePath!, request);
+        }
+        catch (Exception ex)
+        {
+            // 传输构造失败通常是环境问题(可执行位 / 依赖缺失 / 管道创建失败)。
+            // 归为非 terminal: 权限类故障是可能被外部干预修好的。
+            Log.Warn(LogCategory, ex, $"构造 Worker 管道传输失败(会话 {sessionId})");
+            return new SpawnOutcome(null, $"构造管道传输失败: {ex.Message}", Terminal: false);
+        }
+
+        return await HandshakeAndVerifyAsync(
+            sessionId, workerKey, workDir, request, transport, group, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 远程模式下的拉起: 连远端 Worker(<b>不定位本地产物, 也不派生子进程</b>)。
+    /// </summary>
+    /// <remarks>
+    /// 失败分两类: 配置缺失(url / token)是 terminal —— 重试不会让配置长出来;
+    /// 连接失败(远端未启动 / 网络抖动)是非 terminal —— 它会自己恢复。
+    /// 协议版本不符由握手统一判 terminal(见 <see cref="HandshakeAndVerifyAsync"/>)。
+    /// </remarks>
+    private async Task<SpawnOutcome> SpawnRemoteAsync(
+        string sessionId,
+        string workerKey,
+        string workDir,
+        string workspaceRoot,
+        string? commanderPersonaText,
+        IReadOnlyList<AgentRosterEntry>? rosterEntries,
+        bool planMode,
+        WorkerDirectoryGroup group,
+        CancellationToken ct)
+    {
+        var config = _workerConfig!;
+
+        var url = config.ResolveClientUrl();
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return new SpawnOutcome(null,
+                "远程模式(websocket)未配置 url: worker.toml 需填 url, 或填 listen + path 以便推导",
+                Terminal: true);
+        }
+
+        if (string.IsNullOrWhiteSpace(config.Token))
+        {
+            // 远端在本机之外, 没有 token 就等于允许任何能连上端口的人执行工具, 因此视为配置错误。
+            return new SpawnOutcome(null,
+                "远程模式(websocket)未配置 token: worker.toml 的 token 必须与远端 Worker 一致",
+                Terminal: true);
+        }
+
+        ct.ThrowIfCancellationRequested();
+
+        // ParentPid 对远程传 0(表示"本池不提供父进程 pid"): 远端的 pid 空间与本机无关,
+        // 传一个本机 pid 只会让远端去探测一个不属于自己的进程, 误判成「父进程已死」。
+        var request = BuildHelloRequest(sessionId, workDir, workspaceRoot,
+            commanderPersonaText, rosterEntries, planMode, parentPid: 0);
+
+        IToolTransport transport;
+        try
+        {
+            transport = await _webSocketFactory(url, config.Token, request).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // 铁律: 调用方取消原样上抛。
+            throw;
+        }
+        catch (Exception ex)
+        {
+            // 非 terminal: 远端没起来 / 网络抖动都可能被外部干预修好。
+            // 但「协议版本不符」是重试多少次都不会变的(两侧产物不同源), 与管道路径同一口径升级为 terminal。
+            var terminal = ex.Message.Contains("协议版本不符", StringComparison.Ordinal);
+            Log.Warn(LogCategory, ex, $"连接远程 Worker 失败({url}, 会话 {sessionId})");
+            return new SpawnOutcome(null,
+                $"连接远程 Worker 失败({url}){(terminal ? "(协议版本不符, 两侧 Worker 产物不同源)" : string.Empty)}: {ex.Message}",
+                terminal);
+        }
+
+        return await HandshakeAndVerifyAsync(
+            sessionId, workerKey, workDir, request, transport, group, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 构造握手载荷(<see cref="WorkerHelloRequest"/>)。
+    /// </summary>
+    /// <param name="parentPid">
+    /// 本地 stdio 模式传本进程 pid(Worker 用它做孤儿自检); 远程模式传 0(见 <see cref="SpawnRemoteAsync"/>)。
+    /// </param>
+    private static WorkerHelloRequest BuildHelloRequest(
+        string sessionId,
+        string workDir,
+        string workspaceRoot,
+        string? commanderPersonaText,
+        IReadOnlyList<AgentRosterEntry>? rosterEntries,
+        bool planMode,
+        int parentPid) => new()
+        {
+            ProtocolVersion = WorkerProtocol.ProtocolVersion,
+            SessionId = sessionId,
+            WorkDir = workDir,
+            WorkspaceRoot = workspaceRoot,
+            CommanderPersonaText = commanderPersonaText,
+            RosterEntries = rosterEntries,
+            IsPlanMode = planMode,
+            // Worker 用它做孤儿自检: 父进程被 kill 时管道也会断, 但"断开"与
+            // "父进程只是暂时没说话"难以区分, 用 pid 探测能更快更确定地自我了断。
+            ParentPid = parentPid
+        };
+
+    /// <summary>
+    /// 公共收尾: 包句柄 → 订阅故障 → 握手 → 校验 Ok / 协议版本。本地管道与远程 WebSocket 共用这一段。
+    /// </summary>
+    /// <remarks>
+    /// 抽出来的唯一目的是让两种传输面对<b>同一份</b>版本校验与失败收尾逻辑 ——
+    /// 两侧各写一遍, 迟早出现"远程漏判协议版本"这类只在一种模式下复现的事故。
+    /// </remarks>
+    private async Task<SpawnOutcome> HandshakeAndVerifyAsync(
+        string sessionId,
+        string workerKey,
+        string workDir,
+        WorkerHelloRequest request,
+        IToolTransport transport,
+        WorkerDirectoryGroup group,
+        CancellationToken ct)
+    {
         WorkerClient? client = null;
         try
         {
-            // ⚠️ hello 必须**先**构造: 它同时是 PipeTransport 的启动上下文(工作目录 / key 计算输入)
-            // 与稍后下发的握手载荷。两处派生自同一个对象才不会出现"子进程跑在 A 目录、握手说 B 目录"。
-            var request = new WorkerHelloRequest
-            {
-                ProtocolVersion = WorkerProtocol.ProtocolVersion,
-                SessionId = sessionId,
-                WorkDir = workDir,
-                WorkspaceRoot = workspaceRoot,
-                CommanderPersonaText = commanderPersonaText,
-                RosterEntries = rosterEntries,
-                IsPlanMode = planMode,
-                // Worker 用它做孤儿自检: 父进程被 kill 时管道也会断, 但"断开"与
-                // "父进程只是暂时没说话"难以区分, 用 pid 探测能更快更确定地自我了断。
-                ParentPid = Environment.ProcessId
-            };
-
-            IToolTransport transport;
-            try
-            {
-                transport = _pipeFactory(location.ExecutablePath!, request);
-            }
-            catch (Exception ex)
-            {
-                // 传输构造失败通常是环境问题(可执行位 / 依赖缺失 / 管道创建失败)。
-                // 归为非 terminal: 权限类故障是可能被外部干预修好的。
-                Log.Warn(LogCategory, ex, $"构造 Worker 管道传输失败(会话 {sessionId})");
-                return new SpawnOutcome(null, $"构造管道传输失败: {ex.Message}", Terminal: false);
-            }
-
             var connected = new WorkerClient(transport, workerKey, workDir, sessionId, null);
             client = connected;
 
@@ -1021,14 +1237,80 @@ public sealed class WorkerPool : IAsyncDisposable
         return (long)(delay * jitter);
     }
 
-    /// <summary>降级时那条唯一的 <c>Log.Warn</c>: 必须带定位来源与已尝试路径。</summary>
+    /// <summary>兜底失败时那条唯一的 <c>Log.Warn</c>: 原因必须写清楚, 并保留定位线索(stdio 模式)。</summary>
     private void LogDegrade(string sessionId, string workDir, string reason)
     {
+        // 远程模式不调 EnsureLocation: 本机有没有 Worker 产物与远程连接毫无关系,
+        // 把"本机未定位到"混进远程故障日志只会误导排查方向。
+        if (IsRemoteMode)
+        {
+            var url = _workerConfig?.ResolveClientUrl() ?? "(未配置)";
+            Log.Warn(LogCategory,
+                $"远程 Worker 不可用, 会话 {sessionId}(目录 {workDir})的工具调用将返回错误 —— " +
+                "生产路径不再回退主进程内联执行(内联会掩盖远程故障并重新让 UI 卡在工具调用上)。原因: " + reason +
+                $" | 远程地址={url}");
+            return;
+        }
+
         var location = EnsureLocation();
+
+        if (!_options.AllowInlineFallback)
+        {
+            Log.Warn(LogCategory,
+                $"Worker 不可用, 会话 {sessionId}(目录 {workDir})的工具调用将返回错误 —— " +
+                "生产路径不再回退主进程内联执行(内联会重新让 grep/子代理拖住 UI, 并掩盖 Worker 启动失败的真实原因)。原因: " + reason +
+                $" | 定位来源={location.Source} | 定位详情={location.Detail} | 已尝试路径={location.AttemptedPathsText}");
+            return;
+        }
+
         Log.Warn(LogCategory,
             $"Worker 不可用, 会话 {sessionId}(目录 {workDir})的工具改由**主进程内联执行** —— " +
             "功能不丢, 但失去崩溃隔离与资源隔离(子代理会拖住主进程, grep 能卡 UI)。原因: " + reason +
             $" | 定位来源={location.Source} | 定位详情={location.Detail} | 已尝试路径={location.AttemptedPathsText}");
+    }
+
+    /// <summary>
+    /// 发布「Worker 不可用」时的兜底句柄: 默认返回<b>不可用</b>句柄, 仅自检允许退回内联。
+    /// </summary>
+    /// <remarks>
+    /// <b>为什么生产不再内联</b>: 内联会把工具与子代理搬回主进程 —— 崩溃隔离消失、<c>grep</c> 卡 UI、
+    /// 且用户看到的是"工具能用", 真实原因(产物缺失 / 端口不通 / token 不符)被彻底掩盖。
+    /// 默认的 <see cref="UnavailableTransport"/> 会让 <see cref="WorkerProxyTool"/> 的前置连通性检查
+    /// 立刻把 reason 变成一条明确的工具错误, 排障信息不丢。
+    /// </remarks>
+    private WorkerClient CreateFallbackClient(
+        string sessionId,
+        string workDir,
+        string workspaceRoot,
+        string? commanderPersonaText,
+        IReadOnlyList<AgentRosterEntry>? rosterEntries,
+        bool planMode,
+        string reason)
+    {
+        return _options.AllowInlineFallback
+            ? CreateInlineClient(sessionId, workDir, workspaceRoot,
+                commanderPersonaText, rosterEntries, planMode, reason)
+            : CreateUnavailableClient(sessionId, workDir, reason);
+    }
+
+    /// <summary>
+    /// 构造一个「不可用」句柄: <see cref="UnavailableTransport.IsConnected"/> 恒 false, 任何请求都直接报错。
+    /// </summary>
+    /// <remarks>
+    /// 调用方(WorkerProxyTool)看到它未连接时会立刻失败, 因此本句柄的唯一价值就是<b>携带原因</b>:
+    /// 所以这里把 reason 同时写进 <see cref="WorkerClient.LastFault"/> —— 工具错误文案里能直接看到
+    /// "Worker 起不来的真实原因", 而不是一句无用的"未连接"。
+    /// </remarks>
+    private WorkerClient CreateUnavailableClient(string sessionId, string workDir, string reason)
+    {
+        var client = new WorkerClient(new UnavailableTransport(reason),
+            WorkerProtocol.MakeWorkerKey(workDir, sessionId), workDir, sessionId, null);
+
+        client.ReportFault(reason);
+
+        Log.Debug(LogCategory,
+            $"会话 {sessionId}(目录 {workDir})Worker 不可用, 工具调用将返回错误: {reason}");
+        return client;
     }
 
     /// <summary>
@@ -1113,9 +1395,11 @@ public sealed class WorkerPool : IAsyncDisposable
     /// 第二轮必然拿到全新实例, 所以 8 次是纯保险。</remarks>
     private WorkerDirectoryGroup GetOrAddGroup(string dirKey)
     {
+        // 组需要知道自己所在池是否允许内联兜底: 健康快照要据此决定退避期的槽位报 Inline 还是 NotConnected。
+        var allowInlineFallback = _options.AllowInlineFallback;
         for (var i = 0; i < 8; i++)
         {
-            var group = _groups.GetOrAdd(dirKey, static k => new WorkerDirectoryGroup(k));
+            var group = _groups.GetOrAdd(dirKey, k => new WorkerDirectoryGroup(k, allowInlineFallback));
             if (!group.IsRetiring) return group;
             _groups.TryRemove(new KeyValuePair<string, WorkerDirectoryGroup>(dirKey, group));
         }
@@ -1124,7 +1408,7 @@ public sealed class WorkerPool : IAsyncDisposable
         // 但工具仍然可用 —— 宁可统计不完美, 也不让生命周期代码抛异常。
         Log.Warn(LogCategory,
             $"{ComparerDriftHint}; 目录 {dirKey} 的 Worker 组反复退役, 本次使用游离组(不参与全局统计)");
-        return new WorkerDirectoryGroup(dirKey);
+        return new WorkerDirectoryGroup(dirKey, allowInlineFallback);
     }
 
     private WorkerDirectoryGroup? ResolveGroupForRelease(string sessionId, string workDir)

@@ -819,7 +819,7 @@ public static class WorkerSelfCheck
             // liveSessionProvider 传 null → 不起对账后台循环(见 WorkerPool.StartReconcileLoop),
             // 于是 DisposeAsync 之后不留任何线程。
             liveSessionProvider: null,
-            options: new WorkerPoolOptions { PipeEnabled = false });
+            options: new WorkerPoolOptions { PipeEnabled = false, AllowInlineFallback = true });
 
         try
         {
@@ -1394,6 +1394,9 @@ public static class WorkerSelfCheck
             options: new WorkerPoolOptions
             {
                 PipeEnabled = false,
+                // 自检场景验证的正是「内联兜底句柄」的记账与可见性; 生产默认已禁止内联降级,
+                // 这里必须显式打开, 否则 Acquire 返回的是不可用句柄, 断言全部失效。
+                AllowInlineFallback = true,
                 DirectoryIdleTimeout = idleTimeout,
                 ReconcileInterval = TimeSpan.Zero
             });

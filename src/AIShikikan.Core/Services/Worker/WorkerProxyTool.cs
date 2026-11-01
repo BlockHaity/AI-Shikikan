@@ -139,10 +139,16 @@ public sealed class WorkerProxyTool : ITool
         // 更容易把"发不出去"演变成"永远等不到响应"。直接快速失败并留痕。
         if (!_client.IsConnected)
         {
+            // ⚠️ 必须在 ReportFault 之前取: ReportFault 会覆盖 LastFault, 而后者正是
+            // WorkerPool 写入的真实启动失败原因(产物缺失 / 端口不通 / token 不符 / 池已关闭)。
+            // 顺序写反的话, 用户永远只能看到下面那句通用的"调用前已断开"。
+            var lastFault = _client.LastFault;
             _client.ReportFault($"工具 {Name} 调用前 Worker 已断开");
             Log.Warn(LogCategory, $"Worker 工具 {Name} 调用前已断开连接, 直接失败(callId={callId})");
             return ToolResult.Error(
-                $"Worker 未连接, 工具 {Name} 无法执行(来源 {Origin})。请检查该 Worker 进程状态后重试。");
+                $"Worker 未连接, 工具 {Name} 无法执行(来源 {Origin})。" +
+                (string.IsNullOrWhiteSpace(lastFault) ? string.Empty : $"原因: {lastFault}。") +
+                "请检查该 Worker 进程状态后重试。");
         }
 
         var request = new WorkerToolCallRequest
