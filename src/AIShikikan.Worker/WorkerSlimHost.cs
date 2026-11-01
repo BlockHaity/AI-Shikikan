@@ -68,30 +68,19 @@ namespace AIShikikan.Worker;
  *   GrepTool / AgentExecutor), 它们经 ToolResult.Content 原样进 LLM 上下文, 从来没有 i18n。
  *   Worker 若引用 resx 就会隐式依赖 GUI 程序集名(卫星资源程序集名由它推出), 而这正是本项目
  *   必须守住的分层边界。
+ *
+ * ── 远程(WebSocket)模式 ──
+ *   <c>WorkerHostOptions.RemoteRoot</c> 非 null 即表示本实例为一个远程连接服务(没有
+ *   <c>--session</c> / <c>--workdir</c> 这两个命令行身份)。此时:
+ *     · hello 的 WorkDir 经 <c>Path.GetFullPath</c> 规范化后必须落在 RemoteRoot 之内
+ *       (根目录本身也算在允许范围内), 越界直接抛 InvalidOperationException(服务端据此回
+ *       <c>Ok = false</c>), 空串则退化为 RemoteRoot 本身;
+ *     · 工作树根跟随校验后的工作目录 —— 客户端给的本地 WorkspaceRoot 在另一台机器上无意义;
+ *     · 会话 Id 由 hello 接管(远程连接没有 --session)。
+ *   ⚠️ 工作目录在构造期就已喂给 <c>BuildScope()</c> 的核心工具(文件/git 在构造期把
+ *   AgentExecutionScope 存了下来), 所以远程模式下覆盖工作目录后必须**整批重建核心工具**,
+ *   只改字段会让工具继续按旧目录解析相对路径 —— 表现为"文件工具读到了别的目录的内容"。
  */
-
-/// <summary>
-/// Worker 进程的启动身份(命令行给定, 进程生命周期内不变)。
-/// <para>刻意与运行期可变状态(roster / 人格 / Plan 模式)分开: 后者由 <c>hello</c> 与
-/// <c>tools/sync</c> 在握手后写入, 前者是"派我出来的那个实例"的固有属性。</para>
-/// </summary>
-internal sealed class WorkerHostOptions
-{
-    /// <summary>宿主会话 Id。参与 WorkerKey 计算, 必须与主进程算 key 时逐字相同。</summary>
-    public required string SessionId { get; init; }
-
-    /// <summary>命令行 <c>--workdir</c>。工具的相对路径解析与 git 上下文锚点都以它为准。</summary>
-    public required string WorkDir { get; init; }
-
-    /// <summary>工作树根。启动时只能拿 <see cref="WorkDir"/> 顶替, 握手后由 hello 的值接管。</summary>
-    public required string WorkspaceRoot { get; init; }
-
-    /// <summary>父进程 pid(0 = 未知)。仅诊断与孤儿自检用。</summary>
-    public required int ParentPid { get; init; }
-
-    /// <summary>主进程算好的 WorkerKey, 或本进程现算的结果(日志里两者能对上才算路由一致)。</summary>
-    public required string WorkerKey { get; init; }
-}
 
 /// <summary>
 /// Worker 侧工具宿主: 持有工具集快照与执行入口, 供 <c>WorkerServer</c> 调用。
@@ -100,7 +89,7 @@ internal sealed class WorkerHostOptions
 /// 的决定属于进程边界知识, 放进 Core 意味着 Core 反过来知道 Worker 的存在(架构图 §7.1 明确
 /// Core 不得引用 Worker)。放这里, Core 只留 <see cref="IWorkerToolHost"/> 这一个纯契约。</para>
 /// </summary>
-internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
+internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync, IWorkerToolHostOutput
 {
     private const string Category = "Worker";
 
@@ -126,6 +115,10 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
     private IReadOnlyList<AgentRosterEntry>? _rosterEntries;
     private string? _commanderPersonaText;
     private string _workspaceRoot;
+    // 工作目录与会话 Id 本来是"启动身份"(构造期定型), 但远程(WebSocket)连接的 hello 会覆盖它们
+    // (没有 --session / --workdir), 所以这里只能是可写字段。stdio 模式下它们构造后再也不变。
+    private string _workDir;
+    private string _sessionId;
     private bool _subagentToolsVisible = true;
     private bool _planMode;
     private IReadOnlyList<string> _allowedAgentIds = [];
@@ -145,6 +138,8 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
     {
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
+        _workDir = options.WorkDir;
+        _sessionId = options.SessionId;
         _workspaceRoot = options.WorkspaceRoot;
 
         // ---- 配置只读三件套(内容见文件头注释: 纯读 + 首次启动幂等写) ----
@@ -294,27 +289,37 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
                 $"协议版本不符: 收到 {hello.ProtocolVersion}, 本进程 {WorkerProtocol.ProtocolVersion}");
         }
 
-        if (!string.IsNullOrEmpty(hello.SessionId) &&
-            !string.Equals(hello.SessionId, _options.SessionId, StringComparison.Ordinal))
+        if (_options.IsRemote)
         {
-            Log.Warn(Category,
-                $"hello.SessionId(\"{hello.SessionId}\") 与 --session(\"{_options.SessionId}\") 不一致; " +
-                "以命令行值为准(它是 WorkerKey 的一半), 但这通常意味着生命周期出了 bug");
+            // 远程连接没有 --session / --workdir: 身份由 hello 接管, 且工作目录必须先过 root 校验。
+            ApplyRemoteHello(hello);
         }
-
-        if (!string.IsNullOrEmpty(hello.WorkDir) &&
-            !PathsEqual(hello.WorkDir, _options.WorkDir))
+        else
         {
-            // 同样只 Warn 不改: 工具的相对路径解析锚点一旦在运行中途改掉, 比不一致本身更难查。
-            Log.Warn(Category,
-                $"hello.WorkDir(\"{hello.WorkDir}\") 与 --workdir(\"{_options.WorkDir}\") 指向不同目录");
-        }
+            // 比较用构造期(命令行)的初始值: 它们体现了"派我出来的那个实例"的身份,
+            // 一旦被覆盖就再也无法对齐父进程的 WorkerKey 了。
+            if (!string.IsNullOrEmpty(hello.SessionId) &&
+                !string.Equals(hello.SessionId, _sessionId, StringComparison.Ordinal))
+            {
+                Log.Warn(Category,
+                    $"hello.SessionId(\"{hello.SessionId}\") 与 --session(\"{_sessionId}\") 不一致; " +
+                    "以命令行值为准(它是 WorkerKey 的一半), 但这通常意味着生命周期出了 bug");
+            }
 
-        // 工作树根以 hello 为准: 它是父进程 IWorkspaceResolver 的解析结果, 执行权隔离与
-        // 检查点目录都按它建键, 而启动时我们手里只有 --workdir。
-        _workspaceRoot = string.IsNullOrWhiteSpace(hello.WorkspaceRoot)
-            ? _options.WorkspaceRoot
-            : hello.WorkspaceRoot;
+            if (!string.IsNullOrEmpty(hello.WorkDir) &&
+                !PathsEqual(hello.WorkDir, _workDir))
+            {
+                // 同样只 Warn 不改: 工具的相对路径解析锚点一旦在运行中途改掉, 比不一致本身更难查。
+                Log.Warn(Category,
+                    $"hello.WorkDir(\"{hello.WorkDir}\") 与 --workdir(\"{_workDir}\") 指向不同目录");
+            }
+
+            // 工作树根以 hello 为准: 它是父进程 IWorkspaceResolver 的解析结果, 执行权隔离与
+            // 检查点目录都按它建键, 而启动时我们手里只有 --workdir。
+            _workspaceRoot = string.IsNullOrWhiteSpace(hello.WorkspaceRoot)
+                ? _options.WorkspaceRoot
+                : hello.WorkspaceRoot;
+        }
 
         // 人格: 空白一律收成 null。协议明确 null/空串 = 「本回合无指挥官人格」, 此时子代理
         // 不应附加人格前缀, 而不是回退去读全局默认(那会把「切人格串味到别的会话」的缺陷原样保留)。
@@ -330,8 +335,78 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
 
         RebuildSubagentTools();
         Log.Info(Category,
-            $"握手状态已应用: 工作树根={_workspaceRoot}, roster={(hello.RosterEntries is null ? "无限制" : $"{hello.RosterEntries.Count} 项")}, " +
+            $"握手状态已应用: 工作目录={_workDir}, 工作树根={_workspaceRoot}, roster={(hello.RosterEntries is null ? "无限制" : $"{hello.RosterEntries.Count} 项")}, " +
             $"人格字符数={_commanderPersonaText?.Length ?? 0}, Plan模式={_planMode}, 当前工具数={_registry.All.Count}");
+    }
+
+    /// <summary>
+    /// 远程(WebSocket)连接的身份应用: 校验并接管工作目录与会话 Id。
+    /// </summary>
+    /// <remarks>
+    /// <para><b>root 校验是硬门禁, 不是提示</b>: 远程服务端只能通过 hello 指定目录, 若不做边界检查,
+    /// 任何能连上来的客户端都能让 Worker 在任意路径上读写文件、跑 git。越界时抛
+    /// <see cref="InvalidOperationException"/> —— 由服务端转成 <c>Ok = false</c> 并拒绝该连接,
+    /// 这是"拒绝服务"而不是"工具暂时不可用", 降级继续跑反而更危险。</para>
+    /// <para>路径边界必须按<b>分隔符</b>比较: 只用字符串前缀会让 <c>/root/sub-evil</c>
+    /// 通过 <c>/root/sub</c> 的检查。</para>
+    /// </remarks>
+    private void ApplyRemoteHello(WorkerHelloRequest hello)
+    {
+        var root = Path.GetFullPath(_options.RemoteRoot!);
+
+        if (string.IsNullOrWhiteSpace(hello.WorkDir))
+        {
+            _workDir = root;
+        }
+        else
+        {
+            var requested = Path.GetFullPath(hello.WorkDir);
+            if (!IsUnderRoot(requested, root))
+            {
+                throw new InvalidOperationException($"远程工作目录 {requested} 超出允许的根目录 {root}");
+            }
+
+            _workDir = requested;
+        }
+
+        // 远程模式下工作树根跟随工作目录: 客户端给的 WorkspaceRoot 是它那台机器上的本地路径,
+        // 在本进程里既无法访问也建不了键。
+        _workspaceRoot = _workDir;
+
+        if (!string.IsNullOrEmpty(hello.SessionId))
+        {
+            _sessionId = hello.SessionId;
+        }
+
+        // ⚠ 核心工具在构造期就把 BuildScope() 的 AgentExecutionScope 存进了工具实例, 工作目录变了
+        // 必须整批重建 —— 只改字段的话文件/git 工具仍按旧目录解析相对路径。
+        _registry.UnregisterWhere(IsCoreTool);
+        foreach (var tool in AgentToolFactory.CreateCoreTools(_git, BuildScope()))
+        {
+            _registry.Register(tool);
+        }
+    }
+
+    /// <summary>
+    /// 判定 <paramref name="path"/> 是否位于 <paramref name="fullRoot"/> 之内(含根目录本身)。
+    /// 两个入参都必须是 <c>Path.GetFullPath</c> 规范化后的绝对路径。
+    /// </summary>
+    private static bool IsUnderRoot(string path, string fullRoot)
+    {
+        // Windows 路径大小写不敏感; 其它平台保持大小写敏感(否则 /A 与 /a 会被误当成同一目录)。
+        var comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+
+        if (string.Equals(path, fullRoot, comparison))
+        {
+            return true;
+        }
+
+        // 拼上分隔符再比: 直接比 root 前缀会把 root 的兄弟目录(如 /root/sub-evil)误判为子目录。
+        var prefix = fullRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                     + Path.DirectorySeparatorChar;
+        return path.StartsWith(prefix, comparison);
     }
 
     /// <summary>
@@ -405,7 +480,7 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
         // 限定, 工具侧按空表处理 → 压缩开关恒 false), 与主进程"没有会话级记录"时一致。
         RosterResolver = _ => _rosterEntries,
         PlanAuthorizer = (sessionId, agent) => IsPlanAuthorized(sessionId, agent),
-        ActiveSessionIdResolver = () => _options.SessionId
+        ActiveSessionIdResolver = () => _sessionId
     };
 
     /// <summary>
@@ -423,7 +498,7 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
         var agents = _allAgents;
         if (_planMode)
         {
-            agents = agents.Where(a => IsPlanAuthorized(_options.SessionId, a)).ToList();
+            agents = agents.Where(a => IsPlanAuthorized(_sessionId, a)).ToList();
 
             if (agents.Count == 0)
             {
@@ -477,10 +552,10 @@ internal sealed class WorkerSlimHost : IWorkerToolHost, IWorkerToolHostSync
         // 用 workDir 而非工作树根是安全的: git 工具经 GitService.ResolveContext → FindRepositoryRoot
         // 会自己向上找到仓库根, 所以 workDir 指向 worktree 的子目录也没问题。
         // (工作树根另有一处用途: AgentExecutionScope.WorkspaceRoot 那个"末级兜底"字段。)
-        WorkspaceRoot = _options.WorkDir,
+        WorkspaceRoot = _workDir,
         IsPlanMode = request.IsPlanMode,
         // 会话 id 优先取请求里的: 传输层契约要求父进程逐次下发, null/空才回退到绑定值。
-        SessionId = string.IsNullOrEmpty(request.SessionId) ? _options.SessionId : request.SessionId,
+        SessionId = string.IsNullOrEmpty(request.SessionId) ? _sessionId : request.SessionId,
         // 这两个字段必须转发: 子代理输出压缩要"与主回合同 Provider/模型", 不转发的话
         // 用户切了非默认模型, 压缩会跑在另一个模型上(技术债 #16 就是这个)。
         ProviderId = request.ProviderId,
