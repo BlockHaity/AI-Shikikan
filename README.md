@@ -107,7 +107,13 @@ app-source：按索引拆包 → 生成仓库元数据 → gh-pages
 4. 未配置该 Secret 时发布仍会成功，只跳过自动触发；此时到软件源仓库 Actions 页面手动 Run workflow 并填版本号即可重建。
 5. 两个仓库均为公开仓库，软件源仓库读取本仓库 Release 资产无需额外令牌。
 
-安装方式（apt / rpm / pacman）见软件源仓库 README。
+Linux 一键添加软件源并安装：
+
+```bash
+curl -fsSL https://blockhaity.github.io/ai-shikikan-source/install.sh | sudo bash
+```
+
+脚本自动识别 apt / dnf / pacman；其他安装方式见软件源仓库 README。
 
 ## 配置
 
